@@ -5429,10 +5429,15 @@ export class Engine {
     // Polish r2 (Codex): when the `$WEAP` left but the `$AMMO` did not, the gun holds the row's reset (a full clip and its own
     // reserve), not the phone's old counts. So the books stay at the refill, and the `$AMMO` goes once more on its own.
     const failed = () => {
-      if (sent) return;
-      if (!weapLeft) { this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); return; }
-      if (life !== this._lifeSeq || this.phase !== 'live') return;
-      this.log(`charge lock on slot ${slot}: the $WEAP went but the $AMMO did not: sending the $AMMO again (F226)`, 'le');
+      if (!weapLeft) { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); return; }
+      // Polish r3 (Codex + Opus): the re-send is the refill again, so it must not land on a gun that moved on: a stun's disarm
+      // (the stun owns the restore), a reconcile, a resync, or a newer write that owns the slot's counts. Polish r3 (Opus): a
+      // write that failed after its `$AMMO` left lost that `$AMMO` too, so `sent` is no reason to skip it.
+      const am = this.am, a = am ? am.acct[slot] : null, down = this._standDown(['phase', 'ble', 'alive', 'stunned', 'reconciling', 'resync']);
+      if (life !== this._lifeSeq || down || this.rc?.disarmed || !a || a.echoGen !== gen) {
+        this.log(`charge lock on slot ${slot}: the $AMMO did not land, but ${down || 'the slot has a newer write'}: not sent again (F226)`, 'li'); return;
+      }
+      this.log(`charge lock on slot ${slot}: the $WEAP went but the $AMMO did not land: sending the $AMMO again (F226)`, 'le');
       this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, the $AMMO again');
     };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);

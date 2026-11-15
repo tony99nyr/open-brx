@@ -193,3 +193,17 @@ def test_polish_r2_a_late_echo_of_our_own_write_keeps_the_latch():
         st._on_ammo(0, 0, 0, 65)
         assert st._vent_locked()
     asyncio.run(go())
+
+
+def test_polish_r3_a_press_during_the_phones_own_reload_keeps_its_time():
+    """ammo.js `reloadPulled` (polish r3): a second lever press while the phone's soft reload runs does not restart it."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        r = {"at": clock.t, "s": 1.4, "slot": 0, "soft": True, "chain": False, "life": st._life_queued, "released_at": None}
+        st.reloading = r
+        st.ammo, st.reserve = 20, 100
+        st._gun_buttons_wait = lambda now: 0   # type: ignore[method-assign]
+        st._reload_pulled(lever=True)
+        assert st.reloading is r, "the running reload is kept"
+        assert any("keeps its time" in l["text"] for l in st.log)
+    asyncio.run(go())
