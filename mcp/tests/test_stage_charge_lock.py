@@ -207,3 +207,46 @@ def test_polish_r3_a_press_during_the_phones_own_reload_keeps_its_time():
         assert st.reloading is r, "the running reload is kept"
         assert any("keeps its time" in l["text"] for l in st.log)
     asyncio.run(go())
+
+
+def test_polish_r4_the_latch_starts_above_99_and_ends_only_at_0():
+    """ammo.js VENT_LOCK_AT (polish r4, brx2's emulator): the Energy Rifle fires at 99, locks above it, and a part vent holds."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "usp"}]}}
+        st._on_ammo(206, 600, 0, 99)                                 # the emulator's frames: rounds at 99
+        assert not st._vent_locked(), "99 is no lock"
+        st._on_ammo(205, 600, 0, 99)
+        assert not st._vent_locked(), "99 is no lock"
+        st._on_ammo(205, 600, 0, 101)                                # the lock: the same cell, heat 101
+        assert st._vent_locked()
+        for v in (66, 31):
+            st._on_ammo(205, 600, 0, v)
+            assert st._vent_locked(), v
+        st._on_ammo(205, 600, 0, 0)
+        assert not st._vent_locked()
+    asyncio.run(go())
+
+
+def test_polish_r4_f226_when_only_the_weap_left_the_books_keep_the_refill_and_nothing_is_resent():
+    """engine.js `_chargeLock` (polish r2, r4): the `$WEAP` left, the `$AMMO` did not: no unwrite, no re-send, a loud log."""
+    async def go():
+        clock = StageClock(); st, sent = _st(clock)
+        st.bundle = {**(st.bundle or {}), "head": ["$WEAP,0,0,100,10,0,115,0,,,,,,35,100,1000,850,40,40,2600,0,7,100,100,*"]}
+
+        async def cut(frames, why="", on_frame_sent=None, **kw):
+            for f in frames:
+                if f.startswith("$WEAP,"):
+                    sent.append(f)
+                    if on_frame_sent:
+                        on_frame_sent(f)
+            return False
+        st.write = cut   # type: ignore[method-assign]
+        st._prev_ammo[0] = 4
+        st._charge_lock(0, 4, 4, 3, 156)
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not [f for f in sent if f.startswith("$AMMO,")], sent
+        assert st._acct_live(0) == 7, st._acct_live(0)
+        assert any("may not have landed" in l["text"] for l in st.log)
+    asyncio.run(go())
