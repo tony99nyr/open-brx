@@ -618,6 +618,25 @@ test('part 4 review: a real hit in the same ms as the failed write still books t
   assert.equal(h.eng.alive, false);
   assert.equal(h.eng.deaths, deaths0 + 2);
 });
+// Polish r2 (brx4; Codex): a code error that cut the burst before it was stamped as reaching the gun timed the hold from the
+// failure, so health the gun reported earlier (its `$SPAWN` had gone) did not count.
+test('part 4 review: a burst cut before it was stamped still counts health reported before the failure', async () => {
+  const h = liveArmed();
+  const deaths0 = h.eng.deaths, w0 = h.eng.writer;
+  let fail = null;
+  h.eng.writer = (fr, why, o) => {
+    if (!isRevive(fr)) return w0(fr, why, o);
+    return new Promise(r => { fail = () => { o.onOutcome({ ok: false, kind: 'code', error: 'cut', faults: [] }); r(false); }; });
+  };
+  revived(h); await new Promise(r => setImmediate(r));
+  assert.ok(fail, 'setup: the revive is on the link');
+  h.adv(200); h.frame('$HP,20,0,0,*');                         // its $SPAWN went: the gun is up
+  h.adv(300); fail(); await new Promise(r => setImmediate(r));
+  assert.ok(h.eng._writeBug, 'setup: the code fault was booked');
+  h.frame('$HP,0,0,0,*');                                      // poison, no hit
+  assert.equal(h.eng.alive, false, 'a real death is booked');
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
 test('part 4 review: the hold ends after WRITE_BUG_HOLD_MS, never an undying player', async () => {
   const { h } = bugRig(isRevive);
   revived(h); await new Promise(r => setImmediate(r));

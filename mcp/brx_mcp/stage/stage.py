@@ -5995,8 +5995,8 @@ class GunStage:
             self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
             return
         prev_v = self._prev_ammo.get(slot)
-        if self._vent_lock is not None and prev_v is not None and mag < prev_v:
-            self._vent_lock = None   # ammo.js `heatLockFrame` (polish r1): it fired, so it is not locked
+        if self._vent_lock is not None and prev_v is not None and mag < prev_v and not self._acct_echoing(slot):
+            self._vent_lock = None   # ammo.js `heatLockFrame` (polish r1): it fired; (r2) an echo of our own write is no round
         if not lcd and slot in self._disarm_note and not self._acct_echoing(slot):
             del self._disarm_note[slot]   # ammo.js `onAmmo`: the gun's own word after the disarm replaces its note
         # F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside
@@ -7573,6 +7573,9 @@ class GunStage:
             return
         if lk and lk["slot"] == slot and lk["life"] == self._life_queued:
             return   # once per lock
+        if self._vent_locked():   # engine.js `_chargeLock` (polish r2): the shared heat is the Energy Rifle's lock, not a starved charge
+            self._log(f"charge lock on slot {slot}: the gun reads the Energy Rifle's lock, not a starved charge: no reload (F226)", "info")
+            return
         self._charge_lock_fix = {"slot": slot, "life": self._life_queued, "at": self.now()}
         cap = self._ammo_by_slot().get(slot)
         if not (res is not None and res > 0) or not (cap and cap > mag):
@@ -7677,7 +7680,9 @@ class GunStage:
             # ammo.js `reloadTick` (Tony 2026-11-07; SR16 2026-11-14): a chain loads one shell a reload time while the lever is
             # held, until full or out of reserve
             more = r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0
-            if more and r.get("released_at") is None:
+            # ammo.js `reloadTick` (polish r2): a release inside the bounce window may be bounce, so the chain goes on
+            held = r.get("released_at") is None or round((self.now() - r["released_at"]) * 1000) < round(BUTTON_BOUNCE_S * 1000)
+            if more and held:
                 r["at"] = max(r["at"] + r["s"], self.now() - r["s"] / 2); r["last_gain_at"] = self.now()   # chain review: the reload's pace
                 self._spawn_task(self._reload_watchdog(dict(r)))
                 return

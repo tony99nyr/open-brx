@@ -1864,7 +1864,9 @@ export class Engine {
       this.log(`*** BUG: write ${why} failed on a code error -- the life moved on, nothing to hold ***`, 'le'); return;
     }
     this._writeLost = life;
-    this._writeBug = { life, at: burst && burst.reachedAt != null ? burst.reachedAt : this.now() };
+    // Polish r2 (Codex): a burst a code error cut before its last job never stamps `reachedAt`, but its `$SPAWN` may have gone,
+    // and the gun's health can already have come back. Then the hold counts from when the burst was written.
+    this._writeBug = { life, at: burst && burst.reachedAt != null ? burst.reachedAt : burst ? burst.at : this.now() };
     if (this._spawnCheck && this._spawnCheck.life === life) this._spawnCheck = null;   // review: an earlier loss's check must not re-send it
     this.log(`*** BUG: write ${why} failed on a code error (${error || 'unknown'}). No re-send: it would hit the same bug. `
       + 'The player stays up; no death is booked without a hit. HOST: RESYNC GUN or FORCE RESPAWN ***', 'le');
@@ -5398,6 +5400,9 @@ export class Engine {
     const row = w && this.weaponRow(w.weapon_id); const cost = row && row.rounds_per_charge != null ? +row.rounds_per_charge : 1;
     if (!(cost > 1) || !(mag < cost)) return;
     if (this._chargeLockFix && this._chargeLockFix.slot === slot && this._chargeLockFix.life === this._lifeSeq) return;   // once per lock
+    // Polish r2 (Opus): the gun has one heat value. While the Energy Rifle's lock is on, a hot reading on this slot is that lock,
+    // not a starved charge, and the F226 `$WEAP` would vent it for free (the free vent holds every other `$WEAP` then).
+    if (this.am?.ventLocked()) { this.log(`charge lock on slot ${slot}: the gun reads the Energy Rifle's lock, not a starved charge: no reload (F226)`, 'li'); return; }
     this._chargeLockFix = { slot, life: this._lifeSeq, at: this.now() };
     const cap = this.am.ammoBySlot()[slot];
     if (!(res > 0) || !(cap > mag)) { this.log(`charge lock on slot ${slot}: cell ${mag}, reserve ${res ?? '?'}: nothing to reload (F226)`, 'li'); this._changed(); return; }
@@ -5417,8 +5422,19 @@ export class Engine {
     let sent = false;
     const rows = weap ? [weap, `$AMMO,${slot},${to},${left},1,*`] : [`$AMMO,${slot},${to},${left},1,*`];
     // Polish r1 (Opus): sent once the `$AMMO` has left. A re-sent `$WEAP` (a late chunk error) fires the hook twice.
-    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: f => { if (typeof f === 'string' && f.startsWith('$AMMO,')) sent = true; } });
-    const failed = () => { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); };
+    let weapLeft = false;
+    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: f => {
+      if (typeof f === 'string' && f.startsWith('$AMMO,')) sent = true; else if (typeof f === 'string' && f.startsWith('$WEAP,')) weapLeft = true;
+    } });
+    // Polish r2 (Codex): when the `$WEAP` left but the `$AMMO` did not, the gun holds the row's reset (a full clip and its own
+    // reserve), not the phone's old counts. So the books stay at the refill, and the `$AMMO` goes once more on its own.
+    const failed = () => {
+      if (sent) return;
+      if (!weapLeft) { this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); return; }
+      if (life !== this._lifeSeq || this.phase !== 'live') return;
+      this.log(`charge lock on slot ${slot}: the $WEAP went but the $AMMO did not: sending the $AMMO again (F226)`, 'le');
+      this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, the $AMMO again');
+    };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
     // F226 review (Opus): `$AMMO` ends the lock, and a full cell is no starved cell, so a lockout still on the books (or one an

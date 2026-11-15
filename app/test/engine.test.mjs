@@ -5141,6 +5141,52 @@ test('Easy Reload + Energy Rifle: ALT vents with no reload card; the lever is th
   h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true, 'the lever reloads: it vents nothing on this kit\n' + l2.join('\n'));
 });
+// Polish r2 (brx4; Codex): a stun's late disarm echo (0 on the slot, inside the restore's echo window) read as a round fired and
+// ended the latch, so pulls on a still-locked gun counted as rounds again.
+test('SR8: a late echo of our own write is no round: the Energy Rifle latch holds', () => {
+  const h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,65,*');                         // one vent: still locked
+  h.eng.am.acctWrote(0, 201, 600);                             // our own write: its echo window is open
+  h.frame('$ALCD,0,100,0,0,65,*');                             // a late disarm echo
+  assert.equal(h.eng.am.ventLocked(), true, 'the latch holds');
+});
+// Polish r2 (brx4; Opus): with the Energy Rifle latched (one heat value), a hot reading on the Charge Rifle slot at the same cell
+// is that lock, not a starved charge, and the F226 `$WEAP` would vent it for free.
+test('F226: no reload for the player while the Energy Rifle lock holds the shared heat', () => {
+  const run = latch => {
+    const h = harness();
+    h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+    h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'charge_rifle' }];
+    h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+      catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+        { weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: 10, clip: 40, reserve: 80, reload_s: 2 }], perks: [] } } });
+    h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+    h.frame('$ALCD,5,100,1,40,0,*');                            // the Charge Rifle's cell, before the lock
+    if (latch) h.frame('$ALCD,201,100,0,600,101,*');
+    h.eng.activeSlot = 1;
+    const n = h.writes.length;
+    h.frame('$ALCD,5,100,1,40,100,*');                          // the same cell, hot
+    return h.writes.slice(n).filter(f => /^\$(WEAP|AMMO),1,/.test(f));
+  };
+  assert.ok(run(false).length > 0, 'CONTROL: a starved Charge Rifle cell is reloaded for the player');
+  assert.deepEqual(run(true), [], 'no $WEAP and no $AMMO while the Energy Rifle lock is on');
+});
+// Polish r2 (brx4; Codex): the `$WEAP` left and the `$AMMO` did not. The gun holds the row's reset, so putting the books back at
+// the starved cell was wrong. The `$AMMO` goes again on its own, and the books stay at the refill.
+test('F226: when only the $WEAP left, the $AMMO is sent again and the books keep the refill', async () => {
+  const { h } = chargeHarness({ reserve: 3 });
+  const w0 = h.eng.writer; let cut = 0;
+  h.eng.writer = (fr, why, o) => {
+    if (/^F226: charge lock, reload/.test(String(why))) { cut++; for (const f of fr) if (f.startsWith('$WEAP,')) { h.writes.push(f); o.onFrameSent(f); } return Promise.resolve(false); }
+    return w0(fr, why, o);
+  };
+  const n = h.writes.length;
+  h.frame('$ALCD,4,100,0,3,156,*');
+  await new Promise(r => setImmediate(r));
+  assert.equal(cut, 1, 'setup: the refill write was cut after its $WEAP');
+  assert.ok(h.writes.slice(n).includes('$AMMO,0,7,0,1,*'), `the $AMMO went again: ${JSON.stringify(h.writes.slice(n))}`);
+  assert.equal(h.eng.am.acctLive(0), 7, 'the books keep the refill');
+});
 test('SR8: the lock blocks the other slot too (one heat value)', () => {
   const h = energyHarness();
   h.eng.activeSlot = 1;

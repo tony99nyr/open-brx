@@ -630,7 +630,9 @@ export class Ammo {
     // old heat; the `$AMMO` ended the lock (bench 2026-09-17), so it must not put OVERHEAT back up over a full cell.
     if (hot && this.reloading && this.reloading.auto && this.reloading.slot === slot) return;
     if (hot) { if (L && L.slot === slot) L.lastAt = now; else this.heatLock = { slot, at: now, lastAt: now }; return; }
-    if (this.ventLock != null && prev != null && mag < prev) this.ventLock = null;   // polish r1: it fired, so it is not locked
+    // Polish r1: it fired, so it is not locked. Polish r2 (Codex): a drop inside an echo window is our own write coming back (a
+    // stun's late disarm echo after its restore), not a round.
+    if (this.ventLock != null && prev != null && mag < prev && !this.acctEchoing(slot)) this.ventLock = null;
     if (!L || L.slot !== slot) return;
     if ((heat != null && !Number.isNaN(heat)) || (prev != null && mag < prev)) this.heatLock = null;   // cooled, or it fired
   }
@@ -875,7 +877,10 @@ export class Ammo {
       // app ticks every 250 ms), so the chain keeps the reload's pace; a tick far behind does not let shells catch up in a burst.
       // Bench 2026-11-14 (SR16): the chain goes on only while the lever is held, as the gun's own does.
       const more = r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0;
-      if (more && r.releasedAt == null) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.softWake(r); this.host.changed(); return; }
+      // Polish r2 (Codex + Opus): a release still inside the bounce window may be bounce (`reloadUnreleased`), so the chain goes
+      // on; the release's own wake ends it once the window has passed.
+      const held = r.releasedAt == null || now - r.releasedAt < this.bounceMs();
+      if (more && held) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.softWake(r); this.host.changed(); return; }
       this.endReload(more ? 'released' : 'filled'); return;
     }
     if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');
