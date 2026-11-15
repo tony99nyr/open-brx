@@ -215,3 +215,47 @@ test('review: a reset that fails late after its batch was skipped makes the next
   assert.equal(await three, true);
   assert.deepEqual(chunks.slice(1), [PARSER_RESET, '$SPAWN,,*', PARSER_RESET, '$SPAWN,,*', '$TID,3,*'], 'the damaged frame went again after a reset: ' + JSON.stringify(chunks));
 });
+
+// Polish r4 (brx4; Opus r3 Low): the `lost` path. The last frame's chunk fails late on every send, and the batch's own last `$*`
+// reset fails late too. The batch reports the loss, and the next write still starts with `$*`.
+test('review: chunks lost after every re-send, and the last reset lost too, leave the reset owed', async ctx => {
+  const settle = useClock(ctx, 3000);
+  const chunks = [];
+  const writeChunk = (id, dv) => {
+    const f = textOf(dv); chunks.push(f);
+    if (f === '$SPAWN,,*' || (f === PARSER_RESET && chunks.length > 2)) return new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 60));
+    return Promise.resolve();
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, writeChunk, log: () => {}, ackCapMs: 50, frameGapMs: 100 });
+  await link.connect('A', 'GUN-A-1111');
+  const one = link.write(['$TID,1,*', '$SPAWN,,*'], 'one'); await settle();
+  assert.equal(await one, false, 'setup: the batch reports the loss');
+  const n = chunks.length;
+  const two = link.write('$TID,2,*', 'two'); await settle(); await two;
+  assert.equal(chunks[n], PARSER_RESET, `the next write starts with a reset: ${JSON.stringify(chunks)}`);
+});
+
+// Polish r4 (brx4; Codex + Opus): the recovery reset after a LOST frame (the batch has already sent that frame whole), then
+// the batch is cancelled, then that reset fails late while the next batch sends. "No frame after the reset" must count frames
+// sent after the reset, not compare frame indexes.
+test('review: a recovery reset that fails late after its batch was cancelled makes the next batch send its first frame again', async ctx => {
+  const settle = useClock(ctx, 1500);
+  const chunks = [];
+  const writeChunk = (id, dv) => {
+    const i = chunks.length; chunks.push(textOf(dv));
+    if (i === 0) return new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 60));               // frame 0 lost late
+    if (i === 1) return new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 160));              // its recovery reset, later
+    return Promise.resolve();
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, writeChunk, log: () => {}, ackCapMs: 50, frameGapMs: 100 });
+  await link.connect('A', 'GUN-A-1111');
+  const one = link.write(['$TID,1,*', '$TID,2,*'], 'one', { shouldSend: () => !chunks.includes(PARSER_RESET) });   // no after the recovery reset
+  const two = link.write(['$SPAWN,,*', '$TID,3,*'], 'two');
+  await settle();
+  assert.equal(await one, null, 'setup: cancelled after its recovery reset');
+  assert.equal(await two, true);
+  assert.deepEqual(chunks.slice(0, 2), ['$TID,1,*', PARSER_RESET], 'setup: frame 0, then its recovery reset: ' + JSON.stringify(chunks));
+  assert.deepEqual(chunks.slice(2), ['$SPAWN,,*', PARSER_RESET, '$SPAWN,,*', '$TID,3,*'], 'the damaged frame went again: ' + JSON.stringify(chunks));
+});

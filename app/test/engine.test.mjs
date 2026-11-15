@@ -3058,6 +3058,32 @@ test('ALT bounce: a clock step back between the release and a real press is no b
   assert.equal(logs.filter(m => m.includes('bounce ignored')).length, 0, logs.filter(m => m.includes('bounce')).join('\n'));
 });
 
+// Polish r4 (brx4; Codex): a press during the phone's own chain keeps it, but only a LEVER press holds it again. On a one-weapon
+// Easy Reload Shotgun an ALT tap cleared the chain's release, ALT's own release never set it back, and the chain loaded to full.
+test('a press during the phone chain: the lever holds it again, ALT does not', () => {
+  const h = goLive(harness());
+  h.adv(10000); h.eng.tick();                                  // past the gun's spawn wait
+  const mk = () => ({ at: h.eng.now(), t0: h.eng.now(), ms: 400, shells: 1, slot: h.eng.activeSlot, life: h.eng._lifeSeq, soft: true, chain: true,
+    releasedAt: h.eng.now() - 100, from: 2, cap: 6, mag: 3, lastGainAt: h.eng.now() });
+  h.eng.am.reloading = mk();
+  h.eng.am.reloadPulled();                                     // ALT on Easy Reload
+  assert.notEqual(h.eng.am.reloading.releasedAt, null, 'ALT keeps the release');
+  h.eng.am.reloading = mk();
+  h.eng.am.reloadPulled({ lever: true });
+  assert.equal(h.eng.am.reloading.releasedAt, null, 'the lever holds the chain again');
+});
+// Polish r4 (brx4; Opus): a clock step back after a real release held the chain (`now - releasedAt` negative), so it loaded
+// shells after the lever was let go.
+test('a clock step back after a chain release is no hold: the next tick ends the chain', () => {
+  const h = goLive(harness());
+  const now = h.eng.now();
+  h.eng.am.reloading = { at: now, t0: now, ms: 400, shells: 1, slot: h.eng.activeSlot, life: h.eng._lifeSeq, soft: true, chain: true,
+    releasedAt: now + 2000, from: 2, cap: 6, mag: 3, lastGainAt: now };   // released "2 s from now": the clock stepped back
+  h.eng.am.reloadTick(now);
+  assert.equal(h.eng.am.reloading, null, 'the chain ended');
+  assert.equal(h.eng.am.reloadOutcome.why, 'released');
+});
+
 test('switchingMs() is pure — reading state never mutates it', () => {
   const h = twoWeapons(goLive(harness()));
   h.frame('$BUT,1,1,*');
@@ -5089,10 +5115,12 @@ test('F226: no $AMMO re-send after a stun has disarmed the gun', async () => {
   fail(); await new Promise(r => setImmediate(r));
   assert.ok(!h.writes.slice(n).includes('$AMMO,0,7,0,1,*'), `no refill behind the disarm: ${JSON.stringify(h.writes.slice(n))}`);
 });
-// Polish r3 (brx4; Opus): a write that failed after its `$AMMO` left (chunks lost on every re-send) lost that `$AMMO` too.
-test('F226: an $AMMO that left but whose write failed is sent again', async () => {
+// Polish r3 (brx4; Opus): a write that failed after its `$AMMO` left (chunks lost on every re-send). Polish r4 (brx1): no re-send;
+// the loud log names it.
+test('F226: an $AMMO that left but whose write failed is not sent again, and the log says so', async () => {
   const { h } = chargeHarness({ reserve: 3 });
-  const w0 = h.eng.writer;
+  const w0 = h.eng.writer, logs = [];
+  h.eng.log = m => logs.push(String(m));
   h.eng.writer = (fr, why, o) => {
     if (/^F226: charge lock, reload/.test(String(why))) { for (const f of fr) { h.writes.push(f); o.onFrameSent(f); } return Promise.resolve(false); }
     return w0(fr, why, o);
@@ -5100,7 +5128,8 @@ test('F226: an $AMMO that left but whose write failed is sent again', async () =
   const n = h.writes.length;
   h.frame('$ALCD,4,100,0,3,156,*');
   await new Promise(r => setImmediate(r));
-  assert.equal(h.writes.slice(n).filter(f => f === '$AMMO,0,7,0,1,*').length, 2, JSON.stringify(h.writes.slice(n)));
+  assert.equal(h.writes.slice(n).filter(f => f === '$AMMO,0,7,0,1,*').length, 1, JSON.stringify(h.writes.slice(n)));
+  assert.ok(logs.some(m => /may not have landed/.test(m)));
 });
 
 // Bench 2026-11-14 (SR8; brx2's emulator): the Energy Rifle locks at about 101 and the lock does not cool. Pulls inside it fire
@@ -5206,10 +5235,12 @@ test('F226: no reload for the player while the Energy Rifle lock holds the share
   assert.deepEqual(run(true), [], 'no $WEAP and no $AMMO while the Energy Rifle lock is on');
 });
 // Polish r2 (brx4; Codex): the `$WEAP` left and the `$AMMO` did not. The gun holds the row's reset, so putting the books back at
-// the starved cell was wrong. The `$AMMO` goes again on its own, and the books stay at the refill.
-test('F226: when only the $WEAP left, the $AMMO is sent again and the books keep the refill', async () => {
+// the starved cell was wrong. Polish r4 (brx1): no re-send (it drew a High in three rounds); the books keep the refill, the log is
+// loud, and the gun's next report sets the counts.
+test('F226: when only the $WEAP left, nothing is re-sent, the books keep the refill, and the gun\'s next report wins', async () => {
   const { h } = chargeHarness({ reserve: 3 });
-  const w0 = h.eng.writer; let cut = 0;
+  const w0 = h.eng.writer, logs = []; let cut = 0;
+  h.eng.log = m => logs.push(String(m));
   h.eng.writer = (fr, why, o) => {
     if (/^F226: charge lock, reload/.test(String(why))) { cut++; for (const f of fr) if (f.startsWith('$WEAP,')) { h.writes.push(f); o.onFrameSent(f); } return Promise.resolve(false); }
     return w0(fr, why, o);
@@ -5218,8 +5249,23 @@ test('F226: when only the $WEAP left, the $AMMO is sent again and the books keep
   h.frame('$ALCD,4,100,0,3,156,*');
   await new Promise(r => setImmediate(r));
   assert.equal(cut, 1, 'setup: the refill write was cut after its $WEAP');
-  assert.ok(h.writes.slice(n).includes('$AMMO,0,7,0,1,*'), `the $AMMO went again: ${JSON.stringify(h.writes.slice(n))}`);
-  assert.equal(h.eng.am.acctLive(0), 7, 'the books keep the refill');
+  assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$AMMO,0,')), [], 'no $AMMO re-send');
+  assert.equal(h.eng.am.acctLive(0), 7, 'the books keep the refill, not the starved cell');
+  assert.ok(logs.some(m => /\*\*\* charge lock on slot 0: the \$WEAP went but the \$AMMO may not have landed/.test(m)), logs.join('\n'));
+  h.adv(2000); h.frame('$ALCD,40,100,0,80,0,*');              // the gun's own word, past the echo window
+  assert.equal(h.eng.am.acctLive(0), 40, 'the gun\'s report sets the counts');
+});
+// Polish r4 (brx4; brx2's emulator 2026-11-15): the Energy Rifle still fires at a reading of 99 and locks above it (101). A latch
+// from 99 would hold a gun that can still fire; a part vent (66, 31) fires nothing until 0.
+test('SR8: the latch starts above 99 and ends only at 0', () => {
+  const h = energyHarness({ lock: false });
+  h.frame('$ALCD,206,100,0,600,99,*'); h.frame('$ALCD,205,100,0,600,99,*');   // the emulator's frames: rounds at 99
+  assert.equal(h.eng.am.ventLocked(), false, '99 is no lock: the gun still fires there');
+  h.frame('$ALCD,205,100,0,600,101,*');                        // the lock: the same cell, heat 101
+  assert.equal(h.eng.am.ventLocked(), true, 'the lock');
+  for (const v of [66, 31]) { h.frame(`$ALCD,205,100,0,600,${v},*`); assert.equal(h.eng.am.ventLocked(), true, `part-vented to ${v}: still locked`); }
+  h.frame('$ALCD,205,100,0,600,0,*');
+  assert.equal(h.eng.am.ventLocked(), false, 'vented to 0');
 });
 // F669 (bench F500: 3.03 s; brx2's emulator about 3.0 s): the gun's own Energy Rifle refill lands about 0.6 s after its 2.4 s
 // reload_s. The RELOADING countdown ran out at 2.4 s and sat at 0.0S until the gun's $ALCD; it now runs to the refill.

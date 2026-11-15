@@ -5417,19 +5417,12 @@ export class Engine {
     const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: f => {
       if (typeof f === 'string' && f.startsWith('$AMMO,')) sent = true; else if (typeof f === 'string' && f.startsWith('$WEAP,')) weapLeft = true;
     } });
-    // Polish r2 (Codex): when the `$WEAP` left but the `$AMMO` did not, the gun holds the row's reset (a full clip and its own
-    // reserve), not the phone's old counts. So the books stay at the refill, and the `$AMMO` goes once more on its own.
+    // Polish r4 (brx1's steer, after the re-send drew a High in rounds 2, 3 and 4): when the `$WEAP` left, the gun holds at least
+    // the row's reset, so the books are not put back at the starved cell. Nothing is re-sent: the gun's next report is the truth
+    // (`acctAmmo`: the gun wins), the reconcile and the stale-pool cure are the backstops, and the player can still lever.
     const failed = () => {
       if (!weapLeft) { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); return; }
-      // Polish r3 (Codex + Opus): the re-send is the refill again, so it must not land on a gun that moved on: a stun's disarm
-      // (the stun owns the restore), a reconcile, a resync, or a newer write that owns the slot's counts. Polish r3 (Opus): a
-      // write that failed after its `$AMMO` left lost that `$AMMO` too, so `sent` is no reason to skip it.
-      const am = this.am, a = am ? am.acct[slot] : null, down = this._standDown(['phase', 'ble', 'alive', 'stunned', 'reconciling', 'resync']);
-      if (life !== this._lifeSeq || down || this.rc?.disarmed || !a || a.echoGen !== gen) {
-        this.log(`charge lock on slot ${slot}: the $AMMO did not land, but ${down || 'the slot has a newer write'}: not sent again (F226)`, 'li'); return;
-      }
-      this.log(`charge lock on slot ${slot}: the $WEAP went but the $AMMO did not land: sending the $AMMO again (F226)`, 'le');
-      this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, the $AMMO again');
+      this.log(`*** charge lock on slot ${slot}: the $WEAP went but the $AMMO may not have landed: no re-send; the gun's next report sets the counts (F226) ***`, 'le');
     };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it

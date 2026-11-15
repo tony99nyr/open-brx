@@ -776,6 +776,20 @@ test('SR16: a bounce across a shell deadline keeps a held lever\'s chain going',
   await h.advance(3000);
   assert.deepEqual(shells.map(t => t - t0), [r.ms, 2 * r.ms], `two shells while held: ${shells.map(t => t - t0)}`);
 });
+// Polish r4 (brx4; Opus r3 Low): a real release just before a shell is due (inside the bounce window of the deadline) lets that
+// shell land, then ends the chain once the window has passed: no shell after it.
+test('SR16: a real release 10 ms before a shell deadline: that shell lands, then the chain ends', async () => {
+  const { h, eng, gun, shells } = await shotgunInHandArFiredLast(68);
+  const t0 = h.now();
+  gun.feed('$BUT,2,1,*');
+  const r = eng.am.reloading;
+  assert.ok(r && r.soft && r.chain, 'setup: the phone loads the chain');
+  await h.advance(r.ms - 10); gun.feed('$BUT,2,0,*');
+  await h.advance(3000);
+  assert.deepEqual(shells.map(t => t - t0), [r.ms], `one shell: ${shells.map(t => t - t0)}`);
+  assert.equal(eng.am.reloading, null);
+  assert.equal(eng.am.reloadOutcome.why, 'released');
+});
 test('the put-back log line names a refill only when one was put back', async () => {
   const { h, gun } = await shotgunInHandArFiredLast(64, { arFull: true });   // the gun's lever has nothing to refill
   const n = h.logs.length;

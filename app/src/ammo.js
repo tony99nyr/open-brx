@@ -122,6 +122,10 @@ export const OVERHEAT_CAP_MS = 30000;
 export const HEAT_STALE_MS = 25000;
 /** Bench 2026-11-14 (brx2, emulator): the gun's one heat value cools about 33 a second while it is not locked. Per ms. */
 export const HEAT_COOL_PER_MS = 0.033;
+/** Polish r4 (brx2's emulator 2026-11-15): the Energy Rifle's lock starts at a reading of 100 or more (101 seen; rounds still fired
+ *  at 99). Its latch (`ventLock`) engages there, and ends only at a reading of 0 or a round fired (a part vent to 66 or 31 fires
+ *  nothing). HEAT_LOCKOUT stays 99 for the other heat weapons. */
+export const VENT_LOCK_AT = 100;
 // pl3 (2026-09-17): HEAT_STALE_MS above is for `no_fire` only. It must outlast a player who dry-fires a locked
 // weapon for ~20 s. The HUD's OVERHEAT word must not: the lockout itself ends long before that. The reading that
 // tips a weapon over the line arrives with the shot that caused it. The bench-measured lockout holds ~4.8 s,
@@ -565,7 +569,8 @@ export class Ammo {
     if (heat == null || Number.isNaN(heat)) return;
     this.heatBySlot[slot] = heat; this.heatAt[slot] = this.host.now();
     if (heat > 0) this.everHeated[slot] = true;
-    if (heat >= HEAT_LOCKOUT && this.heatVents(slot)) this.ventLock = slot;    // polish r1: an Energy Rifle lock latches
+    // Polish r1: an Energy Rifle lock latches. Polish r4 (brx2's emulator): it starts ABOVE 99; rounds still fire at 99.
+    if (heat >= VENT_LOCK_AT && this.heatVents(slot)) this.ventLock = slot;
     else if (heat <= 0) this.ventLock = null;                                  // vented (the gun has one heat value)
   }
   /** Polish r1 (brx4): is the weapon in `slot` one whose lock only the lever vents (an energy weapon that does not cool, the
@@ -695,10 +700,11 @@ export class Ammo {
     this.noteGunOther();   // Tony 2026-11-08: note the counts, so a gun refill of a slot not in hand is put back
     // Polish r3 (Codex): a press while the phone's own reload of the weapon in hand runs keeps that reload. Each press started
     // a new one and moved its deadline, so pressing faster than the reload time never reloaded (Easy Reload's lever included).
-    // The gun's own reload ignores a press while it loads. A press on a chain holds it again.
+    // The gun's own reload ignores a press while it loads. A LEVER press on a chain holds it again; polish r4 (Codex): an ALT
+    // press must not, because ALT's release never reaches `reloadReleased`, so the chain would load to full with both let go.
     { const cur = this.reloading;
       if (cur && cur.soft && cur.slot === this.host.activeSlot && cur.life === this.host.lifeSeq) {
-        if (cur.chain) cur.releasedAt = null;
+        if (cur.chain && lever) cur.releasedAt = null;
         this.host.log(`reload pull: the phone's reload of slot ${cur.slot} already runs; it keeps its time`, 'li');
         return;
       } }
@@ -876,7 +882,8 @@ export class Ammo {
     // ends it once the bounce window has passed and no shell is on the link, and always before the next shell is written (a
     // release that came while a shell was in flight wrote one more shell).
     { const r = this.reloading;
-      if (r && r.soft && r.chain && r.shells > 0 && r.releasedAt != null && !r.inFlight && now - r.releasedAt >= this.bounceMs()) {
+      // polish r4 (Opus): a clock step back (`now` before the release) is past the window too, as in engine.js `_onButton`
+      if (r && r.soft && r.chain && r.shells > 0 && r.releasedAt != null && !r.inFlight && (now < r.releasedAt || now - r.releasedAt >= this.bounceMs())) {
         this.endReload(r.cap != null && r.mag >= r.cap ? 'filled' : 'released'); return;
       } }
     // F650: the phone's own reload writes its `$AMMO` at the weapon's reload time. Its echo is bookkeeping (`acctWrote`).
@@ -893,7 +900,7 @@ export class Ammo {
       const more = r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0;
       // Polish r2 (Codex + Opus): a release still inside the bounce window may be bounce (`reloadUnreleased`), so the chain goes
       // on; the release's own wake ends it once the window has passed.
-      const held = r.releasedAt == null || now - r.releasedAt < this.bounceMs();
+      const held = r.releasedAt == null || (now >= r.releasedAt && now - r.releasedAt < this.bounceMs());   // polish r4: a step back is no hold
       if (more && held) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.softWake(r); this.host.changed(); return; }
       this.endReload(more ? 'released' : 'filled'); return;
     }

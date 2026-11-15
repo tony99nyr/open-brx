@@ -925,7 +925,7 @@ export class BrxLink {
       if (options && typeof options.onOutcome === 'function') this._hook('onOutcome', where(), options.onOutcome, [{ ok, kind, error, faults }], undefined);
       return ok;
     };
-    const batch = { failed: null, open: true, label, list, id: '', cur: 0, midFrame: false, last: -1 };   // `last`: the last frame sent whole   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now; `midFrame`: a frame is part-sent
+    const batch = { failed: null, open: true, label, list, id: '', cur: 0, midFrame: false, whole: 0 };   // `whole`: frames sent whole so far   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now; `midFrame`: a frame is part-sent
     const id = (options && options.deviceId) || this.deviceId; if (!id) return Promise.resolve(outcome('refused', false));   // F293: the probe writes before the link is claimed
     if (this._probing && !(options && options.deviceId)) { this._log(`write refused while the headset probe owns the link: ${label || 'unlabelled'}`, 'li'); return Promise.resolve(outcome('refused', false)); }
     batch.id = id;
@@ -941,7 +941,7 @@ export class BrxLink {
         this._resetOwed.delete(id); this.parserResets++; chunks++;
         this._note('tx', PARSER_RESET);
         this._log(`write: ${why} -- sent ${PARSER_RESET} first to clear the gun's parser`, why.startsWith('a chunk') ? 'le' : 'li');
-        if (!await this._sendChunk(id, textToDataView(PARSER_RESET), batch, frameIdx, false, true)) late++;
+        if (!await this._sendChunk(id, textToDataView(PARSER_RESET), batch, frameIdx, false, batch.whole)) late++;   // polish r4: the reset's mark
         await sleep(this.frameGapMs);
       };
       this._openBatch = batch;
@@ -961,7 +961,7 @@ export class BrxLink {
             if (!await this._sendChunk(id, dv, batch, i, useResponse)) late++;
             if (frame.length > 20) await sleep(this.chunkGapMs);
           }
-          batch.midFrame = false; batch.last = i;
+          batch.midFrame = false; batch.whole++;
           if (options && typeof options.onFrameSent === 'function') this._hook('onFrameSent', where(), options.onFrameSent, [frame], undefined, faults);
           await sleep(this.frameGapMs);
           i++;
@@ -1013,8 +1013,9 @@ export class BrxLink {
    *  plugin keeps ONE write callback per device: moving on early fails the next chunk as busy on Android and
    *  lets it overwrite the pending callback on iOS, which drops the first chunk's error. Waiting is the point
    *  of the lever: an error rejects, and the batch stops as it does for an error inside the cap. */
-  /** @param {string} id @param {DataView} dv @param {any} [batch] @param {number} [frameIdx] @param {boolean} [useResponse] */
-  _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false, isReset = false) {
+  /** @param {string} id @param {DataView} dv @param {any} [batch] @param {number} [frameIdx] @param {boolean} [useResponse]
+   *  @param {number | null} [resetMark] for a `$*` reset: the batch's frames sent whole when it went (polish r4) */
+  _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false, resetMark = null) {
     let sent;
     try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(new BleWriteError(e)); }
     if (useResponse) return sent.then(() => true, e => { throw new BleWriteError(e); });
@@ -1038,8 +1039,10 @@ export class BrxLink {
             // Otherwise the next write to this gun starts with `$*`.
             const open = this._openBatch;
             // Polish r3 (Codex): a lost `$*` reset damages the first frame sent after it. When its own batch sent no frame after it
-            // (a skip), that is the next batch's first frame, like a lost chunk in a batch's last frame.
-            const lastOfBatch = !!batch && (isReset ? batch.last < frameIdx : frameIdx === batch.list.length - 1);
+            // (a skip), that is the next batch's first frame, like a lost chunk in a batch's last frame. Polish r4 (Codex + Opus):
+            // `resetMark` is the count of frames sent whole when the reset went, so "no frame after it" is exact, also for the
+            // recovery reset after a lost frame, or the batch's last reset when its re-sends ran out.
+            const lastOfBatch = !!batch && (resetMark != null ? batch.whole === resetMark : frameIdx === batch.list.length - 1);
             if (open && open.open && open.id === id && lastOfBatch) open.failed = 0;
             else if (!open || open.id !== id) this._resetOwed.add(id);
             const b = batch || { label: '', list: [] };
