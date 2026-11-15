@@ -311,10 +311,12 @@ def kill_build_argv(stage_dir_win: str = STAGE_DIR_WIN) -> list[str]:
     Exits 1 when a matching build is still running after the kill."""
     esc = stage_dir_win.replace("'", "''")
     rule = (r"'\s(compile|upload)\s.*[\s\"]' + [regex]::Escape('" + esc + r"') + '\"?\s*$'")
-    find = ("Get-CimInstance Win32_Process -Filter \"Name='arduino-cli.exe'\" | "
+    # polish r3: -ErrorAction Stop makes a failed query end the script with exit 1, never read as "no orphan"
+    find = ("Get-CimInstance -ErrorAction Stop Win32_Process -Filter \"Name='arduino-cli.exe'\" | "
             f"Where-Object {{ $_.CommandLine -match {rule} }}")
     ps = (f"{find} | ForEach-Object {{ taskkill.exe /PID $_.ProcessId /T /F | Out-Null }}; "
-          f"Start-Sleep -Milliseconds 500; if (@({find}).Count -gt 0) {{ exit 1 }}")
+          f"for ($i = 0; $i -lt 10; $i++) {{ Start-Sleep -Milliseconds 500; if (@({find}).Count -eq 0) {{ exit 0 }} }}; "
+          "exit 1")
     return ["powershell.exe", "-NoProfile", "-Command", ps]
 
 def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s: float = BUILD_PROGRESS_S,

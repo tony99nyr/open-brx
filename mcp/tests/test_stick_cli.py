@@ -394,6 +394,9 @@ def test_kill_build_argv_kills_only_this_stage_folders_build_with_its_tree():
     # ...\m5sticks3-backup (or a folder with [brackets]) is never killed; and it exits 1 if a match survives the kill
     assert r"[regex]::Escape('C:\Users\x\brx-sticks3\m5sticks3')" in argv[-1]
     assert "-like" not in argv[-1] and "(compile|upload)" in argv[-1] and "exit 1" in argv[-1]
+    # polish r3: a failed process query is an error (exit 1), never "no orphan"; a dying tree gets about 5 s to go
+    assert argv[-1].count("-ErrorAction Stop") == 2, "both queries, before and after the kill"
+    assert "for ($i = 0; $i -lt 10; $i++)" in argv[-1]
 
 
 def test_the_stage_match_rule_is_literal_and_anchored():

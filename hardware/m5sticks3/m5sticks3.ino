@@ -929,7 +929,12 @@ static void handleLine(String line) {
   }
   if (line.startsWith("STRIPPOWER ")) {
     String m = line.substring(11); m.trim(); m.toUpperCase();
-    if (m == "GROVE") settings.strippower = (uint8_t)StripPower::GROVE;
+    if (m == "GROVE") {
+      // polish r3: the lower budget is never claimed while a brighter frame may still be lit. Dark first; if the strip
+      // did not take it, keep EXT and say so.
+      if (!stripBlank()) { Serial.println("ERR STRIPPOWER: the strip did not take the dark frame; still EXT"); return; }
+      settings.strippower = (uint8_t)StripPower::GROVE;
+    }
     else if (m == "EXT") settings.strippower = (uint8_t)StripPower::EXT;
     else { Serial.println("ERR STRIPPOWER GROVE|EXT"); return; }
     saveSettings();
