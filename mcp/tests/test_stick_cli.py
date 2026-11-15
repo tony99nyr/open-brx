@@ -397,7 +397,7 @@ def test_compile_and_flash_build_under_the_stage_lock_with_no_short_timeout():
     assert stick.BUILD_TIMEOUT_S >= 1800
     for fn in ("do_compile", "do_flash"):
         body = src.split(f"def {fn}(", 1)[1].split("\ndef ", 1)[0]
-        assert "with stage_lock()" in body, fn
+        assert "with stage_lock(" in body, fn
 
 
 def test_a_second_run_is_refused_while_the_stage_lock_is_held():
@@ -411,3 +411,81 @@ def test_a_second_run_is_refused_while_the_stage_lock_is_held():
                 assert "/wt/first" in str(e.code)
         with stick.stage_lock(path, owner="/wt/second"):  # free again once the first exits
             pass
+
+
+# ---------------------------------------------------------------------------
+# Polish review 2026-11-15: no build survives its wrapper, and the cleanup never hangs or skips a step
+# ---------------------------------------------------------------------------
+
+class _FakeProc:
+    """A Popen stand-in: `first` is what the first communicate() does; later calls (the drain) do `drain`."""
+    def __init__(self, first, drain=None):
+        self.first, self.drain, self.calls, self.killed, self.returncode = first, drain, 0, False, None
+    def communicate(self, timeout=None):
+        self.calls += 1
+        act = self.first if self.calls == 1 else self.drain
+        if act is not None:
+            raise act if isinstance(act, BaseException) else act()
+        return ("", "")
+    def kill(self):
+        self.killed = True
+
+
+def _with_popen(fake, fn):
+    saved, used = stick.subprocess.Popen, []
+    def popen(*a, **k):   # only build()'s own Popen is the fake; the kill command's subprocess.run is real
+        if not used:
+            used.append(1)
+            return fake
+        return saved(*a, **k)
+    stick.subprocess.Popen = popen
+    try:
+        return fn()
+    finally:
+        stick.subprocess.Popen = saved
+
+
+def test_a_ctrl_c_during_a_build_kills_the_windows_tree_and_the_process_then_re_raises():
+    with tempfile.TemporaryDirectory() as td:
+        mark = pathlib.Path(td) / "killed"
+        fake = _FakeProc(KeyboardInterrupt())
+        try:
+            _with_popen(fake, lambda: stick.build(["x"], "compiling", limit_s=30, every_s=0.1, cwd=None,
+                                                 kill_argv=["touch", str(mark)]))
+            raise AssertionError("the interrupt must reach the caller")
+        except KeyboardInterrupt:
+            pass
+        assert mark.exists(), "the Windows tree kill runs on an interrupt too"
+        assert fake.killed, "and the local process is killed"
+
+
+def test_a_failing_tree_kill_still_kills_the_process_and_the_drain_is_bounded():
+    import subprocess as sp
+    fake = _FakeProc(sp.TimeoutExpired("x", 0.1), drain=sp.TimeoutExpired("x", 1))
+    try:
+        _with_popen(fake, lambda: stick.build(["x"], "compiling", limit_s=0.1, every_s=0.1, cwd=None,
+                                             kill_argv=["/nonexistent/kill-tool"]))
+        raise AssertionError("build() must exit on the limit")
+    except SystemExit as e:
+        assert "more than" in str(e.code)
+    assert fake.killed, "a kill command that cannot start must not skip proc.kill()"
+
+
+def test_the_lock_reaps_an_orphaned_build_once_it_is_held_and_never_when_refused():
+    with tempfile.TemporaryDirectory() as td:
+        path, reaped = pathlib.Path(td) / "lock", []
+        with stick.stage_lock(path, owner="/wt/first", reap=lambda: reaped.append("first")):
+            assert reaped == ["first"], "a killed earlier holder can leave its Windows build running: reap it first"
+            try:
+                with stick.stage_lock(path, owner="/wt/second", reap=lambda: reaped.append("second")):
+                    raise AssertionError("refused")
+            except SystemExit:
+                pass
+        assert reaped == ["first"], "a refused run must never kill the holder's build"
+
+
+def test_compile_and_flash_reap_orphans_under_the_lock():
+    src = STICK_PY.read_text()
+    for fn in ("do_compile", "do_flash"):
+        body = src.split(f"def {fn}(", 1)[1].split("\ndef ", 1)[0]
+        assert "stage_lock(reap=reap_orphan_builds)" in body, fn

@@ -313,28 +313,58 @@ def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s:
     it kills the Windows process tree (kill_build_argv) before it exits, so no half-built cache is left."""
     proc = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     waited = 0.0
-    while True:
-        try:
-            out, err = proc.communicate(timeout=every_s)
-            return subprocess.CompletedProcess(argv, proc.returncode, out, err)
-        except subprocess.TimeoutExpired:
-            waited += every_s
-            if waited >= limit_s:
-                subprocess.run(kill_argv if kill_argv is not None else kill_build_argv(), capture_output=True,
-                               timeout=60)
-                proc.kill()
-                proc.communicate()
-                sys.exit(f"{what} took more than {int(limit_s)} s; stopped it and its Windows process tree. "
-                         "If the next build fails on a missing .d file, see README 'A broken build cache'.")
-            print(f"still {what} ({int(waited)} s)", flush=True)
+    try:
+        while True:
+            try:
+                out, err = proc.communicate(timeout=every_s)
+                return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+            except subprocess.TimeoutExpired:
+                waited += every_s
+                if waited >= limit_s:
+                    _stop_build(proc, kill_argv)
+                    sys.exit(f"{what} took more than {int(limit_s)} s; stopped it and its Windows process tree. "
+                             "If the next build fails on a missing .d file, see README 'A broken build cache'.")
+                print(f"still {what} ({int(waited)} s)", flush=True)
+    except (KeyboardInterrupt, Exception):
+        # Polish review 2026-11-15: a Ctrl-C (or any error) must not leave the Windows build running into the stage
+        # folder the next run uses.
+        _stop_build(proc, kill_argv)
+        raise
+
+
+def _stop_build(proc, kill_argv: list[str] | None) -> None:
+    """Stop a build: the Windows tree, then the local process, then a bounded drain. No step can skip the next."""
+    try:
+        subprocess.run(kill_argv if kill_argv is not None else kill_build_argv(), capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"could not stop the Windows build tree ({e}); check Task Manager for arduino-cli.exe", file=sys.stderr)
+    try:
+        proc.kill()
+    except OSError:
+        pass
+    try:
+        proc.communicate(timeout=30)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        pass
+
+
+def reap_orphan_builds() -> None:
+    """Called with the stage lock held, so any build of the stage folder still running is an orphan: a run that was
+    killed (a closed terminal, an agent's tool timeout) frees the lock but not its Windows arduino-cli.exe."""
+    if not shutil.which("powershell.exe"):
+        return  # a Mac, or WSL without interop: no Windows build to leave behind
+    try:
+        subprocess.run(kill_build_argv(), capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"could not check for an orphaned Windows build ({e})", file=sys.stderr)
 
 
 class stage_lock:
     """One compile or flash at a time on this machine (see STAGE_LOCK). A second run exits at once and names
     the checkout that holds the lock. The OS frees the lock when the holder exits, even on a crash."""
 
-    def __init__(self, path: Path = STAGE_LOCK, owner: str = str(SKETCH_DIR)):
-        self.path, self.owner, self.fd = path, owner, None
+    def __init__(self, path: Path = STAGE_LOCK, owner: str = str(SKETCH_DIR), reap=None):
+        self.path, self.owner, self.fd, self.reap = path, owner, None, reap
 
     def __enter__(self):
         import fcntl  # POSIX only: stick.py runs in WSL or on a Mac
@@ -347,6 +377,8 @@ class stage_lock:
             sys.exit(f"another Stick compile or flash is running ({holder}); wait for it, they share one stage folder")
         os.ftruncate(self.fd, 0)
         os.pwrite(self.fd, f"pid {os.getpid()} from {self.owner}\n".encode(), 0)
+        if self.reap is not None:
+            self.reap()
         return self
 
     def __exit__(self, *exc):
@@ -372,7 +404,7 @@ def do_ports(_args) -> None:
 
 
 def do_compile(args) -> None:
-    with stage_lock():
+    with stage_lock(reap=reap_orphan_builds):
         _do_compile(args)
 
 
@@ -395,7 +427,7 @@ def _do_compile(args) -> None:
 
 def do_flash(args) -> None:
     port = select_stick_port(_list_ports(), explicit=args.port)
-    with stage_lock():
+    with stage_lock(reap=reap_orphan_builds):
         _do_flash(port)
 
 

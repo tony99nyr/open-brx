@@ -299,11 +299,15 @@ static bool initStrip(int pin) {
   return true;
 }
 
-static void stripSend() {
-  if (stripPinActive < 0) return;
+// A failed write keeps the frame unsent and is tried again one frame time later (pollStrip), never in a tight loop:
+// each try can block for 50 ms (polish review 2026-11-15: a failed write used to count as sent, and a static
+// pattern never retried).
+bool stripFailed = false;
+uint32_t stripFailedMs = 0;
+static bool stripSend() {
+  if (stripPinActive < 0) return true;
   static std::vector<Rgb> sent;
-  if (!stripDirty && sent == stripPx) return;  // an unchanged role frame costs no RMT time
-  sent = stripPx;
+  if (!stripDirty && sent == stripPx) return true;  // an unchanged role frame costs no RMT time
   const size_t n = stripPx.size();
   stripLastMa = strip_estimate_ma(stripPx.data(), n);
   strip_bytes(stripPx.data(), n, stripGrb, stripWire.data());
@@ -319,7 +323,13 @@ static void stripSend() {
   stripSym[k].level0 = 0; stripSym[k].duration0 = 500;  // the latch: 100 us low
   stripSym[k].level1 = 0; stripSym[k].duration1 = 500;
   k++;
-  if (!rmtWrite(stripPinActive, stripSym.data(), k, 50)) Serial.println("ERR strip write");
+  if (!rmtWrite(stripPinActive, stripSym.data(), k, 50)) {
+    Serial.println("ERR strip write");
+    sent.clear(); stripFailed = true; stripFailedMs = millis();
+    return false;
+  }
+  sent = stripPx; stripFailed = false;
+  return true;
 }
 
 static void stripBlank() {
@@ -352,11 +362,11 @@ static void pollStrip(uint32_t now) {
     stripLastFrameMs = now;
     StripRole role = strip_render_role(buildStickState(now), now, stripPx.data(), stripPx.size(), stripBudgetMa());
     if (role != stripRoleLast) { stripRoleLast = role; Serial.printf("STRIP role %s\n", strip_role_name(role)); }
-    stripSend();
+    stripSend();   // a failure clears its sent copy, so the next frame tick sends again
     stripDirty = false;
     return;
   }
-  if (!stripDirty) return;
+  if (!stripDirty && !(stripFailed && now - stripFailedMs >= STRIP_FRAME_MS)) return;
   strip_render(stripPattern, stripTeam, elapsed, stripPx.data(), stripPx.size(), stripBudgetMa());
   stripSend();
   stripDirty = false;
