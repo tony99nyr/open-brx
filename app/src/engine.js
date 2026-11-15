@@ -579,6 +579,7 @@ function powerupHost(e) {
     // presentation
     show: (channel, item) => e.show(channel, item), announceStatus: kind => e._announceStatus(kind),
     save: () => e._save(), changed: () => e._changed(), quietWrite: (frames, why) => e._quietWrite(frames, why),
+    weapWrite: (frames, why) => e._weapWrite(frames, why),   // a `$WEAP` equip: held while the gun reads an Energy Rifle lock
     laneFeed: item => e._laneFeed(item), announce: item => e._ann.push(item),
     // catalogue and loadout lookups
     weaponRow: id => e.weaponRow(id), slotCount: () => e._slotCount(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS,
@@ -747,7 +748,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _gunBindAt: 'when the gun reads the last trigger bind (the swap timer); a restart closes SWITCHING on the phone\'s own hold', _gunLiveEnd: 'the release of the last pull that fired (the swap timer); a restart counts no rebind delay', _buttonUpAt: 'the last release per button (contact bounce, BUTTON_BOUNCE_MS); a restart reads no bounce', _bounced: 'a bounced press waiting for its own release; a restart drops it', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _gunBindAt: 'when the gun reads the last trigger bind (the swap timer); a restart closes SWITCHING on the phone\'s own hold', _gunLiveEnd: 'the release of the last pull that fired (the swap timer); a restart counts no rebind delay', _buttonUpAt: 'the last release per button (contact bounce, BUTTON_BOUNCE_MS); a restart reads no bounce', _bounced: 'a bounced press waiting for its own release; a restart drops it', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _ventHeld: 'pickup equips held for the vent (`_weapWrite`); a restart drops them, and the F436 slot-0 shot re-sends the equip', _ventBind: 'a bind re-equip held for the vent; a restart writes the binding again (`_bmapSent` unknown)', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -839,6 +840,7 @@ export class Engine {
     /** @type {Record<number, boolean>} */ this._bounced = {};
     /** @type {Record<number, number>} */ this.held = {};
     /** @type {{ life: number, at: number } | null} */ this._writeBug = null;
+    /** @type {Array<{ frames: string[], why: string, life: number, resolve: (ok: any) => void }>} */ this._ventHeld = [];
     this.codeFaults = 0;
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
     // docs/announcer.md: the ONE model of the gun's audio FIFO, and the queue of `$PLAY` writes that feeds it (play-queue.js)
@@ -1075,6 +1077,8 @@ export class Engine {
     this._accHoldWhy = null;        // ...and which write asked it to, published as `state().accHold` so a reader can see why
     this._buttonUpAt = {};          // bench 2026-11-14: $BUT id -> the `now()` of its last release (BUTTON_BOUNCE_MS)
     this._bounced = {};             // $BUT id -> true while a bounced press waits for its own release
+    this._ventHeld = [];            // Tony 2026-11-14: pickup equips held while the gun reads an Energy Rifle lock (`_weapWrite`)
+    this._ventBind = false;         // ...and whether a bind re-equip waited for it (`_bindWrite`)
     this.held = {};                 // F123: $BUT id -> the `now()` of the press that is still down (a release deletes the entry)
     this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
     this.am = new Ammo(ammoHost(this));   // F259/F164: the magazine account and the counts per weapon slot (ammo.js)
@@ -1597,6 +1601,7 @@ export class Engine {
   _bindTick(now) {
     if (!this.bleUp || this.phase !== 'live' || !this.alive || !this.spawned || this.tutorial || this.rc.active || this.resync) return;
     if (this._lifeBurst && this._lifeBurst.life === this._lifeSeq) return;
+    if (this._ventHeld.length) return;   // a pickup equip waits for the vent, and its own `$WEAP` puts its slot on the trigger
     const want = this._boundSlot(), sent = this._bmapSent;
     if (sent === want || (want !== 98 && want >= 2 && sent != null && sent !== 98 && this._equipSent === want)) return;
     if (now - (this._bindTickAt || 0) < BIND_RETRY_MS) return;
@@ -1632,6 +1637,8 @@ export class Engine {
       this.log(`${why}: the gun's weapon is slot ${out}, not ${slot}, but ${sent === 98 ? `the head has no $WEAP for slot ${slot}` : 'the trigger is not held'}: $BMAP only`, 'le');
       this._write([bind], why); return;
     }
+    const lock = this._ventHolds();
+    if (lock) { this._ventBind = true; this.log(`${why}: the re-equip of slot ${slot} waits, the gun is heat-locked (heat ${lock.v}); a $WEAP now would vent it for free`, 'li'); return; }
     const [mag, res] = this.pu._counts(slot), resetMag = +weap.split(',')[17];
     this.am.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // the `$WEAP` reset and the `$AMMO` echo are bookkeeping
     this.am.setPrev(slot, mag, res);
@@ -1644,6 +1651,35 @@ export class Engine {
   /** The `$WEAP` row a bind to `slot` re-equips with (`_bindWrite`), or null when it writes `$BMAP` only: only while the trigger
    *  is held (`sent` 98) and the head has the slot's row. The swap timer asks it too (`_gunSwapReadyAt`). PURE. */
   _reequipRow(slot, sent) { return this._reequipWanted(slot) && sent === 98 ? this.pu._weapFor(slot, this.pu._counts(slot)[0]) || null : null; }
+  /** Tony 2026-11-14 (the free vent): a `$WEAP` clears the gun's one heat value (bench 2026-11-14), so a mid-life `$WEAP` on a
+   *  locked Energy Rifle would vent it for nothing. The lock while the newest reading is at or past the lockout on a weapon
+   *  whose lock does not cool (`am.heatCools`), else null. The F226 write clears a Charge Rifle lock, which cools: not held. PURE. */
+  _ventHolds() {
+    const am = this.am;
+    if (this.phase !== 'live' || !am) return null;
+    const h = am.heatNow();
+    return h && h.v >= HEAT_LOCKOUT && !am.heatCools(h.slot) ? h : null;
+  }
+  /** A pickup equip's write (powerup-player.js `_equip`): now, or, while `_ventHolds`, once a reading shows the gun vented
+   *  (`_ventFlush`). Resolves as the write does; false when the life ends first. */
+  _weapWrite(frames, why) {
+    const lock = this._ventHolds();
+    if (!lock) return this._quietWrite(frames, why);
+    this.log(`${why}: held, the gun is heat-locked (heat ${lock.v}); it goes out when the gun reads vented`, 'li');
+    return new Promise(resolve => this._ventHeld.push({ frames, why, life: this._lifeSeq, resolve }));
+  }
+  /** After each heat reading and each tick: once the lock is gone, the held equips go out in order, and the bind repair runs
+   *  at once (a re-equip `_bindWrite` held). A held equip from an ended life or match is dropped. */
+  _ventFlush() {
+    if ((!this._ventHeld.length && !this._ventBind) || this._ventHolds()) return;
+    const held = this._ventHeld, bind = this._ventBind; this._ventHeld = []; this._ventBind = false;
+    for (const w of held) {
+      if (w.life !== this._lifeSeq || this.phase !== 'live') { this.log(`${w.why}: held for the vent, but the life ended: dropped`, 'li'); w.resolve(false); continue; }
+      this.log(`${w.why}: the gun reads vented, sent`, 'li');
+      Promise.resolve(this._quietWrite(w.frames, w.why)).then(w.resolve, () => w.resolve(false));
+    }
+    if (bind) { this._bindTickAt = 0; this._bindTick(this.now()); }
+  }
   /** Tony 2026-11-08 (bench lv1-8): the gun's lever refilled the last-fired slot, which the trigger is not bound to. Write
    *  back the counts it held at the lever (ammo.js `gunOtherGain`); the echo is bookkeeping (`acctWrote`). */
   _undoGunReload(slot, mag, res) {
@@ -4459,6 +4495,7 @@ export class Engine {
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
       this.am.switchTick(now);         // bind the trigger once a swap's time is up; close SWITCHING after its window
+      this._ventFlush();               // a held equip whose lock has gone (a new life, an ended match)
       this._bindTick(now);             // Tony 2026-11-08: the gun's trigger binding follows the phone (Codex: a lost write heals)
       this._changed();
     }
@@ -6377,6 +6414,7 @@ export class Engine {
           const mag = +t[1] || 0, res = t[4] !== undefined ? +t[4] : null, heat = t[5] !== undefined && t[5] !== '' ? +t[5] : null;
           this.am.onAmmo(mag, res, slot, heat);
           this._chargeLock(slot, prevMag, mag, res, heat);   // F226: after the account has the frame
+          this._ventFlush();   // Tony 2026-11-14: a reading that shows the lock vented releases a held equip
         }
         break;
       }
