@@ -133,3 +133,35 @@ def test_polish_r1_easy_reload_alt_vents_the_energy_rifle():
         st._reload_pulled()
         assert st.reloading is None and any("ALT vents the heat" in l["text"] for l in st.log), [l["text"] for l in st.log]
     asyncio.run(go())
+
+
+def test_the_free_vent_a_bind_re_equip_waits_out_an_energy_rifle_lock():
+    """engine.js `_ventHolds`/`_ventFlush` (Tony 2026-11-14): a `$WEAP` clears the gun's one heat value, so a bind re-equip
+    on a locked Energy Rifle waits for a reading that shows the gun vented, then goes out at once."""
+    async def go():
+        clock = StageClock(); st, sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "usp"}]}}
+        st.connected = True
+        weap0 = next((f for f in (st.bundle or {}).get("head") or [] if f.startswith("$WEAP,0,")), None)
+        if weap0 is None:
+            weap0 = "$WEAP,0,0,100,10,0,115,0,,,,,,35,100,1000,850,30,30,2600,0,7,100,100,*"
+            st.bundle = {**(st.bundle or {}), "head": [weap0]}
+        assert not st._heat_cools(0), "control: the Energy Rifle's lock does not cool"
+        st._weap_out, st._gun_sel, st._bmap_sent = 2, 0, 98
+        st._on_ammo(201, 600, 0, 101)                          # the lock
+        await st._bind_write(0, "test bind", 98)
+        assert not [f for f in sent if f.startswith("$WEAP,")], sent
+        assert st._vent_bind
+        st._on_ammo(201, 600, 0, 66)                           # one lever press vents 35: still locked (polish r1, SR8)
+        clock.advance(0.01)
+        st._vent_flush()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert weap0 not in sent, f"66 is still a lock: the re-equip waits: {sent}"
+        st._on_ammo(201, 600, 0, 0)                            # vented to 0
+        clock.advance(0.01)
+        st._vent_flush()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert weap0 in sent, f"vented: the re-equip goes out: {sent}"
+    asyncio.run(go())

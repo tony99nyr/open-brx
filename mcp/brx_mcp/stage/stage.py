@@ -1160,6 +1160,7 @@ class GunStage:
         self._bind_due: dict | None = None  # ammo.js `bindDue`: {slot, at, life}, with `at` in seconds
         self._bmap_sent: int | None = None  # engine.js `_bmapSent`: unknown until a binding write
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
+        self._vent_bind = False             # engine.js `_ventBind`: a bind re-equip waited for the vent (Tony 2026-11-14)
         self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
         self._gun_spawn_at: float | None = None   # engine.js `_gunSpawnAt`: the last `$SPAWN` write
         self._gun_bind_at: dict | None = None     # engine.js `_gunBindAt`: {slot, at, pending}, when the gun reads the last trigger bind
@@ -1830,6 +1831,12 @@ class GunStage:
                       f"{'the head has no $WEAP for slot ' + str(slot) if sent == 98 else 'the trigger is not held'}: $BMAP only", "error")
             await self.write([bind], why)
             return
+        lock = self._vent_holds()
+        if lock is not None:
+            self._vent_bind = True
+            self._log(f"{why}: the re-equip of slot {slot} waits, the gun is heat-locked (heat {lock[1]}); "
+                      "a $WEAP now would vent it for free", "info")
+            return
         live = self._live_ammo().get(slot) or [0, 0]
         mag, res = int(live[0] or 0), int(live[1] or 0)
         t = weap.split(",")
@@ -1838,6 +1845,26 @@ class GunStage:
         self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
         self._log(f"{why}: the gun's weapon is slot {out} (a $WEAP since the bound slot last fired): re-equip slot {slot} at {mag}/{res}", "info")
         await self.write([weap, f"$AMMO,{slot},{mag},{res},1,*", bind], f"{why} (re-equip)")
+
+    def _vent_holds(self) -> tuple[int, int, float] | None:
+        """engine.js `_ventHolds` (Tony 2026-11-14, the free vent): a `$WEAP` clears the gun's one heat value, so no mid-life
+        `$WEAP` goes out while the newest reading is at or past the lockout on a weapon whose lock does not cool (the Energy
+        Rifle). The F226 write clears a Charge Rifle lock, which cools: not held. PURE."""
+        if not self.spawned:
+            return None
+        h = self._heat_now()
+        if self._vent_locked():   # engine.js `_ventHolds` (polish r1): the Energy Rifle's lock latches below the lockout
+            return h if h is not None else (self._vent_lock or 0, self.HEAT_LOCKOUT, self.now())
+        return h if h is not None and h[1] >= self.HEAT_LOCKOUT and not self._heat_cools(h[0]) else None
+
+    def _vent_flush(self) -> None:
+        """engine.js `_ventFlush`: once the lock is gone, a held bind re-equip goes out at once. The stage has no pickup
+        equip, so it holds no other write."""
+        if not self._vent_bind or self._vent_holds() is not None:
+            return
+        self._vent_bind = False
+        self._bind_tick_at = 0.0
+        self._bind_tick(self.now())
 
     def _reequip_wanted(self, slot: int) -> bool:
         """engine.js `_reequipWanted`: a `$WEAP` for another slot is out, and `slot` is the slot the gun last fired while bound,
@@ -4418,6 +4445,7 @@ class GunStage:
         # holds the soft reload's `$AMMO`), and never on a drop: `onBleDropped` ends the takeover and cancels the swap first.
         self._reload_tick()
         self._switch_tick()
+        self._vent_flush()
         self._bind_tick(self.now())
         # ⚠ OUTSIDE the loop on purpose: this is the phone's `tick()` work and it must run on an EMPTY drain
         # too, or presence never expires (a player who walks off the hill sees no more frames at all, which is
@@ -4753,6 +4781,7 @@ class GunStage:
                 a_mag, a_res = int(t[1] or 0), int(t[4]) if t[4] != "" else None
                 self._on_ammo(a_mag, a_res, a_slot, heat)
                 self._charge_lock(a_slot, prev_mag, a_mag, a_res, heat)   # F226: engine.js `_chargeLock`, after the account
+                self._vent_flush()   # engine.js: a reading that shows the lock vented releases a held re-equip
             elif cmd == "BUT" and len(t) > 2:
                 # engine.js `feedFrame` BUT -> `_onButton`: id 1 = ALT (a swap; a one-slot loadout falls back to
                 # reload), id 2 = the reload handle. F123: BOTH edges are read now (state 1 press / 0 release), so a
