@@ -323,7 +323,11 @@ def test_op3_r1_compile_and_flash_check_the_toolchain_before_they_build():
         calls.append("run")
         raise Stop()
 
-    saved = (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run)
+    import contextlib
+    saved = (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run, stick.build,
+             stick.stage_lock)
+    stick.stage_lock = lambda *a, **k: contextlib.nullcontext()  # never the machine's real lock
+    stick.build = no_run
     stick.check_toolchain = refuse
     stick.stage = lambda *a, **k: calls.append("stage") or []
     stick.select_stick_port = lambda *a, **k: "COM_TEST"
@@ -338,7 +342,8 @@ def test_op3_r1_compile_and_flash_check_the_toolchain_before_they_build():
                 pass
             assert calls == ["check"], (fn.__name__, calls)
     finally:
-        stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run = saved
+        (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run, stick.build,
+         stick.stage_lock) = saved
 
 
 def test_op3_r3_a_copy_bundled_by_an_unrelated_platform_is_ignored_but_one_in_the_pinned_core_counts():
@@ -350,3 +355,59 @@ def test_op3_r3_a_copy_bundled_by_an_unrelated_platform_is_ignored_but_one_in_th
     ours = {"library": {"name": "WebSockets", "version": "2.6.0", "location": "platform", "container_platform": "m5stack:esp32@3.3.9"}}
     bad = stick.toolchain_mismatches(stick.load_toolchain(), _CORES, {"installed_libraries": rows + [ours]})
     assert len(bad) == 1 and "2.6.0" in bad[0], bad
+
+
+# ---------------------------------------------------------------------------
+# build(): progress, the limit, and the Windows tree kill (bench 2026-11-14)
+# ---------------------------------------------------------------------------
+
+def test_build_prints_progress_and_returns_the_result():
+    import contextlib, io, sys
+    buf = io.StringIO()
+    argv = [sys.executable, "-c", "import time; time.sleep(0.5); print('Sketch uses 1 bytes')"]
+    with contextlib.redirect_stdout(buf):
+        proc = stick.build(argv, "compiling", limit_s=30, every_s=0.2, cwd=None, kill_argv=["true"])
+    assert proc.returncode == 0 and "Sketch uses" in proc.stdout
+    assert "still compiling" in buf.getvalue()
+
+
+def test_build_on_the_limit_runs_the_tree_kill_and_exits():
+    import sys
+    with tempfile.TemporaryDirectory() as td:
+        mark = pathlib.Path(td) / "killed"
+        argv = [sys.executable, "-c", "import time; time.sleep(30)"]
+        try:
+            stick.build(argv, "compiling", limit_s=0.4, every_s=0.2, cwd=None, kill_argv=["touch", str(mark)])
+            raise AssertionError("build() must exit on the limit")
+        except SystemExit as e:
+            assert "more than" in str(e.code) and "broken build cache" in str(e.code)
+        assert mark.exists(), "the Windows process tree kill must run on the limit"
+
+
+def test_kill_build_argv_kills_only_this_stage_folders_build_with_its_tree():
+    argv = stick.kill_build_argv(r"C:\Users\x\brx-sticks3\m5sticks3")
+    assert argv[0] == "powershell.exe"
+    assert r"*C:\Users\x\brx-sticks3\m5sticks3*" in argv[-1]
+    assert "arduino-cli.exe" in argv[-1] and "/T /F" in argv[-1]
+
+
+def test_compile_and_flash_build_under_the_stage_lock_with_no_short_timeout():
+    src = STICK_PY.read_text()
+    assert "timeout=300" not in src and "timeout=600" not in src
+    assert stick.BUILD_TIMEOUT_S >= 1800
+    for fn in ("do_compile", "do_flash"):
+        body = src.split(f"def {fn}(", 1)[1].split("\ndef ", 1)[0]
+        assert "with stage_lock()" in body, fn
+
+
+def test_a_second_run_is_refused_while_the_stage_lock_is_held():
+    with tempfile.TemporaryDirectory() as td:
+        path = pathlib.Path(td) / "lock"
+        with stick.stage_lock(path, owner="/wt/first"):
+            try:
+                with stick.stage_lock(path, owner="/wt/second"):
+                    raise AssertionError("the second lock must be refused")
+            except SystemExit as e:
+                assert "/wt/first" in str(e.code)
+        with stick.stage_lock(path, owner="/wt/second"):  # free again once the first exits
+            pass

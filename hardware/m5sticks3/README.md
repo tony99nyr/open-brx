@@ -120,7 +120,7 @@ MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leave
 |---|---|---|
 | G42 | IR receiver | RMT only. M5's own IR example uses this pin (docs.m5stack.com/en/arduino/m5sticks3/ir_nec) and warns the speaker amplifier must be off or reception fails. The sketch never brings the speaker up |
 | G46 | onboard IR LED | default transmit pin |
-| G9 / G10 | Grove port (SDA / SCL) | the yellow-wire question: M5's own StickS3 pinout page (docs.m5stack.com/en/core/StickS3) says the yellow wire is SDA = G9. An earlier firmware comment guessed the opposite (SCL = G10 on the yellow wire, from M5Unified's port mapping, not the pinout page). The firmware accepts either as a Grove emitter pin (`TXPIN 9` or `TXPIN 10`), so this is safe to leave open until the bench settles which one lights the emitter |
+| G9 / G10 | Grove port (SDA / SCL) | the SK6812 LED strip's data pin when a strip is plugged in (`STRIPPIN 9\|10`, persisted; the bench found data on G9, 2026-11-14); see "LED strip" below. Otherwise the yellow-wire question: M5's own StickS3 pinout page (docs.m5stack.com/en/core/StickS3) says the yellow wire is SDA = G9. An earlier firmware comment guessed the opposite (SCL = G10 on the yellow wire, from M5Unified's port mapping, not the pinout page). The firmware accepts either as a Grove emitter pin (`TXPIN 9` or `TXPIN 10`), so this is safe to leave open until the bench settles which one lights the emitter |
 | G11 / G12 | buttons A / B | bench mode (no Wi-Fi set): hold A 1 s resets the point to neutral, hold B 2 s toggles BRIDGE / HILL, an A click shows DIAGNOSTICS. Only a hold changes state, so a knock cannot flip a point. With Wi-Fi set, see "Buttons and power" |
 | small side button | power, and download mode | this is the Stick's power button. Held while plugging in USB, it puts the board into download mode (needed once, on the first flash over factory firmware only) |
 | HAT header | EXT_5V, GND, G1-G8, G10, G43, G44 | where a ring or an external emitter goes when the Grove port is busy |
@@ -136,6 +136,32 @@ off by default (docs.m5stack.com/en/arduino/m5sticks3/m5pm1: disabling EXT_5V "t
 the Grove interface, Hat EXT_5V interface, and IR TX/RX"). The firmware turns it on with
 `M5.Power.setExtOutput(true, m5::ext_none)` in `setup()`. Without that call the receiver hears
 nothing at all: the first bring-up saw only short random pulses until this call was added.
+
+## LED strip
+
+The station light is an M5Stack SK6812 strip (A093-B, 1 m, 60 LEDs) on the Grove port. `led_strip.h` holds the
+patterns, the power cap and the wire bytes (host-tested in `test/test_strip.cpp`); `m5sticks3.ino` sends them with
+the ESP32 core's RMT at 10 MHz, so no library is added.
+
+Power is the hard limit. The Grove 5 V (EXT_5V) gives about 0.38 A, and 60 LEDs at full white take about 3.6 A.
+The firmware estimates every frame (about 20 mA per channel at 255, plus about 1 mA idle per LED) and scales it
+down to 300 mA before it is sent. So the full strip in one colour is dim, and one lit LED stays at full brightness.
+
+Bench 2026-11-14 (brx1 with Tony): the data pin is G9, GRB is the right byte order, and `STRIP white` at the cap ran
+20 s and more with no reboot. No meter measured the current, so the 300 mA is still an estimate.
+
+The strip has its own team palette (`STRIP_TEAM_RGB` in `led_strip.h`): saturated red, blue, yellow and purple. The
+screen's colours read wrong on an SK6812 (the rose red reads pink), so do not copy them across.
+
+Bench steps:
+
+1. `STRIPPIN 9` (or `10`). The pin is saved; the default is no strip. It refuses a pin used for IR TX or RX.
+2. `STRIP walk`. One white LED walks from the plug end, one step every 250 ms, and the serial port prints
+   `STRIP walk <i>`. Count the LEDs; a dark strip on 9 wants `STRIPPIN 10`.
+3. `STRIP red`, `green`, `blue`, `white`, `teams` (four blocks, red, blue, yellow, purple), `team <0-3>`, `off`.
+   If `red` shows green, the strip wants `STRIPORDER RGB` (not saved; the default is GRB).
+4. `STRIPN <n>` sets the LED count (default 60, saved). Bare `STRIP` prints the pin, count, pattern and the
+   estimated current.
 
 ## Toolchain
 
@@ -227,6 +253,7 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | `ID <n>` · `GAME <n>` | advert bytes 6-7 and 13, persisted; a republish follows |
 | `TXPIN 46\|9\|10` | onboard LED or either Grove signal pin, persisted; refuses to double as the RX pin |
 | `RXPIN 42\|9\|10` | onboard receiver or either Grove pin, persisted; refuses to double as the TX pin. An internal pull-up is enabled on a Grove pin (see "External IR receiver" below). The `STATUS` RX line names the active pin |
+| `STRIPPIN 9\|10\|OFF` · `STRIPN <n>` · `STRIP [pattern]` · `STRIPORDER GRB\|RGB` | the LED strip: pin and count (saved), a bench pattern (`off`, `red`, `green`, `blue`, `white`, `walk`, `teams`, `team <0-3>`), byte order (not saved). Bare `STRIP` is read-only status. See "LED strip" |
 | `BL <n>` | screen brightness 0-255, not persisted; bench-only, for A/B-ing the backlight-PWM noise against the receiver (`BACKLIGHT_DIM 60` is the shipped idle level) |
 | `RESET` | neutral, charges cleared |
 | `PLAYERS` | read-only: every player the station hears (RSSI raw/median/EMA, threshold, near/present, age) and the revive count |
@@ -731,6 +758,14 @@ The PMIC side-button lock is restored at boot before Wi-Fi starts when the saved
 
 ## Known pitfalls
 
+- **A broken build cache.** A compile killed half way can leave the next one failing on a missing dependency
+  file (`opening dependency file ... .cpp.d: No such file`). Delete the sketch's build folder under
+  `%LOCALAPPDATA%\arduino\sketches\` (the one whose files name `brx-sticks3`), then compile again; the next
+  build is a cold one. `stick.py` kills the Windows `arduino-cli.exe` tree when a build passes its 30 min limit,
+  so this happens only when a build is killed some other way.
+- **One build at a time.** Every checkout stages into the same `%USERPROFILE%\brx-sticks3\m5sticks3`, so two
+  builds at once overwrite each other. `stick.py compile` and `flash` take a lock (`~/.brx-sticks3.lock`) and a
+  second run exits and names the checkout that holds it.
 - **EXT_5V is off by default.** A Stick with no IR activity at all is usually this, not a wiring
   fault; see "Power" above.
 - **Download mode** is needed only on the first flash after factory firmware (hold the small side

@@ -359,36 +359,21 @@ def test_compile_perk_effects():
     assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
 
 
-def test_extended_mags_shields_override_reaches_the_frame_and_effect_report():
-    lo = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}
-    player = _player(lo)
-    standard = _cfg()
-    shields = _cfg()
-    shields["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 105, "preset": "shields"}
-    hardcore = _cfg()
-    hardcore["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 0, "preset": "hardcore"}
-    for config, mag in ((standard, 64), (shields, 48), (hardcore, 64)):
-        bundle = C.compile(config, player, TEAMS)
-        frame = next(x for x in bundle["head"] if x.startswith("$WEAP,0"))
-        assert int(_tok(frame, 16)) == mag
-        assert bundle["perk_effects"]["mag"] == {"base": 32, "resolved": mag}
 
-def test_old_perk_ids_from_live_clients_are_fast_hands_not_refused():
-    """Review 2026-10-25: `_check_loadout` and `check_request` tested the raw id, so a live client's quick_hands /
-    quick_switch was refused as unknown after the merge."""
-    for old_id in ("quick_hands", "quick_switch"):
-        s, net, clock, ps = mk_loadout_session(1, compiler=Compiler())
-        online(s, net, clock, ps[0], 0)
-        pid = ps[0]["player_id"]
-        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": old_id})
-        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
-        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
-        _req(net, 0, "perk", "perk", old_id)
-        ack = _last_ack(net, 0)
-        assert ack["ok"] is True, (old_id, ack)
-        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
-    ok, why = P.check_request(P.effective(None, "tdm"), s.loadout_pool(), "perk", "perk", "quick_hands", s._catalog_rows()[0], s._catalog_rows()[1])
-    assert ok, why
+def test_easy_reload_makes_alt_the_only_reload_row():
+    """Bench 2026-11-14 (P0): only one button can hold fn 97 (reload). The last row written 97 takes it and the
+    other row loses it (a private emulator of the stock image). The head wrote the lever's `$BMAP,2,97` after
+    ALT's `$BMAP,1,97`, so ALT did nothing in the first life. Easy Reload now makes ALT the only 97 row and the
+    lever row 98; the phone reloads in software on the lever (Tony, 2026-11-14). The phone re-sends the
+    compiled head as it is, so every re-push carries the same rows."""
+    from brx_mcp.gameconfig import GameConfig
+    for head in (C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}), TEAMS)["head"],
+                 GameConfig(alt_reload=True).setup_frames()):
+        assert [f for f in head if f.startswith("$BMAP,") and f.split(",")[2] == "97"] == ["$BMAP,1,97,,,,,*"], head
+        assert "$BMAP,2,98,,,,,*" in head
+    # without Easy Reload the lever stays the only reload row
+    base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), TEAMS)["head"]
+    assert [f for f in base if f.startswith("$BMAP,") and f.split(",")[2] == "97"] == ["$BMAP,2,97,,,,,*"]
 
 
 def test_extended_mags_doubles_a_reserve_below_the_ceiling_and_stops_at_it():

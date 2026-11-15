@@ -34,6 +34,10 @@ const GUN_SPAWN_WAIT = true;
 export const GUN_SPAWN_AIR_MS = 60;
 /** The swap timer (`_gunSwapReadyAt`) counts a live pull still held as ending now, but no later than this after its last
  *  round: the link loses a few `$BUT,0,0` releases (7 of 1068 on 2026-11-01), and one must not hold SWITCHING up for ever. */
+// Bench 2026-11-14: one ALT press reached the phone as press, release (+137 ms), press (+138), release (+142). A press of
+// ALT or the lever this soon after that button's release is contact bounce. The trigger has no such guard: the gun fires
+// on its own trigger edges, so the phone counts every one it reports.
+export const BUTTON_BOUNCE_MS = 40;
 export const SWAP_HELD_MAX_MS = 5000;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
@@ -739,7 +743,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _gunBindAt: 'when the gun reads the last trigger bind (the swap timer); a restart closes SWITCHING on the phone\'s own hold', _gunLiveEnd: 'the release of the last pull that fired (the swap timer); a restart counts no rebind delay', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _gunBindAt: 'when the gun reads the last trigger bind (the swap timer); a restart closes SWITCHING on the phone\'s own hold', _gunLiveEnd: 'the release of the last pull that fired (the swap timer); a restart counts no rebind delay', _buttonUpAt: 'the last release per button (contact bounce, BUTTON_BOUNCE_MS); a restart reads no bounce', _bounced: 'a bounced press waiting for its own release; a restart drops it', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1058,6 +1062,8 @@ export class Engine {
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
     this._accHoldUntil = 0;         // S42 × A44/A47/F15: the accuracy writer stands down until this time (`_holdAccuracyWrites`)
     this._accHoldWhy = null;        // ...and which write asked it to, published as `state().accHold` so a reader can see why
+    this._buttonUpAt = {};          // bench 2026-11-14: $BUT id -> the `now()` of its last release (BUTTON_BOUNCE_MS)
+    this._bounced = {};             // $BUT id -> true while a bounced press waits for its own release
     this.held = {};                 // F123: $BUT id -> the `now()` of the press that is still down (a release deletes the entry)
     this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
     this.am = new Ammo(ammoHost(this));   // F259/F164: the magazine account and the counts per weapon slot (ammo.js)
@@ -6956,6 +6962,14 @@ export class Engine {
   _onButton(id, state) {
     if (!Number.isFinite(id)) return;
     const now = this.now();
+    const up = this._buttonUpAt[id];
+    if (state === 1 && (id === BTN_ALT || id === BTN_RELOAD) && this.held[id] == null && up != null && now - up < BUTTON_BOUNCE_MS) {
+      this._bounced[id] = true;
+      this.log(`${id === BTN_ALT ? 'ALT' : 'lever'} bounce ignored: a press ${now - up} ms after its release`, 'li');
+      return;
+    }
+    if (state === 0 && this._bounced[id]) { delete this._bounced[id]; this._buttonUpAt[id] = now; return; }   // the bounce's own release
+    if (state === 0) this._buttonUpAt[id] = now;
     if (state === 1) {
       if (this.held[id] == null) this.held[id] = now;
       this.lastButton = { id, state: 1, at: now, heldMs: null };
