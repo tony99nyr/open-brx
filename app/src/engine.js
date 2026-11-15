@@ -5483,7 +5483,7 @@ export class Engine {
     // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
     const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen, until0); };
-    const settled = () => { r.inFlight = false; if (r.chain && r.releasedAt != null && this.am.reloading === r) this.am.reloadTick(this.now()); };   // polish r1: a release while it flew ends the chain now
+    const settled = () => { r.inFlight = false; const am = this.am; if (am && r.chain && r.releasedAt != null && am.reloading === r) am.reloadTick(this.now()); };   // polish r1: a release while it flew ends the chain now
     Promise.resolve(w).then(ok => { if (ok === false || refused) failed(); settled(); }, () => { failed(); settled(); });
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
@@ -7101,7 +7101,7 @@ export class Engine {
     if (state === 1 && (id === BTN_ALT || id === BTN_RELOAD) && this.held[id] == null && up != null && now >= up.at && now - up.at < BUTTON_BOUNCE_MS) {
       delete this._buttonUp[id];
       if (up.since != null) this.held[id] = up.since;
-      if (id === BTN_RELOAD) this.am.reloadUnreleased();
+      if (id === BTN_RELOAD) this.am?.reloadUnreleased();
       this.log(`${id === BTN_ALT ? 'ALT' : 'lever'} bounce ignored: a press ${now - up.at} ms after its release`, 'li');
       return;
     }

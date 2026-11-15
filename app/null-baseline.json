@@ -156,7 +156,7 @@
   "TS2345 Argument of type '{ probe: any; queuedAt: number; startedAt: null; sentAt: null; answer: null; life: any; matchId: any; playerId: any; }' is not assignable to parameter of type 'null | undefined'.": 5,
   "TS2345 Argument of type '{} | null' is not assignable to parameter of type 'null | undefined'.": 4,
   "TS2345 Argument of type 'any[] | null' is not assignable to parameter of type 'null | undefined'.": 2,
-  "TS2345 Argument of type 'number | null' is not assignable to parameter of type 'null | undefined'.": 2,
+  "TS2345 Argument of type 'number | null' is not assignable to parameter of type 'null | undefined'.": 1,
   "TS2345 Argument of type 'number' is not assignable to parameter of type 'null | undefined'.": 1,
   "TS2345 Argument of type 'Set<any>' is not assignable to parameter of type 'null | undefined'.": 3,
   "TS2345 Argument of type 'string | null' is not assignable to parameter of type 'null | undefined'.": 1,

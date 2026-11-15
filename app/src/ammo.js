@@ -1118,7 +1118,8 @@ export class Ammo {
    *  account there directly and open the echo window, so neither a preceding `$WEAP` reset nor this restore
    *  can come back as fire. Accuracy no longer calls this; spawn/stun/resync and other ammo owners do.
    *  `weap`: the same write carried a `$WEAP` for this slot (a pickup equip, the head), so a reset echo ABOVE the
-   *  written count is coming too (bug 3 r1 H1). An `$AMMO`-only write has no such echo. */
+   *  written count is coming too (bug 3 r1 H1). An `$AMMO`-only write has no such echo.
+   *  @param {number | null} [resetMag] the magazine the `$WEAP`'s reset echoes (its clip, t17), when known */
   acctWrote(slot, mag, res, weap = false, resetMag = null) {
     const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0, echoWeap: false });
     const now = this.host.now();
