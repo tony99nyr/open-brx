@@ -299,11 +299,16 @@ static bool initStrip(int pin) {
   return true;
 }
 
-static void stripSend() {
-  if (stripPinActive < 0) return;
+// A failed write keeps the frame unsent and is tried again STRIP_RETRY_MS after the failed try returned, in AUTO and in
+// a bench pattern alike: each try can block for 50 ms, so a strip that keeps failing must not eat the loop that runs
+// the advert and the MC link (polish review 2026-11-15, rounds 1 and 2).
+constexpr uint32_t STRIP_RETRY_MS = 1000;
+bool stripFailed = false;
+uint32_t stripFailedMs = 0;
+static bool stripSend() {
+  if (stripPinActive < 0) return true;
   static std::vector<Rgb> sent;
-  if (!stripDirty && sent == stripPx) return;  // an unchanged role frame costs no RMT time
-  sent = stripPx;
+  if (!stripDirty && sent == stripPx) return true;  // an unchanged role frame costs no RMT time
   const size_t n = stripPx.size();
   stripLastMa = strip_estimate_ma(stripPx.data(), n);
   strip_bytes(stripPx.data(), n, stripGrb, stripWire.data());
@@ -319,13 +324,20 @@ static void stripSend() {
   stripSym[k].level0 = 0; stripSym[k].duration0 = 500;  // the latch: 100 us low
   stripSym[k].level1 = 0; stripSym[k].duration1 = 500;
   k++;
-  if (!rmtWrite(stripPinActive, stripSym.data(), k, 50)) Serial.println("ERR strip write");
+  if (!rmtWrite(stripPinActive, stripSym.data(), k, 50)) {
+    Serial.println("ERR strip write");
+    sent.clear(); stripFailed = true; stripFailedMs = millis();
+    return false;
+  }
+  sent = stripPx; stripFailed = false;
+  return true;
 }
 
-static void stripBlank() {
-  if (stripPinActive < 0) return;
+static bool stripBlank() {
+  if (stripPinActive < 0) return true;
   for (Rgb& p : stripPx) p = Rgb{};
-  stripSend();
+  stripDirty = true;   // send the dark frame even if the last one sent was dark too
+  return stripSend();
 }
 
 static void printStrip() {
@@ -347,16 +359,17 @@ static void pollStrip(uint32_t now) {
       Serial.printf("STRIP walk %ld\n", idx);  // LED 0 is the one nearest the plug
     }
   }
+  if (stripFailed && millis() - stripFailedMs < STRIP_RETRY_MS) return;   // a failing strip waits, whatever the pattern
   if (stripPattern == StripPattern::AUTO) {
     if (!stripDirty && now - stripLastFrameMs < STRIP_FRAME_MS) return;
     stripLastFrameMs = now;
     StripRole role = strip_render_role(buildStickState(now), now, stripPx.data(), stripPx.size(), stripBudgetMa());
     if (role != stripRoleLast) { stripRoleLast = role; Serial.printf("STRIP role %s\n", strip_role_name(role)); }
-    stripSend();
+    stripSend();   // a failure clears its sent copy, so the next frame tick sends again
     stripDirty = false;
     return;
   }
-  if (!stripDirty) return;
+  if (!stripDirty && !stripFailed) return;   // past the cooldown above, a failed frame is sent again
   strip_render(stripPattern, stripTeam, elapsed, stripPx.data(), stripPx.size(), stripBudgetMa());
   stripSend();
   stripDirty = false;
@@ -651,6 +664,7 @@ static StickState buildStickState(uint32_t now) {
   in.force_restart_countdown_s = buttonController.restart_countdown_s();
   in.at_home = buttonController.home().at_home();
   in.range_active = buttonController.range().active();
+  in.ext_power = settings.strippower == (uint8_t)StripPower::EXT;
   in.range_edit_strength = buttonController.range().field() == RangeField::STRENGTH;
   in.range_cue_pct = buttonController.range_cue_pct();
   return build_stick_state(in, heldClock);
@@ -672,12 +686,12 @@ static void paintFromModel(uint32_t now) {
 
 // ---- serial commands ------------------------------------------------------------------------- //
 static void printStatus() {
-  Serial.printf("STATUS mode=%s owner=%d charges=%lu,%lu,%lu,%lu captures=%lu seq=%u adverts=%lu words=%lu id=%u game=%u txpin=%u uuid=%s\n",
+  Serial.printf("STATUS mode=%s owner=%d charges=%lu,%lu,%lu,%lu captures=%lu seq=%u adverts=%lu words=%lu id=%u game=%u txpin=%u uuid=%s strippower=%s\n",
                 point.mode == Mode::HILL ? "HILL" : "BRIDGE", point.owner == contract::STATION_TEAM_ANY ? -1 : point.owner,
                 (unsigned long)point.charge[0], (unsigned long)point.charge[1], (unsigned long)point.charge[2],
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
-                currentUuid.c_str());
+                currentUuid.c_str(), strip_power_name((StripPower)settings.strippower));
   Serial.printf("RX pin=%d armed=%d arm_age_ms=%lu frames=%lu\n", IR_RX_PIN, rxArmed ? 1 : 0, (unsigned long)(millis() - lastRxArmMs),
                 (unsigned long)frameCount);
   // H8: the MC link state, on its own line so a pre-H8 tool that parses STATUS's key=value pairs
@@ -893,6 +907,7 @@ static void handleLine(String line) {
     if (p != 0 && p != IR_TX_GROVE && p != IR_TX_GROVE_ALT) { Serial.println("ERR STRIPPIN 9|10|OFF"); return; }
     if (p != 0 && p == txPinActive) { Serial.printf("ERR STRIPPIN %d is the IR TX pin; TXPIN elsewhere first\n", p); return; }
     if (p != 0 && p == IR_RX_PIN) { Serial.printf("ERR STRIPPIN %d is the IR RX pin; RXPIN elsewhere first\n", p); return; }
+    if (p != stripPinActive) stripBlank();  // dark the strip on its old pin before it is let go (polish review 2026-11-15)
     settings.strippin = (uint8_t)p;
     saveSettings();
     bool ok = initStrip(p);
@@ -902,7 +917,9 @@ static void handleLine(String line) {
   if (line.startsWith("STRIPN ")) {
     int n = line.substring(7).toInt();
     if (n < 1 || n > STRIP_MAX_LEDS) { Serial.printf("ERR STRIPN 1-%u\n", STRIP_MAX_LEDS); return; }
-    stripBlank();  // dark the old length first, so LEDs past a shorter count do not stay lit
+    // dark the old length first, so LEDs past a shorter count do not stay lit. If that write fails, keep the old
+    // length: a shorter one would leave the tail lit outside the budget (polish review 2026-11-15)
+    if (!stripBlank()) { Serial.println("ERR STRIPN: the strip did not take the dark frame; length not changed"); return; }
     settings.stripn = (uint16_t)n;
     saveSettings();
     stripResize();
@@ -912,7 +929,12 @@ static void handleLine(String line) {
   }
   if (line.startsWith("STRIPPOWER ")) {
     String m = line.substring(11); m.trim(); m.toUpperCase();
-    if (m == "GROVE") settings.strippower = (uint8_t)StripPower::GROVE;
+    if (m == "GROVE") {
+      // polish r3: the lower budget is never claimed while a brighter frame may still be lit. Dark first; if the strip
+      // did not take it, keep EXT and say so.
+      if (!stripBlank()) { Serial.println("ERR STRIPPOWER: the strip did not take the dark frame; still EXT"); return; }
+      settings.strippower = (uint8_t)StripPower::GROVE;
+    }
     else if (m == "EXT") settings.strippower = (uint8_t)StripPower::EXT;
     else { Serial.println("ERR STRIPPOWER GROVE|EXT"); return; }
     saveSettings();
@@ -1111,6 +1133,10 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RXPIN 42|9|10 | BL <n> | RESET | r s c");
+  // polish review 2026-11-15: EXT is saved in NVS, so every boot says which budget the strip runs on
+  Serial.printf("# strip pin=%u n=%u power=%s budget_ma=%lu%s\n", settings.strippin, settings.stripn,
+                strip_power_name((StripPower)settings.strippower), (unsigned long)stripBudgetMa(),
+                settings.strippower == (uint8_t)StripPower::EXT ? " (EXT PWR: the strip must have its own 5 V)" : "");
   Serial.println("# Strip: STRIPPIN 9|10|OFF | STRIPN <n> | STRIP [auto|off|red|green|blue|white|walk|teams|team <0-3>] | STRIPPOWER GROVE|EXT | STRIPORDER GRB|RGB");
   Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK HELD(default)|MUSTER|OFF|RECONNECT | ACTIONS ON|OFF");
   Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");

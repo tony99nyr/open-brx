@@ -36,3 +36,17 @@ test('fakegun.js answers every gun-reply case with the frames fake.py sends', ()
     }
   } finally { mock.timers.reset(); }
 });
+
+// Polish r1 (brx4; Codex + Opus): brxlink.js logs a throwing `onFrameSent` hook as a code fault and sends the rest of the batch
+// (0a64281ef). The fake stopped the batch, so the demo and e2e rig turned a hook bug into a lost `$SPAWN`.
+test('fakegun.js: a throwing onFrameSent hook is logged and the rest of the batch still goes, as on the link', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const logs = [], engine = { feedFrame() {}, onBleConnected() {}, onBleDropped() {} };
+    const gun = installFakeGun({ engine, log: (m, c) => logs.push([String(m), c]) });
+    engine.writer(['$BMAP,0,98,,,,,*', '$SPAWN,,*'], 'revive', { onFrameSent: f => { if (f.startsWith('$BMAP')) throw new Error('hook bug'); } });
+    mock.timers.tick(1000);
+    assert.deepEqual(gun.writes.slice(-2), ['$BMAP,0,98,,,,,*', '$SPAWN,,*'], 'the $SPAWN still went');
+    assert.ok(logs.some(([m, c]) => /^BUG in onFrameSent during revive: Error: hook bug/.test(m) && c === 'le'), JSON.stringify(logs));
+  } finally { mock.timers.reset(); }
+});

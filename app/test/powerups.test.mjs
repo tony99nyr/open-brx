@@ -2393,6 +2393,9 @@ test('free vent: a bind re-equip waits out the lock; a pickup equip with no lock
   n = h.mark();
   h.adv(3000);                                                 // the bind repair ticks
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP on a locked gun');
-  h.frame('$ALCD,201,100,0,600,66,*');                         // vented: the re-equip goes at once, not at the next tick
+  assert.equal(h.logs.filter(m => /waits, the gun is heat-locked/.test(m)).length, 1, 'logged once, not on every bind retry');
+  h.frame('$ALCD,201,100,0,600,66,*');                         // one vent: still a lock (polish r1, SR8)
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP at 66');
+  h.frame('$ALCD,201,100,0,600,0,*');                          // vented: the re-equip goes at once, not at the next tick
   assert.ok(h.since(n).some(f => f.startsWith('$WEAP,0,')), `vented: the re-equip goes out: ${JSON.stringify(h.since(n))}`);
 });

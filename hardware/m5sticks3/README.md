@@ -191,6 +191,11 @@ banks share about 2.4 A across both ports (the U151 alone could give 3 A). `STRI
 safe mode: use it whenever the strip takes its 5 V from the Grove port. A bank that switches off at low draw needs its trickle (low-current) mode on,
 or it cuts the Stick when the strip is dim. Bare `STRIP` prints `power=` and `budget_ma=`.
 
+EXT stays saved across reboots, because a Stick on a U151 needs it on every boot. So the Stick shows it: `EXT PWR`
+on the status strip (in amber), `power=ext` on the boot banner, and `strippower=ext` in `STATUS`. Before you move a
+Stick's strip back to the Grove 5 V, send `STRIPPOWER GROVE`. `STRIPPIN` darkens the strip before it changes pin or
+goes `OFF`.
+
 Bench steps:
 
 1. `STRIPPIN 9` (or `10`). The pin is saved; the default is no strip. It refuses a pin used for IR TX or RX.

@@ -219,6 +219,13 @@ inline void drawStatusStrip(M5Canvas& c, const StatusStripSpec& strip) {
     c.drawCircle(x + 3, y - 2, 3, COL_WARN);
     c.fillRect(x - 1, y - 1, 9, 6, COL_WARN);
   }
+  if (strip.ext_power) {
+    // polish review 2026-11-15: STRIPPOWER EXT is saved, so the strip may be budgeted for 2000 mA. Say so on the glass.
+    x += strip.locked ? 14 : c.textWidth("IR") + 9;
+    c.setTextDatum(textdatum_t::middle_left);
+    c.setTextColor(COL_WARN);
+    c.drawString("EXT PWR", x, y);
+  }
 
   int rx = SCREEN_W - 4;
   c.setTextDatum(textdatum_t::middle_right);

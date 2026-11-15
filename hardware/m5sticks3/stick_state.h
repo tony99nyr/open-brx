@@ -45,6 +45,7 @@ struct StickInputs {
   bool at_home = true;
   // F365: the RANGE editor and the A hold's cue (station_ui.h)
   bool range_active = false;
+  bool ext_power = false;  // STRIPPOWER EXT
   bool range_edit_strength = false;
   int range_cue_pct = -1;
 };
@@ -177,6 +178,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   st.force_restart_countdown_s = in.force_restart_countdown_s;
   st.at_home = in.at_home;
   st.range_active = in.range_active;
+  st.ext_power = in.ext_power;
   st.range_edit_strength = in.range_edit_strength;
   st.range_cue_pct = in.range_cue_pct;
   st.range_threshold_dbm = link.threshold_dbm();

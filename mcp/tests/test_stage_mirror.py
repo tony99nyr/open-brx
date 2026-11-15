@@ -1158,6 +1158,36 @@ def test_alt_bounce_is_ignored_and_a_double_alt_190_ms_apart_counts_twice():
     asyncio.run(go())
 
 
+def test_polish_r1_a_lost_bounce_release_does_not_eat_the_next_real_release():
+    """engine.js `_onButton` (polish r1): a bounced press whose release the link lost held a marker that ate the next real
+    release, so the lever read as held for ever. Now the bounce undoes its release instead."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st._on_rx("$BUT,2,1,*"); clock.advance(0.12); st._on_rx("$BUT,2,0,*")
+        clock.advance(0.002); st._on_rx("$BUT,2,1,*")          # bounce; its release never arrives
+        clock.advance(2.0); st._on_rx("$BUT,2,1,*"); clock.advance(0.1); st._on_rx("$BUT,2,0,*")
+        assert st.held == {}, st.held
+    asyncio.run(go())
+
+
+def test_polish_r1_a_clock_step_back_is_no_bounce():
+    """engine.js `_onButton` (polish r1): a press after the clock stepped back past the release is a real press."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st._on_rx("$BUT,2,1,*"); clock.advance(0.09); st._on_rx("$BUT,2,0,*")
+        clock.advance(-0.5)                                      # the synced clock steps back past the release
+        st._on_rx("$BUT,2,1,*")
+        assert not any("bounce ignored" in l["text"] for l in st.log)
+        assert 2 in st.held
+    asyncio.run(go())
+
+
 def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_death_clears_it():
     """The trigger the phone reacts to is the press half of the reload button (`$BUT,2,1`); the release
     (`,0`) and an ALT press on a two-weapon loadout are not reloads. Death clears the reload in flight."""
@@ -2197,7 +2227,7 @@ _AMMO_PAIRS = {
     "am.noteGunOther": "_note_gun_other", "am.gunOtherGain": "_gun_other_gain", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.heatNow": "_heat_now", "am.heatCools": "_heat_cools", "am.leverVents": "_lever_vents", "am.reloadReleased": "_reload_released", "am.softWake": "_reload_watchdog", "am.bindIfDue": "_bind_if_due", "am.bindWake": "_bind_wake", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.swapWindowMs": "_swap_window_s", "am.noteDisarm": "_note_disarm",
+    "am.switchTick": "_switch_tick", "am.heatNow": "_heat_now", "am.heatCools": "_heat_cools", "am.leverVents": "_lever_vents", "am.heatVents": "_heat_vents", "am.ventLocked": "_vent_locked", "am.reloadReleased": "_reload_released", "am.reloadUnreleased": "_reload_unreleased", "am.softWake": "_reload_watchdog", "am.bindIfDue": "_bind_if_due", "am.bindWake": "_bind_wake", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.swapWindowMs": "_swap_window_s", "am.noteDisarm": "_note_disarm",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull", "am.fireFirstShown": "_fire_first_shown",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
@@ -2366,6 +2396,8 @@ def test_every_powerup_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # Polish r1 (2026-11-14): ammo.js reads the engine's BUTTON_BOUNCE_MS through its host; the stage reads BUTTON_BOUNCE_S itself.
+    "am.bounceMs",
     # A87 own_change (2026-11-07): an MC uplink fact in Domination only. The stage has no MC and sends no facts; the
     # possession clock it scores from is mirrored. The phone half is tested in app/test/engine.test.mjs.
     "hl.ownChange", "hl.ownTick",
