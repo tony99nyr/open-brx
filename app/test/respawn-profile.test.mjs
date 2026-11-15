@@ -515,3 +515,64 @@ test('timed revive (weapon delay 1500 ms) with a writer that reports each frame 
   assert.equal(h.eng.deaths, deaths0 + 1, 'one death, not a loop of them');
   assert.equal(h.since(n).filter(f => f === '$SPAWN,,*').length, 1, 'one revive, not a re-send loop');
 });
+
+// Bench 2026-11-14, part 4: a revive burst that fails on OUR code error (not the radio) is never sent again by F416, the
+// player stays up on the gun's 0 pool until a real hit, the BUG is loud in the log, and MC sees the row as `write_lost`.
+function bugRig(throwOn) {
+  const h = liveArmed();
+  const logs = []; h.eng.log = (m, c) => logs.push([m, c]);
+  const bind0 = h.eng._bindRows.bind(h.eng);
+  h.eng._bindRows = fr => { if (throwOn(fr)) { const x = null; return /** @type {any} */ (x).at; } return bind0(fr); };   // the 0.4.41 shape
+  return { h, logs, text: () => logs.map(l => l[0]).join('\n') };
+}
+const isRevive = fr => fr.includes('$SPAWN,,*');
+
+test('part 4: a revive that throws in our own write code is not re-sent, keeps the player up, and reads write_lost', async () => {
+  const { h, logs, text } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  const n = revived(h);
+  await new Promise(r => setImmediate(r));
+  assert.ok(logs.some(([m, c]) => /^BUG in bindRows during write .*Cannot read properties of null.*\n\s+at /s.test(m) && c === 'le'), text());
+  assert.match(text(), /BUG: write .* failed on a code error .* No re-send/);
+  assert.equal(h.eng._spawnCheck, null, 'no F416 check: asking and re-sending would hit the same bug');
+  assert.equal(h.eng.statusBody().pool_stale, 'write_lost', 'MC shows the row');
+  h.frame('$HP,0,0,0,*');                                  // the gun never spawned: it reads a 0 pool with no hit
+  h.adv(20_000);
+  assert.equal(h.eng.alive, true, 'no death booked from our own failure');
+  assert.equal(h.eng.deaths, deaths0 + 1, 'only the real death before the revive');
+  assert.equal(h.since(n).filter(f => f === '$SPAWN,,*').length, 0, 'the broken burst is never sent again');
+  assert.match(text(), /BUG hold: a 0 pool after our own failed spawn\/revive write is no death/);
+});
+
+test('part 4: after a code-error revive, a REAL hit then a 0 pool still books the death', async () => {
+  const { h } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  revived(h); await new Promise(r => setImmediate(r)); h.adv(500);
+  h.die();                                                   // a hit, then 0
+  assert.equal(h.eng.alive, false);
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
+
+test('part 4 CONTROL: a revive the radio loses (false, no code fault) still gets the F416 check', () => {
+  const h = liveArmed();
+  const w0 = h.eng.writer;
+  h.eng.writer = (fr, why, o) => (isRevive(fr) ? Promise.resolve(false) : w0(fr, why, o));
+  revived(h);
+  return Promise.resolve().then(() => new Promise(r => setImmediate(r))).then(() => {
+    assert.ok(h.eng._spawnCheck, 'a Bluetooth loss is checked and may be re-sent');
+  });
+});
+
+test('part 4: the link\'s typed "code" outcome is honoured the same way', async () => {
+  const h = liveArmed();
+  const w0 = h.eng.writer;
+  h.eng.writer = (fr, why, o) => {
+    if (!isRevive(fr)) return w0(fr, why, o);
+    o.onOutcome({ ok: false, kind: 'code', error: 'link loop broke', faults: [] });
+    return Promise.resolve(false);
+  };
+  revived(h);
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng._spawnCheck, null);
+  assert.equal(h.eng.statusBody().pool_stale, 'write_lost');
+});

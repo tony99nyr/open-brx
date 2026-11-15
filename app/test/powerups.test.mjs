@@ -1377,7 +1377,7 @@ test('F417 r1: a trigger pull on the PRIMARY does not stop the repair of a lost 
 
 test('F417: a lost equip write is re-sent once when nothing moved since', async () => {
   const h = armed();
-  h.failNext(fr => fr.some(f => f.startsWith('$WEAP,2,')), 1);
+  h.failNext(f => f.startsWith('$WEAP,2,'), 1);
   const n = h.mark(); h.take(4); await tick(); h.adv(50);
   assert.equal(puw(h.since(n)).filter(f => f.startsWith('$WEAP,2,')).length, 2, `the equip went twice: ${JSON.stringify(puw(h.since(n)))}`);
 });
@@ -1784,7 +1784,7 @@ test('F416 r2: a lost self-hit revive with Rockets on the trigger is re-sent who
   assert.equal(h.eng.pu.held?.trig, 2, 'setup: Rockets on the trigger');
   const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
   h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands (the pre-hit pools were full)
-  h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
+  h.failNext(f => f.startsWith('$SPAWN'));
   h.frame(SELF_HIT).frame('$HP,0,0,0,*');
   await tick();
   for (let i = 0; i < 40; i++) { h.adv(250); await tick(); }
@@ -1806,7 +1806,7 @@ async function lostStunnedRevive(stunS) {
   assert.ok(h.eng.stunned, 'setup: stunned');
   const n = h.mark(), spawns = () => h.since(n).filter(f => f.startsWith('$SPAWN')).length;
   h.gunHp = () => spawns() >= 2 ? '$HP,45,70,0,*' : '$HP,0,0,0,*';   // dead until a re-send lands
-  h.failNext(fr => fr.some(f => f.startsWith('$SPAWN')));
+  h.failNext(f => f.startsWith('$SPAWN'));
   h.frame(SELF_HIT).frame('$HP,0,0,0,*');
   await tick();
   for (let i = 0; i < 40 && spawns() < 2; i++) { h.adv(250); await tick(); }
@@ -2191,7 +2191,7 @@ test('AMMO review: a refill taken with a held heavy on the trigger survives SELE
 test('AMMO review: a gun write that fails is granted once more', async () => {
   const h = harness(AMMO_GAME);
   h.at(46); h.fire(0, 20, 40);
-  h.failNext(fr => fr.includes('$AMMO,0,20,384,1,*'));
+  h.failNext(f => f.includes('$AMMO,0,20,384,1,*'));
   const n = h.mark(); h.take(8);
   await new Promise(r => setImmediate(r)); h.adv(2000);
   assert.ok(h.since(n).filter(f => f === '$AMMO,0,20,384,1,*').length >= 2, 'the refill is written again after the failure');
@@ -2202,7 +2202,7 @@ test('AMMO review: a gun write that fails is granted once more', async () => {
 test('F589: a failed AMMO write with a shot before its result is retried at the new magazine; a second failure takes it back', async () => {
   const h = harness(AMMO_GAME);
   h.at(46); h.fire(0, 20, 40);
-  h.failNext(fr => fr.includes('$AMMO,0,20,384,1,*'));
+  h.failNext(f => f.includes('$AMMO,0,20,384,1,*'));
   const n = h.mark(); h.take(8);
   h.fire(0, 19, 40);                                     // a round before the result: the gun reports its real reserve
   await new Promise(r => setImmediate(r)); h.adv(500);
@@ -2210,7 +2210,7 @@ test('F589: a failed AMMO write with a shot before its result is retried at the 
   assert.equal(h.eng.state().reserve, 384);
   const g = harness(AMMO_GAME);
   g.at(46); g.fire(0, 20, 40);
-  g.failNext(fr => fr.some(f => f.startsWith('$AMMO,0,')), 2);
+  g.failNext(f => f.startsWith('$AMMO,0,'), 2);
   g.take(8); g.fire(0, 19, 40);
   await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r)); g.adv(500);
   assert.equal(g.eng.state().reserve, 40, 'the gun never got the refill: the ammo block shows what the gun holds');
