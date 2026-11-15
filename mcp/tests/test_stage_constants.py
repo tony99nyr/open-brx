@@ -29,6 +29,7 @@ TABLE = [
     # wire frames that other modules also spell (modes/driver.py, gameconfig.py END_SEQUENCE, play-queue.js, brxlink.js)
     ("TRIGGER_HOLD", "engine.js", "TRIGGER_HOLD", 1),
     ("ALT_UNBOUND", "engine.js", "ALT_UNBOUND", 1),
+    ("ALT_RELOAD", "engine.js", "ALT_RELOAD", 1),
     ("SFLASH", "engine.js", "SFLASH", 1),
     ("PLAYX", "engine.js", "PLAYX", 1),
     ("PARSER_RESET", "engine.js", "PARSER_RESET", 1),

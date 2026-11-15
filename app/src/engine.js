@@ -62,6 +62,7 @@ export const PLAYX = '$PLAYX,0,*';
  *  unbound (fn 98 is silent; 99 plays a "disabled" chirp on every press, bench 2026-11-08). */
 export const TRIGGER_HOLD = '$BMAP,0,98,,,,,*';
 export const ALT_UNBOUND = '$BMAP,1,98,,,,,*';
+export const ALT_RELOAD = '$BMAP,1,97,,,,,*';   // Easy Reload: ALT is the gun's reload (fn 97)
 /** Codex 2026-11-08: the least time between two trigger-binding repairs (`_bindTick`), so a link that keeps failing is not flooded. */
 export const BIND_RETRY_MS = 500;
 /** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
@@ -659,7 +660,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), swapHeldCapped: () => e._swapHeldCapped(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), altReloads: () => e._altReloads(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), swapHeldCapped: () => e._swapHeldCapped(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -1511,8 +1512,12 @@ export class Engine {
    *  what the phone holds. ALT (`$BMAP,1,…`) is unbound with 98 (silent; 99 chirps on each press), except Easy Reload's 97.
    *  A row that binds the trigger to a slot (`$BMAP,0,<n>`, n of 11 or less: the trigger fires slot n, bench 2026-11-08 bm1-3)
    *  binds the slot the phone holds (`_boundSlot`), so the cure, the operator resync, the spawn and the relink can never put
-   *  the trigger back on slot 0 under the player (the SR18 cure bug). A hold (98) and anything else pass as written. PURE. */
+   *  the trigger back on slot 0 under the player (the SR18 cure bug). A hold (98) and anything else pass as written. An Easy
+   *  Reload burst with `$SPAWN` ends with `$BMAP,1,97`. PURE. */
   _bindRows(frames) {
+    // Bench 2026-11-14 (brx2, emulator): one button holds RELOAD (fn 97), and the last row written wins. A bundle that wrote
+    // `$BMAP,1,97` before `$BMAP,2,97` left ALT dead for the whole first life, so every spawn and revive burst ends with it.
+    if (this._altReloads() && frames.some(f => typeof f === 'string' && f.startsWith('$SPAWN,'))) frames = [...frames.filter(f => f !== ALT_RELOAD), ALT_RELOAD];
     if (!frames.some(f => typeof f === 'string' && f.startsWith('$BMAP,'))) return frames;
     return frames.map(f => {
       const m = typeof f === 'string' ? /^\$BMAP,([01]),(\d+),/.exec(f) : null;
@@ -5293,7 +5298,13 @@ export class Engine {
     // Codex pass 2026-11-07 r3 (brx1): a write that failed before its frame left gave the gun nothing (`_chargeLockUnwrite`)
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
     let sent = false;
-    const wr = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player', { onFrameSent: () => { sent = true; } });
+    // Bench 2026-11-14 (brx2, emulator; SR7): an `$AMMO` refill inside the lock keeps the heat, so the gun stayed locked. A `$WEAP`
+    // re-send of the slot clears the heat and the lock at once; the `$AMMO` goes straight after it (between them the gun shows
+    // the row's own reserve, t40).
+    const weap = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`));
+    const rows = weap ? [weap, `$AMMO,${slot},${to},${left},1,*`] : [`$AMMO,${slot},${to},${left},1,*`];
+    let left2 = rows.length;   // the `$AMMO` is the last row: it has left once every row has
+    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: () => { if (--left2 === 0) sent = true; } });
     const failed = () => { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
@@ -6982,7 +6993,7 @@ export class Engine {
       // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
       if (id === BTN_ALT) this.am.altPressed();
-      else if (id === BTN_RELOAD) this.am.reloadPulled();
+      else if (id === BTN_RELOAD) this.am.reloadPulled({ lever: true });
       else if (id === BTN_TRIGGER) {
         // Bug 3 X2 (utility.md line 137: the revive gate is a dead gun plus a trigger pull): a pull on a DEAD gun is never a
         // round. When it revives the player at a station (`_triggerPulled`), the
@@ -7038,6 +7049,10 @@ export class Engine {
     return !!(pk && pk.effects && pk.effects.alt_reload);
   }
 
+
+  /** Easy Reload on a one-weapon kit: compile.py keeps ALT on fn 97, the gun's own reload, and the lever on 98 (bench
+   *  2026-11-14), so the lever is the phone's reload (ammo.js `reloadPulled`). PURE. */
+  _altReloads() { return this._easyReload() && this._slotCount() < 2; }
 
   _slotCount() {
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
@@ -8302,7 +8317,7 @@ export class Engine {
                    // without an identity it could not tell a second reload from the first: a $ALCD (fired) and
                    // a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, and the new
                    // one opened already pulsing on the old one's latch (review 2026-09-12).
-                   reloadAt: ms != null ? this.am.reloading.at : null,
+                   reloadAt: (r => (ms != null && r ? (r.t0 ?? r.at) : null))(this.am.reloading),   // bench 2026-11-14: one card for a whole chain
                    reloadOverrun: !!(ms != null && ms > this.am.reloading.ms),
                    reloadGained: ms != null ? Math.max(0, this.am.reloading.mag - this.am.reloading.from) : null }))(this.am.reloadingMs()),
       reloadOutcome: this.am.reloadOutcome,

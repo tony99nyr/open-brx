@@ -193,7 +193,7 @@ def _reload(st):
     """engine.js `state()` reloadMs/reloadTotalMs/reloadAt/reloadOverrun/reloadGained (gated on one view) and reloadOutcome."""
     v = st._reloading_view()
     o = st.reload_outcome
-    out = ({"ms": round((st.now() - v["at"]) * 1000), "total": round(v["s"] * 1000), "at": _ms(v["at"]),
+    out = ({"ms": round((st.now() - v["at"]) * 1000), "total": round(v["s"] * 1000), "at": _ms(v.get("t0", v["at"])),
             "overrun": (st.now() - v["at"]) > v["s"], "gained": max(0, (v.get("mag") or 0) - v["from"])} if v else
            {"ms": None, "total": None, "at": None, "overrun": False, "gained": None})
     out["outcome"] = None if not o else {"ok": o["ok"], "filled": o["filled"], "from": o["from"], "to": o["to"], "cap": o["cap"],
