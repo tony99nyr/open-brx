@@ -14,6 +14,17 @@ import { fileURLToPath } from 'node:url';
 
 const APP = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const BASELINE = path.join(APP, 'null-baseline.json');
+const SHOWN = 12;
+const HOW_TO_READ = `
+How to read this:
+  - tsc cannot say WHICH error with a message is new, so every line with that message is listed. The new one is
+    usually on a line you changed: \`git diff origin/main -- app/<file>\`. A type change can also move an error to an
+    old line that reads the changed name.
+  - Your branch did not touch the file? Main moved. Merge origin/main and run \`npm run typecheck:null\` again. If it still
+    fails on main's own code, fix it at the source and tell the lane that landed it.
+  - A common cause: a field first set outside the constructor (a reset method) reads as possibly undefined. Set it in
+    the constructor with a JSDoc type, for example: /** @type {Record<number, number>} */ this.held = {};
+  - Never add a new error to null-baseline.json. Run --update only to record errors you FIXED.`;
 
 /** Each `file(line,col): error TSnnnn: message` line of tsc's plain output, parsed. Other lines are skipped. PURE. */
 export function parseDiagnostics(text) {
@@ -75,7 +86,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   const { added, fixed, total } = compare(diags, baseline);
   if (added.length) {
     console.error(`null-gate: NEW strict-null error(s) in app/src (tsconfig.null.json). Fix them; do not add them to the baseline.`);
-    for (const d of added) console.error(`  ${d.file}(${d.line},${d.col}): ${d.code}: ${d.message}  [${d.was} in the baseline, ${d.now} now]`);
+    const groups = new Map();
+    for (const d of added) { const k = `${d.file} ${d.code} ${d.message}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+    for (const list of groups.values()) {
+      const d0 = list[0];
+      console.error(`  ${d0.file}: ${d0.code}: ${d0.message}  [${d0.was} in the baseline, ${d0.now} now: ${d0.now - d0.was} new]`);
+      for (const d of list.slice(0, SHOWN)) console.error(`    line ${d.line},${d.col}`);
+      if (list.length > SHOWN) console.error(`    ... and ${list.length - SHOWN} more lines with this message`);
+    }
+    console.error(HOW_TO_READ);
     process.exit(1);
   }
   console.log(`null-gate: no new errors (${total} baselined${fixed ? `; ${fixed} fixed: run with --update to lock them in` : ''})`);
