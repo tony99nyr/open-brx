@@ -10,7 +10,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 // class owns them; the engine holds one instance (`engine.am`), calls its entry points and asks it by name.
 //
 // PUBLIC SURFACE
-//   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
+//   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS · ENERGY_REFILL_LAG_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
 //                 acctWrote(slot, mag, res, weap, resetMag) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · echoUntils(frames, gens) · restoreEchoes(before, gens) · acctPress() · acctAmmo(slot, mag, prev)
@@ -147,6 +147,9 @@ const GUN_RELOAD_MAX_X = 1.3;      // ...and half the nominal reload on top, whi
  *  (Energy Rifle 3.03 s, Plasma Sniper 2.49 s, Rail Gun 3.03 s). The floor stays: it only books a failed recharge
  *  later, and pl4's 3.9 s slow end is not yet disproved. */
 export const ENERGY_REFILL_MAX_MS = 3900;
+/** F669 (bench F500: Energy Rifle 3.03 s on a 2.4 s reload; brx2's emulator about 3.0 s): the gun's own energy refill lands
+ *  this long after the catalogue reload, so the RELOADING countdown of a gun reload books it too. A phone reload is not. */
+export const ENERGY_REFILL_LAG_MS = 600;
 /** How long the gun's own reload of a slot can run before its refill lands, so how long it ignores ALT: up to GUN_RELOAD_MAX_X
  *  times the nominal reload (F27), and an energy recharge up to ENERGY_REFILL_MAX_MS plus the grace (pl4). PURE. */
 function gunHoldMs(ms, energy) { return Math.max(Math.round(ms * GUN_RELOAD_MAX_X), energy ? ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS : 0); }
@@ -728,6 +731,8 @@ export class Ammo {
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
                        soft: swapTo == null && (this.softReloadNeeded() || (lever && !!this.host.altReloads && this.host.altReloads())), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
                        chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
+    // F669: the gun's own energy refill lands ENERGY_REFILL_LAG_MS after the catalogue reload; the countdown runs to it
+    if (this.reloading.energy && !this.reloading.soft && !chain && !this.reloading.bolt) this.reloading.ms += ENERGY_REFILL_LAG_MS;
     if (this.reloading.soft) {   // Codex pass r2
       this.host.holdTrigger('the phone reloads the weapon in hand');   // brx1 2026-11-08: no round lands mid-reload
       this.host.softReloadStart(this.reloading);

@@ -163,7 +163,7 @@
     },
     {
       "at": "energy_waits",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":true,"mag":32,"shots":25,"reload":{"ms":2500,"total":1000,"at":4310,"overrun":true,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1250},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":true,"mag":32,"shots":25,"reload":{"ms":2500,"total":1600,"at":4310,"overrun":true,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1250},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
       "writes": []
