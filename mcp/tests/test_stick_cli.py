@@ -233,6 +233,8 @@ def test_parse_status_reads_key_value_fields():
     assert fields["charges"] == [0, 0, 0, 0]
     assert fields["words"] == "3"
     assert fields["uuid"] == "abcd1234"
+    ext = stick.parse_status([line + " strippower=ext"])   # polish review 2026-11-15: EXT is visible in STATUS
+    assert ext["strippower"] == "ext" and ext["uuid"] == "abcd1234"
 
 
 def test_parse_status_ignores_other_lines_and_finds_status_among_them():
@@ -387,8 +389,36 @@ def test_build_on_the_limit_runs_the_tree_kill_and_exits():
 def test_kill_build_argv_kills_only_this_stage_folders_build_with_its_tree():
     argv = stick.kill_build_argv(r"C:\Users\x\brx-sticks3\m5sticks3")
     assert argv[0] == "powershell.exe"
-    assert r"*C:\Users\x\brx-sticks3\m5sticks3*" in argv[-1]
     assert "arduino-cli.exe" in argv[-1] and "/T /F" in argv[-1]
+    # polish r2: the folder is matched LITERALLY and at the END of a compile/upload command line, so a build of
+    # ...\m5sticks3-backup (or a folder with [brackets]) is never killed; and it exits 1 if a match survives the kill
+    assert r"[regex]::Escape('C:\Users\x\brx-sticks3\m5sticks3')" in argv[-1]
+    assert "-like" not in argv[-1] and "(compile|upload)" in argv[-1] and "exit 1" in argv[-1]
+
+
+def test_the_stage_match_rule_is_literal_and_anchored():
+    import re
+    dirw = r"C:\Users\x\brx-sticks3\m5sticks3"
+    rule = stick.stage_build_regex(dirw)
+    cli = r'"C:\arduino\arduino-cli.exe" '
+    assert re.search(rule, cli + r'compile --fqbn m5 C:\Users\x\brx-sticks3\m5sticks3')
+    assert re.search(rule, cli + r'upload -p COM5 "C:\Users\x\brx-sticks3\m5sticks3"')
+    assert not re.search(rule, cli + r'compile --fqbn m5 C:\Users\x\brx-sticks3\m5sticks3-backup')
+    assert not re.search(rule, cli + r'daemon --port 50051 C:\Users\x\brx-sticks3\m5sticks3')
+
+
+def test_an_orphan_that_cannot_be_stopped_refuses_the_run():
+    import subprocess as sp
+    saved = (stick.shutil.which, stick.subprocess.run)
+    stick.shutil.which = lambda name: "/fake/powershell.exe"
+    stick.subprocess.run = lambda *a, **k: sp.CompletedProcess(a[0], 1, "", "")
+    try:
+        stick.reap_orphan_builds()
+        raise AssertionError("a surviving orphan must stop the run before it stages")
+    except SystemExit as e:
+        assert "still running" in str(e.code)
+    finally:
+        stick.shutil.which, stick.subprocess.run = saved
 
 
 def test_compile_and_flash_build_under_the_stage_lock_with_no_short_timeout():

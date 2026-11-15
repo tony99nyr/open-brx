@@ -297,15 +297,25 @@ def _run(argv: list[str], timeout: float, cwd: str | None = None) -> subprocess.
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout)
 
 
+def stage_build_regex(stage_dir_win: str = STAGE_DIR_WIN) -> str:
+    """The regex (Python and .NET read it the same) for an arduino-cli compile or upload of exactly this stage folder:
+    the folder is the command's LAST argument, matched literally (polish r2: a `-like '*folder*'` also matched
+    `...\\m5sticks3-backup`, and `[` in a path is a wildcard there)."""
+    return r"\s(compile|upload)\s.*[\s\"]" + re.escape(stage_dir_win) + r"\"?\s*$"
+
+
 def kill_build_argv(stage_dir_win: str = STAGE_DIR_WIN) -> list[str]:
     """Kill the Windows arduino-cli.exe that builds the staged sketch, with its whole process tree. Killing the
     WSL interop shim leaves the Windows process running, and a later kill mid-build leaves a broken cache.
-    Only a compile or upload of this stage folder matches, so the Arduino IDE's own daemon is left alone."""
-    ps = ("Get-CimInstance Win32_Process -Filter \"Name='arduino-cli.exe'\" | "
-          f"Where-Object {{ $_.CommandLine -like '*{stage_dir_win}*' }} | "
-          "ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F }")
+    Only a compile or upload of this stage folder matches, so the Arduino IDE's own daemon is left alone.
+    Exits 1 when a matching build is still running after the kill."""
+    esc = stage_dir_win.replace("'", "''")
+    rule = (r"'\s(compile|upload)\s.*[\s\"]' + [regex]::Escape('" + esc + r"') + '\"?\s*$'")
+    find = ("Get-CimInstance Win32_Process -Filter \"Name='arduino-cli.exe'\" | "
+            f"Where-Object {{ $_.CommandLine -match {rule} }}")
+    ps = (f"{find} | ForEach-Object {{ taskkill.exe /PID $_.ProcessId /T /F | Out-Null }}; "
+          f"Start-Sleep -Milliseconds 500; if (@({find}).Count -gt 0) {{ exit 1 }}")
     return ["powershell.exe", "-NoProfile", "-Command", ps]
-
 
 def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s: float = BUILD_PROGRESS_S,
           cwd: str | None = STAGE_CWD, kill_argv: list[str] | None = None) -> subprocess.CompletedProcess:
@@ -321,9 +331,11 @@ def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s:
             except subprocess.TimeoutExpired:
                 waited += every_s
                 if waited >= limit_s:
-                    _stop_build(proc, kill_argv)
-                    sys.exit(f"{what} took more than {int(limit_s)} s; stopped it and its Windows process tree. "
-                             "If the next build fails on a missing .d file, see README 'A broken build cache'.")
+                    tree = _stop_build(proc, kill_argv)
+                    sys.exit(f"{what} took more than {int(limit_s)} s; stopped it"
+                             + (" and its Windows process tree. " if tree else
+                                ", but its Windows arduino-cli.exe may still run: end it in Task Manager. ")
+                             + "If the next build fails on a missing .d file, see README 'A broken build cache'.")
                 print(f"still {what} ({int(waited)} s)", flush=True)
     except (KeyboardInterrupt, Exception):
         # Polish review 2026-11-15: a Ctrl-C (or any error) must not leave the Windows build running into the stage
@@ -332,10 +344,15 @@ def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s:
         raise
 
 
-def _stop_build(proc, kill_argv: list[str] | None) -> None:
-    """Stop a build: the Windows tree, then the local process, then a bounded drain. No step can skip the next."""
+def _stop_build(proc, kill_argv: list[str] | None) -> bool:
+    """Stop a build: the Windows tree, then the local process, then a bounded drain. No step can skip the next.
+    Returns whether the tree kill reported success."""
+    tree = False
+    if kill_argv is None and not shutil.which("powershell.exe"):
+        kill_argv = ["true"]  # a Mac: no Windows build tree to stop
     try:
-        subprocess.run(kill_argv if kill_argv is not None else kill_build_argv(), capture_output=True, timeout=60)
+        tree = subprocess.run(kill_argv if kill_argv is not None else kill_build_argv(), capture_output=True,
+                              timeout=60).returncode == 0
     except (OSError, subprocess.SubprocessError) as e:
         print(f"could not stop the Windows build tree ({e}); check Task Manager for arduino-cli.exe", file=sys.stderr)
     try:
@@ -346,6 +363,7 @@ def _stop_build(proc, kill_argv: list[str] | None) -> None:
         proc.communicate(timeout=30)
     except (subprocess.TimeoutExpired, OSError, ValueError):
         pass
+    return tree
 
 
 def reap_orphan_builds() -> None:
@@ -354,9 +372,12 @@ def reap_orphan_builds() -> None:
     if not shutil.which("powershell.exe"):
         return  # a Mac, or WSL without interop: no Windows build to leave behind
     try:
-        subprocess.run(kill_build_argv(), capture_output=True, timeout=60)
+        ok = subprocess.run(kill_build_argv(), capture_output=True, timeout=60).returncode == 0
     except (OSError, subprocess.SubprocessError) as e:
-        print(f"could not check for an orphaned Windows build ({e})", file=sys.stderr)
+        sys.exit(f"could not check for an orphaned Windows build of the stage folder ({e}); not staging over it")
+    if not ok:  # polish r2: staging over a build that is still running is the cache clash the lock exists to stop
+        sys.exit(f"an earlier Windows build of {STAGE_DIR_WIN} is still running and could not be stopped; "
+                 "end arduino-cli.exe in Task Manager, then run again")
 
 
 class stage_lock:

@@ -161,6 +161,7 @@ struct StatusStripSpec {
   int battery_pct = -1;  // -1 = absent, no glyph
   int station_id = -1;   // -1 = absent, no "#n"
   bool locked = false;   // A58: a small padlock glyph while the match lock is on
+  bool ext_power = false;  // "EXT PWR": the LED strip is budgeted for its own 5 V (STRIPPOWER EXT)
 };
 
 // What to draw. One flat struct, not a tagged union: only the fields for `kind` are meaningful, the
@@ -248,8 +249,8 @@ struct ScreenSpec {
 // change is the left-out field freezes on the glass. The structured bindings below name each field once; adding
 // or removing a field makes the binding count wrong, so the build fails here until this list is updated.
 inline auto screen_fields(const StatusStripSpec& s) {
-  const auto& [ble_on, mc_connected, ir_active, battery_pct, station_id, locked] = s;
-  return std::tie(ble_on, mc_connected, ir_active, battery_pct, station_id, locked);
+  const auto& [ble_on, mc_connected, ir_active, battery_pct, station_id, locked, ext_power] = s;
+  return std::tie(ble_on, mc_connected, ir_active, battery_pct, station_id, locked, ext_power);
 }
 inline bool operator==(const StatusStripSpec& a, const StatusStripSpec& b) { return screen_fields(a) == screen_fields(b); }
 inline bool operator!=(const StatusStripSpec& a, const StatusStripSpec& b) { return !(a == b); }
@@ -363,6 +364,7 @@ struct StickState {
 
   // A58: the match lock (station_link.h's MatchLock) and the A+B force restart (station_ui.h)
   bool locked = false;
+  bool ext_power = false;  // STRIPPOWER EXT (polish review 2026-11-15): shown as "EXT PWR" on the status strip
   uint32_t lock_remaining_s = 0;
   uint32_t force_restart_countdown_s = 0;  // 0 = no countdown on screen
 
@@ -399,6 +401,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   spec.strip.battery_pct = s.battery_pct;
   spec.strip.station_id = s.assignment_present ? s.assignment_id : -1;
   spec.strip.locked = s.locked;
+  spec.strip.ext_power = s.ext_power;
   if (s.link_state == LinkState::NOT_CONFIGURED) spec.hint = bench_hint(s.bench_mode_label);
   else if (!s.assignment_present) spec.hint = NO_STATION_HINT;
   if (s.locked) spec.hint = LOCKED_HINT;
