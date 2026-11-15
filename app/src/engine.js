@@ -172,6 +172,9 @@ export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this lo
 // Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
 // always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
 export const SPAWN_CHECK_MAX_MS = 8000;
+/** Bench 2026-11-14: how long a 0 pool after our own failed spawn/revive write (`_writeBugged`) is held as no death. Time
+ *  for the host to RESYNC GUN or FORCE RESPAWN. Never an undying player: after it, a 0 pool books as usual. */
+export const WRITE_BUG_HOLD_MS = 60000;
 /** F493 r4: the most link-down time one spawn check is credited (`_spawnCheckLive`). The window does not age while the
  *  link is down, but a gun that never comes back still ends the check, and the HOST: FORCE RESPAWN warning with it. */
 export const SPAWN_CHECK_LINK_CREDIT_MAX_MS = 60000;
@@ -752,7 +755,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _gunProbeRetryAt: 'F272 probe clock', _gunLifeAt: 'F272 probe clock', _gunRecovery: 'F272 recovery in flight (`gunLocked` persists)', _gunRecoverySeq: 'F272 sequence',
   resync: '§3.10 state machine: the relink runs its own', _resyncRevive: 'a resync re-arm in flight',
   _spawnCheck: 'F416 check in flight', _quietFrom: 'F416 radio-quiet window', _quietUntil: 'F416 radio-quiet window', _quietOpen: 'F416 radio-quiet window',
-  _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
+  _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts', _writeBug: 'keyed on a life number that restarts, like _writeLost', codeFaults: 'a diagnostics count for this run',
   // the config handshake and the head on the gun
   headEcho: 'config echo window', echoProof: 'config echo window', headStartSeen: 'config echo window', configRefused: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
   configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _chargeLockFix: 'one F226 reload per charge lock (a pending write is not evidence after a restart)', _headWeap0: 'config echo window',
@@ -835,6 +838,8 @@ export class Engine {
     /** @type {Record<number, number>} */ this._buttonUpAt = {};
     /** @type {Record<number, boolean>} */ this._bounced = {};
     /** @type {Record<number, number>} */ this.held = {};
+    /** @type {{ life: number, at: number } | null} */ this._writeBug = null;
+    this.codeFaults = 0;
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
     // docs/announcer.md: the ONE model of the gun's audio FIFO, and the queue of `$PLAY` writes that feeds it (play-queue.js)
     this._gun = new PlayQueue({ now: () => this.now(), delay: (ms, fn) => this.delay(ms, fn), log: m => this.log(m, 'li'),
@@ -1044,6 +1049,7 @@ export class Engine {
     this._shieldRegen = null; this._shieldQuietAt = 0; this._shieldLoopAt = 0; this._shieldDown = false; this._shieldGaveUp = false;
     this._actSeq = 0;               // pl4: shots and hits seen, so `_writeMust` can tell the life moved on
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
+    this._writeBug = null;          // bench 2026-11-14: {life, at} when that write failed on a code error (`_writeBugged`)
     this._spawnCheck = null;        // F416: {life, frames, why, writeAt, asks, heardAt, resends, resentAt, lost} while a lost spawn/revive write is checked
     this._quietFrom = 0; this._quietUntil = 0; this._quietOpen = 0;   // F416 part 2: the radio-quiet window around a must-land write
     this._poolCheck = null;         // F341: {life} while the spawn read-back's answer is owed a pool comparison
@@ -1423,6 +1429,8 @@ export class Engine {
    *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
    *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
    *  `docs/spec/transport-hardening.md` §4. */
+  /** @param {any} frames @param {string} why @param {any} [options] @param {boolean} [playScheduled] @param {any} [onSent]
+   *  @param {boolean} [mustHear] @returns {any} what the link answers (true, false or null), or its promise */
   _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {
     if (!frames || !frames.length) return;
     // DENY FIRST, THEN THE TEAM. Do not swap these two steps for tidiness: the order is the behaviour, and
@@ -1445,14 +1453,22 @@ export class Engine {
     if (!playScheduled && frames.some(f => typeof f === 'string' && f.startsWith('$PLAY,'))) return this._gun.enqueue(frames, why, { options, onSent, mustHear });
     // Tony 2026-11-08: the phone owns the swap; every `$BMAP` for the trigger or ALT goes through here, resolved when the write
     // is SENT (Codex: a burst the play queue held back must bind the slot of that moment, not of when it was queued)
-    frames = this._bindRows(frames);
-    // Cross-lane r2 C1: a write may settle its rows when it is SENT (a burst the play queue held back), not when it was built.
-    if (options && typeof options.atSend === 'function') frames = options.atSend(frames);
-    // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
-    // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
-    if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
-    const hasPlay = frames.some(f => typeof f === 'string' && f.startsWith('$PLAY,'));
-    frames = this._audioWrite(frames, why, hasPlay);   // admit a PLAY only when the link sends it
+    // Bench 2026-11-14: a throw in our own code below is a BUG, never a lost write (`_writeFault`): F416 must not send it again.
+    let step = 'bindRows', hasPlay = false;
+    /** @type {{ result: any } | null} */
+    let handed = null;
+    try {
+      frames = this._bindRows(frames);
+      // Cross-lane r2 C1: a write may settle its rows when it is SENT (a burst the play queue held back), not when it was built.
+      step = 'atSend';
+      if (options && typeof options.atSend === 'function') frames = options.atSend(frames);
+      step = 'write';
+      // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
+      // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
+      if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
+      hasPlay = frames.some(f => typeof f === 'string' && f.startsWith('$PLAY,'));
+      frames = this._audioWrite(frames, why, hasPlay);   // admit a PLAY only when the link sends it
+    } catch (e) { return this._writeFault(why, step, e, options); }
     if (!frames.length) return;
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try {
@@ -1485,6 +1501,7 @@ export class Engine {
         if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
       } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);
+      handed = { result };
       if (bindAt && !bindAt.sent && result && typeof result.then === 'function') {
         bindAt.pending = true;   // a write the link settles with no frame report (refused, or a writer that never reports) stops waiting then
         const done = () => { if (bindAt.pending) { bindAt.pending = false; bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); } };
@@ -1506,7 +1523,25 @@ export class Engine {
       if (wire && result && typeof result.then === 'function') return result.then(ok => { if (ok !== false && ok !== null && !wire.noted()) wire.play(playFrame); return ok; });
       if (wire && result !== false && result !== null && !wire.noted()) wire.play(playFrame);
       return result;
-    } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
+    } catch (e) {
+      // the frames already went to the link: its own answer says whether they landed, and the throw is still a BUG
+      if (handed) { this._writeFault(why, 'write', e, undefined); return handed.result; }
+      return this._writeFault(why, 'write', e, options);
+    }
+  }
+  /** Bench 2026-11-14 (0.4.41): our own code threw while it built or handed over a write. That is a BUG, not a lost
+   *  Bluetooth write: log it loud with the stack, count it, and tell the caller through `options.onOutcome` with
+   *  kind `code` (brxlink.js WriteOutcome), so F416 never sends the same broken burst again. Returns false. */
+  _writeFault(why, step, e, options) {
+    const message = String(e && e.message || e);
+    const stack = String(e && e.stack || '').split('\n').filter(l => /^\s+at /.test(l)).slice(0, 8).join('\n');
+    this.codeFaults = (this.codeFaults || 0) + 1;
+    try { this.log(`BUG in ${step} during write ${why}: ${message}${stack ? '\n' + stack : ''}`, 'le'); } catch (_) { /* a throwing log must not hide the fault */ }
+    if (options && typeof options.onOutcome === 'function') {
+      try { options.onOutcome({ ok: false, kind: 'code', error: message, faults: [{ hook: step, why, message, stack }] }); }
+      catch (e2) { try { this.log(`BUG in onOutcome during write ${why}: ${e2 && e2.message || e2}`, 'le'); } catch (_) { /* nothing left to tell */ } }
+    }
+    return false;
   }
   /** Tony 2026-11-08: the phone owns the weapon swap, so every `$BMAP` row for the trigger or ALT that leaves the phone says
    *  what the phone holds. ALT (`$BMAP,1,…`) is unbound with 98 (silent; 99 chirps on each press), except Easy Reload's 97.
@@ -1732,8 +1767,13 @@ export class Engine {
     // `sirTake`: the burst carries a `sir_pool` take (a late start's table), claimed when it reaches the gun (`_lifeBurstSent`).
     const burst = this._lifeBurst = { life, at, sent: false, reached: false, sirTake };
     // `lifeBurst` (F493 r1): the play queue never stale-drops this job, and a must-hear line never drops it.
-    const r = this._quietWrite(frames, why, { lifeBurst: true, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
+    // Bench 2026-11-14: the typed outcome (brxlink.js WriteOutcome). A `code` failure is our own bug, not a lost write.
+    /** @type {{ kind: string, error: string | null } | null} */
+    let codeFault = null;
+    const onOutcome = (/** @type {any} */ o) => { if (o && o.kind === 'code' && !codeFault) codeFault = { kind: 'code', error: o.error || null }; };
+    const r = this._quietWrite(frames, why, { lifeBurst: true, onOutcome, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
+      if (ok === false && codeFault) { this._lifeBurstSent(burst, 'write failed'); this._writeBugged(life, frames, why, codeFault.error, burst); return; }
       if (!burst.reached) {
         this._lifeBurstSent(burst, ok === false ? 'write failed' : 'never sent');   // F493: a cancelled or failed burst releases the timers too
         // F493 r1 H1/H2: a burst cancelled before it reached the gun (a link drop) never wrote `$SPAWN`. While the life is
@@ -1775,9 +1815,27 @@ export class Engine {
     }).catch(e => this.log(`write ${why} failed: ${e && e.message || e}`, 'le'));
     return r;
   }
+  /** Bench 2026-11-14 (0.4.41: every revive failed, and F416 re-sent the same broken burst into a death loop). The spawn
+   *  or revive burst failed on a CODE error (`_writeFault`, or the link's `code` outcome). Sending it again sends the same
+   *  bug, so there is no F416 check and no re-send. The player stays up on the phone's last good state: `_spawnIntercept`
+   *  books no death from the gun's 0 pool until a real hit. MC shows the player's row as `write_lost` (the Live board
+   *  cue), so the host can RESYNC GUN or FORCE RESPAWN. */
+  _writeBugged(life, frames, why, error, burst) {
+    if (this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended) {
+      this.log(`*** BUG: write ${why} failed on a code error -- the life moved on, nothing to hold ***`, 'le'); return;
+    }
+    this._writeLost = life;
+    this._writeBug = { life, at: burst && burst.reachedAt != null ? burst.reachedAt : this.now() };
+    if (this._spawnCheck && this._spawnCheck.life === life) this._spawnCheck = null;   // review: an earlier loss's check must not re-send it
+    this.log(`*** BUG: write ${why} failed on a code error (${error || 'unknown'}). No re-send: it would hit the same bug. `
+      + 'The player stays up; no death is booked without a hit. HOST: RESYNC GUN or FORCE RESPAWN ***', 'le');
+    this._spawnLanded({ life, frames, why });   // the repair still ends spawn protection and restores the hit table (F11)
+    this._changed();
+  }
   /** F416 part 2: a write the player cannot play without (a spawn or revive burst, a pickup equip) opens the radio-quiet
    *  window, so the station scan (scanwatch.js) is shut while it is on the radio and for RADIO_QUIET_AFTER_MS after it
    *  settles. Bench part 1 (brx2): both lost writes that day (the go-live spawn, a Rockets grant) followed a scan flood. */
+  /** @param {any} frames @param {string} why @param {any} [options] @param {any} [onSent] */
   _quietWrite(frames, why, options = undefined, onSent = null) {
     // Review r2: COUNTED, not one timer. Two overlapping writes (a revive beside a grant) must hold the radio until the
     // LAST settles; one shared timer let the first settle reopen the scan while the second was still on the radio.
@@ -2085,6 +2143,15 @@ export class Engine {
   /** F416: `_death` asks this first. A zero pool without a hit can mean the gun never spawned.
    *  After SPAWN_RESENDS, keep the HOST: FORCE RESPAWN warning visible and stop automatic writes. */
   _spawnIntercept() {
+    // Bench 2026-11-14: our own write threw, so a 0 pool with no hit since is the gun we failed to spawn, not a death.
+    const bug = this._writeBug;
+    // The hold ends on a real hit, on the gun's first positive health (`_hpTakePools`: it did spawn, so poison and every
+    // other death count as usual), or after WRITE_BUG_HOLD_MS (review: astra, never an undying player).
+    if (bug && bug.life === this._lifeSeq && this.phase === 'live' && !((this.hp || 0) > 0) && !((this.lastHitAt || 0) > bug.at)
+      && this.now() - bug.at < WRITE_BUG_HOLD_MS) {
+      this.log('BUG hold: a 0 pool after our own failed spawn/revive write is no death (HOST: RESYNC GUN or FORCE RESPAWN)', 'le');
+      return true;
+    }
     const c = this._spawnCheck;
     if (!c) return false;
     if (c.life !== this._lifeSeq || this.phase !== 'live') { this._spawnCheck = null; return false; }
@@ -5915,6 +5982,7 @@ export class Engine {
     }
     const life = p.life;
     this._writeLost = null;   // the live reply is the evidence that retires a lost spawn/revive write
+    this._writeBug = null;
     this._spawnCheck = null;  // ...and the F416 check with it, so the HUD's FORCE RESPAWN warning and MC agree
     const tid = this._liveTid();
     const ammo = this.am.acctWroteRows(Object.entries(this.am.liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`));   // bug 3a: their echo is bookkeeping
@@ -7260,6 +7328,7 @@ export class Engine {
     const prev = { hp: this._prevHp, armor: this._prevArmor, shield: this._prevShield };   // the last frame's pools, read by the steps (never the live fields)
     const movedPool = hp !== prev.hp ? 'health' : armor !== prev.armor ? 'armor' : shield !== prev.shield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
+    if (hp > 0 && this._writeBug) this._writeBug = null;   // bench 2026-11-14: the gun did spawn, so a later 0 pool is a death
     const dmg = Math.max(0, before - (hp + armor + shield));
     return { hp, armor, shield, solicited, fillAnswer, before, pools0, prev, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
   }
