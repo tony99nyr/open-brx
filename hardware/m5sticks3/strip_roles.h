@@ -148,14 +148,10 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       break;
     }
     case StripRole::HILL_OWNED:
-      for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
-      strip_cap(px, n, budget_ma);
-      strip_dim(px, n, strip_pulse_pct(now_ms), 100);
-      break;
     case StripRole::HILL_OWNED_IDLE:  // the owner scores nothing: no pulse, the pulse's low level
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
       strip_cap(px, n, budget_ma);
-      strip_dim(px, n, strip_pulse_pct(0), 100);
+      strip_dim(px, n, strip_pulse_pct(role == StripRole::HILL_OWNED ? now_ms : 0), 100);
       break;
     case StripRole::HILL_CONTESTED: {
       const int t = (now_ms / STRIP_CONTEST_MS) % 2 ? s.control_contest_b : s.control_contest_a;

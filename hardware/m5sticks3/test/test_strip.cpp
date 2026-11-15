@@ -98,6 +98,7 @@ static StickState hill(int owner, int bar, int pct) {
   s.control_owner = (uint8_t)(owner < 0 ? contract::STATION_TEAM_ANY : owner);
   s.control_bar_team = bar;
   s.control_progress_pct = pct;
+  s.control_scoring = owner >= 0 && pct >= 100;  // a living owner player on the point (test_link.cpp drives the real rule)
   return s;
 }
 
@@ -246,6 +247,7 @@ static void every_role_stays_under_the_budget_at_every_length() {
   StickState contested = hill(0, 1, 50); contested.control_contested = true; contested.control_contest_a = 0; contested.control_contest_b = 1;
   states.push_back(contested);
   StickState waiting = hill(-1, -1, 0); waiting.control_waiting = true; states.push_back(waiting);
+  StickState idle = hill(0, 0, 100); idle.control_scoring = false; states.push_back(idle);
   for (bool flash : {false, true}) { StickState r; r.link_state = LinkState::ASSIGNED; r.mc_connected = true; r.respawn_present = true;
     r.respawn_team = 2; r.respawn_redeploy = flash; states.push_back(r); }
   for (bool avail : {false, true}) { StickState p; p.link_state = LinkState::ASSIGNED; p.mc_connected = true; p.powerup_present = true;

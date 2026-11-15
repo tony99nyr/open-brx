@@ -1665,8 +1665,10 @@ class StationLink {
     HillUpdate u;
     if (has_control_assignment()) {
       // F658: the follower first. Following, the live bit replaces MC's window: no wait and no MC whistle. The followed
-      // game's own end (FollowEnd: a whistle or end info from its phones, or 10 minutes of silence) freezes the hill
-      // until another live game takes it (bench H6, 2026-11-15: thawing here every tick kept an ended hill owned).
+      // game's own end (FollowEnd: a whistle or end info from a phone of it) freezes the hill
+      // until another live game takes it (bench H6, 2026-11-15: thawing here every tick kept an ended hill owned). One
+      // non-live advert from a player heard live in the game ends it here, so a phone must drop the live bit only at its
+      // own end (engine.js _endLocal), never mid-match.
       last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id);
       if (follower_.follows) {
         if (follower_.has_current && follower_.end.ended) {
@@ -1761,7 +1763,8 @@ class StationLink {
     hill_deadline_ms_ = now_ms + (uint32_t)remaining_ms;
     return true;
   }
-  bool hill_ended() const { return has_control_assignment() && hill_.frozen && !duration_restore_wait_; }
+  // A following hill's freeze is its followed game's end (tick_players), never a restored duration hill's wait.
+  bool hill_ended() const { return has_control_assignment() && hill_.frozen && (!duration_restore_wait_ || follower_.follows); }
   // F642: the station is counting a live game: a live, unfrozen hill, or any kind under MC's A58 match lock.
   // The glue pauses the /24 scan then, since its probes share the radio with the BLE presence scan.
   // F658 review (2026-11-06): a FOLLOWING station is in live play too, while it heard a live player of its current
