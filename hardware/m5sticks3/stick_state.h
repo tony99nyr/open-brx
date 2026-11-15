@@ -51,10 +51,15 @@ struct StickInputs {
 };
 
 // Times "HELD m:ss": the owner the last paint saw, and when it took the point. The one piece of
-// state build_stick_state() keeps between paints.
+// state build_stick_state() keeps between paints. The Bluetooth hill shows only the time the owner
+// SCORED since its capture (Tony 2026-11-15, option 1; F554): its hold_ms less `base_hold_ms`, the
+// owner's hold_ms at the capture, so the clock pauses while nobody of the owner is on the point or
+// the point is contested. The bench IR point keeps the plain time since its capture.
 struct HeldClock {
   uint8_t last_owner = contract::STATION_TEAM_ANY;
   uint32_t since_ms = 0;
+  uint32_t base_hold_ms = 0;
+  int game = -1;  // the hill's game byte at the last paint: another followed game is another point
 };
 
 inline std::string upper_ascii(const std::string& in) {
@@ -97,6 +102,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       st.control_progress_pct = hv.value;
       st.control_bar_team = hv.team == contract::STATION_TEAM_ANY ? -1 : (int)hv.team;
       st.control_contested = h.contested;
+      st.control_scoring = owner < 4 && !h.contested && h.counts[owner] > 0;
       st.control_dir = h.dir;
       if (h.contested) {  // the two largest teams counted, ties to the lower tid (presence.h's `ranked`)
         for (int t = 0; t < 4; t++) {
@@ -112,11 +118,17 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
     } else {
       st.control_progress_pct = point.progress();
     }
-    if (owner != held.last_owner) {
+    // The owner's possession so far (the Bluetooth hill only): a new owner, another followed game's point, or a
+    // smaller total (a reset) starts the clock again from it.
+    const uint32_t hold = ble && owner < 4 ? link.hill().hold_ms[owner] : 0;
+    const int game = ble ? (int)link.hill_game() : -1;
+    if (owner != held.last_owner || game != held.game || hold < held.base_hold_ms) {
       held.since_ms = now;
       held.last_owner = owner;
+      held.base_hold_ms = hold;
+      held.game = game;
     }
-    uint32_t heldMs = (owner == contract::STATION_TEAM_ANY) ? 0 : (now - held.since_ms);
+    uint32_t heldMs = (owner == contract::STATION_TEAM_ANY) ? 0 : ble ? hold - held.base_hold_ms : (now - held.since_ms);
     st.control_hold_time = format_mmss(heldMs / 1000);
   }
   if (link.has_respawn_assignment()) {

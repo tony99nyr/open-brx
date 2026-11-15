@@ -4,9 +4,11 @@
 //
 // The roles (brx1's 2026-10-18 design):
 //   - hill: neutral is dim white; a capture fills the strip from LED 0 in the capturer's colour at the
-//     capture progress (an owner losing the point drains the same way); owned is solid with a slow pulse;
+//     capture progress (an owner losing the point drains the same way); owned is solid with a slow pulse
+//     only while the owner scores (a living owner player counted on it, not contested: F554); owned with
+//     no owner scoring holds the owner's colour steady at the pulse's low level (Tony 2026-11-15, option 1);
 //     contested flashes the two largest teams' colours in turn; an ended game holds the owner's colour
-//     dim and still.
+//     dim (a third) and still.
 //   - respawn: a steady team colour at half the budget, and the full budget for a flash on each respawn
 //     (the flash needs the post-MVP revive feedback; presence.h).
 //   - power-up: a chase in the item's colour while it is ready; while it refills, dark, with a dim bar
@@ -36,7 +38,7 @@ constexpr uint32_t STRIP_AMBER_ON_MS = 500;
 constexpr uint32_t STRIP_FRAME_MS = 50;          // the role frame rate, 20 Hz
 
 enum class StripRole : uint8_t {
-  OFF, NO_LINK, HILL_NEUTRAL, HILL_FILL, HILL_OWNED, HILL_CONTESTED, HILL_ENDED,
+  OFF, NO_LINK, HILL_NEUTRAL, HILL_FILL, HILL_OWNED, HILL_OWNED_IDLE, HILL_CONTESTED, HILL_ENDED,
   RESPAWN, RESPAWN_FLASH, POWERUP_READY, POWERUP_REFILL,
 };
 
@@ -47,6 +49,7 @@ inline const char* strip_role_name(StripRole r) {
     case StripRole::HILL_NEUTRAL: return "hill-neutral";
     case StripRole::HILL_FILL: return "hill-fill";
     case StripRole::HILL_OWNED: return "hill-owned";
+    case StripRole::HILL_OWNED_IDLE: return "hill-owned-idle";
     case StripRole::HILL_CONTESTED: return "hill-contested";
     case StripRole::HILL_ENDED: return "hill-ended";
     case StripRole::RESPAWN: return "respawn";
@@ -73,7 +76,8 @@ inline StripRole strip_role(const StickState& s) {
       return StripRole::HILL_CONTESTED;
     const int team = strip_hill_team(s);
     if (team < 0) return StripRole::HILL_NEUTRAL;
-    if (strip_team_ok(s.control_owner) && s.control_progress_pct >= 100) return StripRole::HILL_OWNED;
+    if (strip_team_ok(s.control_owner) && s.control_progress_pct >= 100)
+      return s.control_scoring ? StripRole::HILL_OWNED : StripRole::HILL_OWNED_IDLE;
     return s.control_progress_pct > 0 ? StripRole::HILL_FILL : StripRole::HILL_NEUTRAL;
   }
   if (s.respawn_present) return s.respawn_redeploy ? StripRole::RESPAWN_FLASH : StripRole::RESPAWN;
@@ -144,9 +148,10 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       break;
     }
     case StripRole::HILL_OWNED:
+    case StripRole::HILL_OWNED_IDLE:  // the owner scores nothing: no pulse, the pulse's low level
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
       strip_cap(px, n, budget_ma);
-      strip_dim(px, n, strip_pulse_pct(now_ms), 100);
+      strip_dim(px, n, strip_pulse_pct(role == StripRole::HILL_OWNED ? now_ms : 0), 100);
       break;
     case StripRole::HILL_CONTESTED: {
       const int t = (now_ms / STRIP_CONTEST_MS) % 2 ? s.control_contest_b : s.control_contest_a;

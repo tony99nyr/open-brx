@@ -100,3 +100,19 @@ test('F658 review: MC re-arms a following hill as another id: the point and the 
   assert.deepEqual(api.point.holdMs, {});
   await api.applyStationConfig({ ...hill, game: 60 });   // back to id 9 for the tests after this one
 });
+
+test('bench H6: once the followed game ends here, a phone that missed END builds nothing until another live game takes the hill', async () => {
+  await api.applyStationConfig({ ...hill, game: 70 });
+  stand(15000, [{ id: 3, team: RED, game: 71, live: true }]);
+  assert.equal(api.point.owner, RED, 'red owns game 71');
+  stand(1000, [{ id: 3, team: RED, game: 71, live: false }]);   // red's whistle: the game ended at this hill
+  const hold = api.point.holdMs[RED];
+  stand(20000, [{ id: 3, team: RED, game: 71, live: false }, { id: 5, team: BLUE, game: 71, live: true }]);
+  assert.equal(api.point.owner, RED, 'blue, still live in the ended game, drains nothing');
+  assert.equal(api.point.progress, 100);
+  assert.equal(api.point.contested, false);
+  assert.equal(api.point.holdMs[RED], hold);
+  stand(3000, [{ id: 6, team: BLUE, game: 72, live: true }]);
+  assert.equal(airGame(), 72, 'the next live game takes the hill');
+  assert.equal(api.point.capturing, BLUE, 'and counts at once');
+});
