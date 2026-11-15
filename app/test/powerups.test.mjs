@@ -2370,22 +2370,15 @@ test('swap timer: the heavy re-equip path keeps its shorter edge: the bind back 
   assert.ok(swapRows(h.since(n)).some(f => f.startsWith('$WEAP,1,')), `the bind re-equipped slot 1: ${JSON.stringify(swapRows(h.since(n)))}`);
 });
 
-// Tony 2026-11-14 (the free vent): a `$WEAP` clears the gun's one heat value (bench 2026-11-14), so a pickup equip sent onto a
-// locked Energy Rifle would vent the lock for nothing. The equip waits for a reading that shows the gun vented, then goes out.
-test('free vent: a pickup equip waits out an Energy Rifle lock and goes out on the first vented reading', () => {
+// Tony 2026-11-14 (the free vent): a `$WEAP` clears the gun's one heat value (bench 2026-11-14). A pickup equip still goes out
+// at once on a locked Energy Rifle: the pickup comes first, and the free vent it gives is accepted. The log says so.
+test('free vent: a pickup equip goes out at once on a heat-locked gun, and the log says it cleared the lock', () => {
   const h = armed({ weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }] });
   h.frame('$ALCD,201,100,0,600,101,*');                        // the lock (it does not cool)
-  const n = h.mark();
+  const n = h.mark(), l = h.logs.length;
   h.take(4);
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no $WEAP on a locked Energy Rifle');
-  h.adv(5000);
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'still held: the lock does not cool');
-  assert.equal(h.eng.state().powerup.held.name, 'ROCKETS', 'the pickup is the player\'s all the same');
-  h.frame('$ALCD,201,100,0,600,66,*');                         // one lever press vents 35: still a lock (polish r1, SR8)
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'still held at 66: the gun does not fire there');
-  h.frame('$ALCD,201,100,0,600,0,*');                          // vented to 0
-  const out = h.since(n).filter(f => /^\$(WEAP|AMMO),2,/.test(f));
-  assert.deepEqual(out, [WEAP[2], '$AMMO,2,2,0,1,*'], 'the equip goes out once the gun reads vented');
+  assert.deepEqual(h.since(n).filter(f => /^\$(WEAP|AMMO),2,/.test(f)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'the equip goes at the grant');
+  assert.ok(h.logs.slice(l).some(m => /heat lock \(heat 101\) was cleared by the pickup equip/.test(m)), h.logs.slice(l).join('\n'));
 });
 test('free vent: a bind re-equip waits out the lock; a pickup equip with no lock goes at once', () => {
   const h = armed({ weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }] });
@@ -2400,6 +2393,7 @@ test('free vent: a bind re-equip waits out the lock; a pickup equip with no lock
   n = h.mark();
   h.adv(3000);                                                 // the bind repair ticks
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP on a locked gun');
+  assert.equal(h.logs.filter(m => /waits, the gun is heat-locked/.test(m)).length, 1, 'logged once, not on every bind retry');
   h.frame('$ALCD,201,100,0,600,66,*');                         // one vent: still a lock (polish r1, SR8)
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP at 66');
   h.frame('$ALCD,201,100,0,600,0,*');                          // vented: the re-equip goes at once, not at the next tick
