@@ -162,9 +162,9 @@ bench HILL shows it too):
 | hill, neutral or waiting to open | dim white |
 | hill, being captured (or drained) | fills from LED 0 in that team's colour, at the capture progress; the rest dim white |
 | hill, owned and scoring (`hill-owned`) | solid owner colour, a slow 2 s pulse. Only while a living owner player is counted on the point and no other team is (F554: only then does the owner score) |
-| hill, owned and not scoring (`hill-owned-idle`) | the owner's colour, steady at the pulse's low level (40 %), no pulse: nobody of the owner is on the point. Tony 2026-11-15, option 1 |
+| hill, owned and not scoring (`hill-owned-idle`) | the owner's colour, steady at 15 % (`STRIP_OWNED_IDLE_PCT`), no pulse: nobody of the owner is on the point. Tony 2026-11-15, option 1 |
 | hill, contested | the two largest teams' colours in turn, 400 ms each |
-| hill, game over (`hill-ended`) | the owner's colour, dim (a third) and still. A hill that follows the live game (F658) ends when it hears the game end: a whistle or end info from a phone of it. A quiet spell is no end (in Domination the players may be at other hills), so a hill that hears no phone at the end stays owned until the next game takes it |
+| hill, game over (`hill-ended`) | the owner's colour, dim (a third) and still. A hill that follows the live game (F658) ends when the game ends: a whistle or end info heard from a phone of it, or MC's END for that game's byte. A quiet spell is no end (in Domination the players may be at other hills), so a hill that hears neither stays owned until the next game takes it |
 | respawn | steady team colour at half the budget; a full-budget flash on each respawn (only with the post-MVP revive feedback) |
 | power-up, ready | a chase in the item's colour |
 | power-up, refilling | dark, with a dim bar that grows to full at the next spawn; off once the match is over |

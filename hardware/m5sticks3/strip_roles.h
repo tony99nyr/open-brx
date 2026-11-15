@@ -6,7 +6,7 @@
 //   - hill: neutral is dim white; a capture fills the strip from LED 0 in the capturer's colour at the
 //     capture progress (an owner losing the point drains the same way); owned is solid with a slow pulse
 //     only while the owner scores (a living owner player counted on it, not contested: F554); owned with
-//     no owner scoring holds the owner's colour steady at the pulse's low level (Tony 2026-11-15, option 1);
+//     no owner scoring holds the owner's colour steady at 15 % (Tony 2026-11-15, option 1);
 //     contested flashes the two largest teams' colours in turn; an ended game holds the owner's colour
 //     dim (a third) and still.
 //   - respawn: a steady team colour at half the budget, and the full budget for a flash on each respawn
@@ -31,6 +31,7 @@ constexpr Rgb STRIP_ITEM_WEAPON{238, 249, 255};  // the screen's COL_NUM, the we
 constexpr Rgb STRIP_ITEM_SPECIAL{36, 217, 196};  // the screen's COL_SHIELD
 constexpr uint32_t STRIP_PULSE_MS = 2000;        // owned: one slow breath
 constexpr uint32_t STRIP_CONTEST_MS = 400;       // contested: each colour's turn
+constexpr uint32_t STRIP_OWNED_IDLE_PCT = 15;    // owned, scoring nothing: steady at this share of the owner colour (Tony 2026-11-15)
 constexpr uint32_t STRIP_CHASE_STEP_MS = 50;     // power-up ready: one LED a step
 constexpr size_t STRIP_CHASE_LEN = 6;
 constexpr uint32_t STRIP_AMBER_PERIOD_MS = 2000; // no link: 500 ms on, 1500 ms off
@@ -148,10 +149,10 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       break;
     }
     case StripRole::HILL_OWNED:
-    case StripRole::HILL_OWNED_IDLE:  // the owner scores nothing: no pulse, the pulse's low level
+    case StripRole::HILL_OWNED_IDLE:  // the owner scores nothing: no pulse, steady and dim
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
       strip_cap(px, n, budget_ma);
-      strip_dim(px, n, strip_pulse_pct(role == StripRole::HILL_OWNED ? now_ms : 0), 100);
+      strip_dim(px, n, role == StripRole::HILL_OWNED ? strip_pulse_pct(now_ms) : STRIP_OWNED_IDLE_PCT, 100);
       break;
     case StripRole::HILL_CONTESTED: {
       const int t = (now_ms / STRIP_CONTEST_MS) % 2 ? s.control_contest_b : s.control_contest_a;
