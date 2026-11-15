@@ -4031,6 +4031,7 @@ test('F259: an expired press is CLEARED, not merely ignored, so a stun cannot di
   // ...and the consequence the player feels, on the wire.
   h.eng.config.stun = { duration_s: 10 };
   h.eng._stun();
+  assert.ok(h.eng.stunned, 'setup: stunned');
   const n = h.writes.length;
   h.eng._stunRestore('expired');
   const restored = h.writes.slice(n).filter(f => f.startsWith('$AMMO,0,'));
@@ -5067,6 +5068,39 @@ test('F226: the $WEAP reset echo and the $AMMO echo of a reserve-limited refill 
   assert.equal(h.eng.am.acctLive(0), 7);
   assert.equal(h.eng.am.lastShot, shot0, 'no round was booked from the echoes');
   assert.deepEqual(steps, [], 'no recoil step from the echoes');
+});
+
+// Polish r3 (brx4; Codex + Opus): the `$AMMO` re-send went out behind a stun's disarm, re-arming the gun for the stun.
+test('F226: no $AMMO re-send after a stun has disarmed the gun', async () => {
+  const { h } = chargeHarness({ reserve: 3 });
+  const w0 = h.eng.writer; let fail = null;
+  h.eng.writer = (fr, why, o) => {
+    if (/^F226: charge lock, reload/.test(String(why))) {
+      for (const f of fr) if (f.startsWith('$WEAP,')) { h.writes.push(f); o.onFrameSent(f); }
+      return new Promise(r => { fail = () => r(false); });
+    }
+    return w0(fr, why, o);
+  };
+  h.frame('$ALCD,4,100,0,3,156,*');
+  assert.ok(fail, 'setup: the refill write is on the link');
+  h.eng._stun(2000);                                           // an EMP word: a 2 s stun
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const n = h.writes.length;
+  fail(); await new Promise(r => setImmediate(r));
+  assert.ok(!h.writes.slice(n).includes('$AMMO,0,7,0,1,*'), `no refill behind the disarm: ${JSON.stringify(h.writes.slice(n))}`);
+});
+// Polish r3 (brx4; Opus): a write that failed after its `$AMMO` left (chunks lost on every re-send) lost that `$AMMO` too.
+test('F226: an $AMMO that left but whose write failed is sent again', async () => {
+  const { h } = chargeHarness({ reserve: 3 });
+  const w0 = h.eng.writer;
+  h.eng.writer = (fr, why, o) => {
+    if (/^F226: charge lock, reload/.test(String(why))) { for (const f of fr) { h.writes.push(f); o.onFrameSent(f); } return Promise.resolve(false); }
+    return w0(fr, why, o);
+  };
+  const n = h.writes.length;
+  h.frame('$ALCD,4,100,0,3,156,*');
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.writes.slice(n).filter(f => f === '$AMMO,0,7,0,1,*').length, 2, JSON.stringify(h.writes.slice(n)));
 });
 
 // Bench 2026-11-14 (SR8; brx2's emulator): the Energy Rifle locks at about 101 and the lock does not cool. Pulls inside it fire

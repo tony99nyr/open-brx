@@ -7213,6 +7213,12 @@ class GunStage:
             self._log("reload pull ignored -- the gun is stunned", "info")
             return
         self._note_gun_other()   # ammo.js `reloadPulled` (Tony 2026-11-08): note the counts at every lever
+        cur = self.reloading   # ammo.js `reloadPulled` (polish r3): a press during the phone's own reload keeps its time
+        if cur and cur.get("soft") and cur.get("slot") == self.active_slot and cur.get("life") == self._life_queued:
+            if cur.get("chain"):
+                cur["released_at"] = None
+            self._log(f"reload pull: the phone's reload of slot {cur['slot']} already runs; it keeps its time", "info")
+            return
         cap = self._ammo_by_slot().get(self.active_slot)
         if cap is None:
             cap = self.mag                      # ammo.js `reloadPulled`: `ammoBySlot()[slot] ?? this.host.mag`
