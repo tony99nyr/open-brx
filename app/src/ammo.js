@@ -690,6 +690,15 @@ export class Ammo {
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
     this.noteGunOther();   // Tony 2026-11-08: note the counts, so a gun refill of a slot not in hand is put back
+    // Polish r3 (Codex): a press while the phone's own reload of the weapon in hand runs keeps that reload. Each press started
+    // a new one and moved its deadline, so pressing faster than the reload time never reloaded (Easy Reload's lever included).
+    // The gun's own reload ignores a press while it loads. A press on a chain holds it again.
+    { const cur = this.reloading;
+      if (cur && cur.soft && cur.slot === this.host.activeSlot && cur.life === this.host.lifeSeq) {
+        if (cur.chain) cur.releasedAt = null;
+        this.host.log(`reload pull: the phone's reload of slot ${cur.slot} already runs; it keeps its time`, 'li');
+        return;
+      } }
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     // Review 2026-11-06 (the swap torture run): a lever the phone refuses still reloads the slot that fired last on the gun
     // (F542), and the gun ignores ALT while that runs (`altPressed`).

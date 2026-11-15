@@ -969,6 +969,22 @@ test('Easy Reload (accessibility): with the lever on 98, a lever pull reloads th
   assert.equal(x.mag, x.clip, 'ALT reloaded the gun');
 });
 
+// Polish r3 (brx4; Codex): every lever press started a new phone reload and moved its deadline, so a player who pressed again
+// before the reload time (the lever on 98 does nothing on the gun, so pressing again is natural) never got the reload.
+test('Easy Reload (accessibility): pressing the lever again during the phone reload keeps its time', async () => {
+  const h = harness('usp', 44, { easyOne: true, leverOff: true }), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 5; i++) { gun.trigger(); await h.settle(150); }
+  const x = gun.slot(0);
+  gun.lever();
+  const r = eng.am.reloading, t0 = h.now();
+  assert.ok(r && r.soft, 'setup: the phone reloads the weapon in hand');
+  while (h.now() + 300 < t0 + r.ms) { await h.advance(300); gun.lever(); }   // pressed again and again, inside the reload time
+  await h.advance(t0 + r.ms + 150 - h.now());
+  assert.equal(x.mag, x.clip, 'the phone reloaded the gun at the first press\'s time');
+  assert.equal(eng.am.reloading, null, 'and the reload is over');
+});
+
 // Codex review 2026-11-08 of the phone swap: the trigger must never be left held (98) or bound to a slot the phone does not
 // show. `_bindTick` repairs the binding from what was really sent (`_noteBindSent`).
 test('phone swap (Codex H1): a stun that cancels the phone\'s reload does not leave the trigger held', async () => {
