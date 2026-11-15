@@ -623,8 +623,11 @@ export class Ammo {
   /** Bench 2026-11-14 (SR8): on the Energy Rifle the lever VENTS the heat while there is any (35 a press; a held lever vents to
    *  0, then refills the cell), and the magazine does not move. Such a lever is no reload. PURE. */
   leverVents(now = this.host.now()) {
+    // Polish r1 (Opus): the lock holds at 65 and does not cool, so the next press vents too. Polish r4 (brx2's emulator replay
+    // m6): the heat is the gun's ONE value, so while the Energy Rifle's lock is on, the lever vents whatever slot is in hand.
+    // With the Charge Rifle in hand the phone started its own reload (a free 9 -> 40, the trigger held past the vent).
+    if (this.ventLocked()) return true;
     if (!this.heatVents(this.host.activeSlot)) return false;
-    if (this.ventLocked()) return true;   // polish r1 (Opus): the lock holds at 65 and does not cool, so the next press vents too
     const h = this.heatNow();
     if (!h) return false;
     const v = h.v >= HEAT_LOCKOUT ? h.v : h.v - (now - h.at) * HEAT_COOL_PER_MS;
