@@ -109,6 +109,10 @@ def _cases():
     cfg = _config(); cfg["stun"] = {"enabled": True}
     cfg["scoring"]["frag_limit"] = 25; cfg["hit_audio_class"] = True
     yield "stun_frag_limit_hit_audio_class", cfg, [PLAYER], {}
+    # polish 2026-11-15 (Opus): Easy Reload's $BMAP head (bench 2026-11-14: the last 97 row written takes reload, so ALT
+    # is the ONLY 97 row and the lever is 98). One weapon: policy refuses Easy Reload beside a second.
+    p = copy.deepcopy(PLAYER); p["loadout"] = {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}
+    yield "easy_reload", _config(), [p], {}
 
 
 def _inputs(case):
@@ -153,6 +157,14 @@ def test_validate_and_compile_match_fixed_old_code_observations():
     assert [row["name"] for row in expected] == [row["name"] for row in actual]
     for old, new in zip(expected, actual):
         assert old == new, old["name"]
+
+
+def test_easy_reload_head_has_one_reload_row_on_alt():
+    row = next(r for r in _observations() if r["name"] == "easy_reload")
+    frames = [f for f in json.dumps(row["compile"]["bundle"]).split('"') if f.startswith("$BMAP,")]
+    reload_rows = sorted({f for f in frames if f.split(",")[2] == "97"})
+    assert reload_rows == ["$BMAP,1,97,,,,,*"], f"Easy Reload: ALT is the only 97 row: {sorted(set(frames))}"
+    assert "$BMAP,2,98,,,,,*" in frames, "the lever row is inert (98)"
 
 
 if __name__ == "__main__":
