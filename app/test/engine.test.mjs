@@ -5267,6 +5267,29 @@ test('SR8: the latch starts above 99 and ends only at 0', () => {
   h.frame('$ALCD,205,100,0,600,0,*');
   assert.equal(h.eng.am.ventLocked(), false, 'vented to 0');
 });
+// Polish r4 (brx4; brx2's emulator replay m6 of 97d699470): Energy Rifle + Charge Rifle, the Energy Rifle locked, the Charge Rifle
+// in hand at 9. The gun's lever only vents (one heat value), but the phone started its own reload of slot 1: a free 9 -> 40, the
+// trigger held past the vent, and a RELOADING card the gun never did.
+test('SR8: while the Energy Rifle lock holds, the lever vents whatever slot is in hand', () => {
+  const h = harness(), logs = [];
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'charge_rifle' }];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+      { weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: 10, clip: 40, reserve: 160, reload_s: 2 }], perks: [] } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$ALCD,9,100,1,160,0,*');                            // the Charge Rifle's cell
+  h.frame('$ALCD,206,100,0,600,99,*'); h.frame('$ALCD,205,100,0,600,99,*'); h.frame('$ALCD,205,100,0,600,101,*');   // the Energy Rifle fired last, then locked
+  assert.equal(h.eng.am.ventLocked(), true, 'setup: the lock');
+  h.eng.activeSlot = 1;                                        // the Charge Rifle in hand
+  const n = h.writes.length;
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  h.adv(4000); h.eng.tick();
+  assert.equal(h.eng.state().reloading, false, 'no RELOADING card');
+  assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,')), [], 'no phone reload of the Charge Rifle');
+  assert.ok(logs.some(m => /lever vents the heat/.test(m)), logs.filter(m => /lever|reload/.test(m)).join('\n'));
+});
 test('SR8: the lock blocks the other slot too (one heat value)', () => {
   const h = energyHarness();
   h.eng.activeSlot = 1;

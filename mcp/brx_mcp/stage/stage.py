@@ -2406,11 +2406,11 @@ class GunStage:
 
     def _lever_vents(self) -> bool:
         """ammo.js `leverVents` (bench 2026-11-14, SR8): on the Energy Rifle a lever with any heat vents it; no reload."""
+        if self._vent_locked():
+            return True   # polish r1, r4 (brx2's replay m6): the latched lock vents on the lever whatever slot is in hand
         slot = self.active_slot
         if not self._active_weapon_is_energy() or self._heat_cools(slot):
             return False
-        if self._vent_locked():
-            return True   # polish r1: the lock holds at 65 and does not cool, so the next press vents too
         h = self._heat_now()
         if h is None:
             return False

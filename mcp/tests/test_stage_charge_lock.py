@@ -250,3 +250,14 @@ def test_polish_r4_f226_when_only_the_weap_left_the_books_keep_the_refill_and_no
         assert st._acct_live(0) == 7, st._acct_live(0)
         assert any("may not have landed" in l["text"] for l in st.log)
     asyncio.run(go())
+
+
+def test_polish_r4_the_latched_lock_vents_the_lever_whatever_slot_is_in_hand():
+    """ammo.js `leverVents` (polish r4, brx2's replay m6): Energy Rifle locked, Charge Rifle in hand: the lever vents."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "charge_rifle"}]}}
+        st._on_ammo(205, 600, 0, 101)
+        st.active_slot = 1
+        assert st._lever_vents()
+    asyncio.run(go())
