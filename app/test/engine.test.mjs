@@ -5267,6 +5267,34 @@ test('SR8: the latch starts above 99 and ends only at 0', () => {
   h.frame('$ALCD,205,100,0,600,0,*');
   assert.equal(h.eng.am.ventLocked(), false, 'vented to 0');
 });
+// Heat HUD (bench SR8 on 0.4.43): a held lever vented 100 -> 65 -> 30 and pulls at 30 got no shot, but the HUD cleared OVERHEAT
+// under 99, so the player saw no reason for a dead trigger. OVERHEAT holds for the whole vent lock, on either slot.
+test('SR8: OVERHEAT stays on the HUD through a part vent (65, 30) and clears at 0', () => {
+  const h = energyHarness();
+  assert.equal(h.eng.state().overheatShown, true, 'setup: the lock reads OVERHEAT');
+  for (const v of [65, 30]) {
+    h.frame(`$ALCD,201,100,0,600,${v},*`); h.adv(7000); h.frame('$BUT,0,1,*'); h.adv(60); h.frame('$BUT,0,0,*');
+    assert.equal(h.eng.state().overheatShown, true, `part-vented to ${v}, 7 s on: still OVERHEAT`);
+  }
+  h.eng.activeSlot = 1;
+  assert.equal(h.eng.state().overheatShown, true, 'the other slot is locked too (one heat value)');
+  h.eng.activeSlot = 0;
+  h.frame('$ALCD,201,100,0,600,0,*');
+  assert.equal(h.eng.state().overheatShown, false, 'vented to 0: OVERHEAT clears with the lock');
+});
+test('SR8: a round fired ends the vent lock and its OVERHEAT; OVERHEAT_CAP_MS bounds an unvented lock', () => {
+  let h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,30,*'); h.adv(2000);
+  h.frame('$ALCD,200,100,0,600,30,*');                         // a round left the cell
+  assert.equal(h.eng.state().overheatShown, false, 'it fired: no OVERHEAT');
+  h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,65,*');
+  h.adv(OVERHEAT_CAP_MS - 100);
+  assert.equal(h.eng.state().overheatShown, true, 'inside the cap');
+  h.adv(200);
+  assert.equal(h.eng.state().overheatShown, false, 'never past OVERHEAT_CAP_MS');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'the mechanic still holds the lock');
+});
 // Polish r4 (brx4; brx2's emulator replay m6 of 97d699470): Energy Rifle + Charge Rifle, the Energy Rifle locked, the Charge Rifle
 // in hand at 9. The gun's lever only vents (one heat value), but the phone started its own reload of slot 1: a free 9 -> 40, the
 // trigger held past the vent, and a RELOADING card the gun never did.
