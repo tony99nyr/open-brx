@@ -5299,7 +5299,8 @@ export class Engine {
     // the row's own reserve, t40).
     const weap = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`));
     const rows = weap ? [weap, `$AMMO,${slot},${to},${left},1,*`] : [`$AMMO,${slot},${to},${left},1,*`];
-    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: f => { if (f.startsWith('$AMMO,')) sent = true; } });
+    let left2 = rows.length;   // the `$AMMO` is the last row: it has left once every row has
+    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: () => { if (--left2 === 0) sent = true; } });
     const failed = () => { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
@@ -8312,7 +8313,7 @@ export class Engine {
                    // without an identity it could not tell a second reload from the first: a $ALCD (fired) and
                    // a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, and the new
                    // one opened already pulsing on the old one's latch (review 2026-09-12).
-                   reloadAt: ms != null ? (this.am.reloading.t0 ?? this.am.reloading.at) : null,   // bench 2026-11-14: one card for a whole chain
+                   reloadAt: (r => (ms != null && r ? (r.t0 ?? r.at) : null))(this.am.reloading),   // bench 2026-11-14: one card for a whole chain
                    reloadOverrun: !!(ms != null && ms > this.am.reloading.ms),
                    reloadGained: ms != null ? Math.max(0, this.am.reloading.mag - this.am.reloading.from) : null }))(this.am.reloadingMs()),
       reloadOutcome: this.am.reloadOutcome,

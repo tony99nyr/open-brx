@@ -651,7 +651,7 @@ export class Ammo {
     // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
     const wait = this.host.gunButtonsWaitMs ? this.host.gunButtonsWaitMs() : 0;
     if (wait > 0) { this.host.log(`reload pull ignored: the gun's spawn wait (${Math.ceil(wait)} ms left)`, 'li'); return; }
-    if (lever && this.leverVents()) { this.host.log(`lever vents the heat (${this.heatNow().v}); no reload`, 'li'); return; }   // SR8
+    if (lever && this.leverVents()) { const h = this.heatNow(); this.host.log(`lever vents the heat (${h ? h.v : '?'}); no reload`, 'li'); return; }   // SR8
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
@@ -831,7 +831,7 @@ export class Ammo {
       const r = this.reloading, to = this.host.softReloadWrite(r);
       if (to === 'wait') return;   // review 2026-11-06 M1: a pull in flight; its round ends the reload, else the write goes
       if (to == null) { this.endReload('dropped'); return; }
-      r.mag = to; r.shells++;
+      r.mag = to; r.shells = (r.shells || 0) + 1;
       // Tony 2026-11-07 (option a): a chain loads one shell a `reload_s` until the tube is full or the reserve is out. The next
       // shell is due one reload time from this one; a trigger pull (engine.js `_onButton`), ALT, a stun, death or a drop ends it.
       // Codex (chain review): the next shell is due one reload time after THIS one was due, not after the tick that wrote it (the
