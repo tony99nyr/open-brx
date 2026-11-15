@@ -586,6 +586,18 @@ static void test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock() {
   CHECK(!compute_screen(s).strip.locked);
 }
 
+// Polish review 2026-11-15 (brx1): STRIPPOWER EXT stays saved in NVS, so the strip says so: "EXT PWR" on the status strip
+// while the strip is budgeted for its own 5 V. A Stick re-wired to the Grove 5 V with EXT still set is then visible.
+static void test_ext_strip_power_shows_on_the_status_strip() {
+  StickState s;
+  CHECK(!compute_screen(s).strip.ext_power);
+  s.ext_power = true;
+  CHECK(compute_screen(s).strip.ext_power);
+  StatusStripSpec a, b;
+  b.ext_power = true;
+  CHECK(a != b);  // EFF-8: a change to the flag alone repaints the glass
+}
+
 static void test_force_restart_countdown_beats_everything() {
   StickState s;
   s.battery_pct = 5;  // would be LOW BATTERY
@@ -636,6 +648,7 @@ static void test_spec_equality_covers_every_field_and_a_countdown_second() {
 }
 
 int main() {
+  test_ext_strip_power_shows_on_the_status_strip();
   CHECK_EQ(PICKUP_COUNTDOWN_INDICATOR_Y, 79);
   test_transient_renderer_pin();
   test_format_mmss();

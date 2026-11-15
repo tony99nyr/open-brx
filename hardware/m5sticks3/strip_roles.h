@@ -141,13 +141,13 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       const uint64_t rest = (uint64_t)(n - k) * (STRIP_NEUTRAL.r + STRIP_NEUTRAL.g + STRIP_NEUTRAL.b);
       const uint64_t budget = strip_channel_budget(n, budget_ma);
       strip_cap_to(px, k, budget > rest ? budget - rest : 0);
-      return role;
+      break;
     }
     case StripRole::HILL_OWNED:
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
       strip_cap(px, n, budget_ma);
       strip_dim(px, n, strip_pulse_pct(now_ms), 100);
-      return role;
+      break;
     case StripRole::HILL_CONTESTED: {
       const int t = (now_ms / STRIP_CONTEST_MS) % 2 ? s.control_contest_b : s.control_contest_a;
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(t);
@@ -161,14 +161,14 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       } else {
         for (size_t i = 0; i < n; i++) px[i] = STRIP_NEUTRAL;
       }
-      return role;
+      break;
     case StripRole::RESPAWN:
     case StripRole::RESPAWN_FLASH: {
       const Rgb c = strip_team_ok(s.respawn_team) ? team_rgb(s.respawn_team) : Rgb{255, 255, 255};
       for (size_t i = 0; i < n; i++) px[i] = c;
       strip_cap(px, n, budget_ma);
       if (role == StripRole::RESPAWN) strip_dim(px, n, 1, 2);  // the flash is the full budget, so twice as bright
-      return role;
+      break;
     }
     case StripRole::POWERUP_READY: {
       const Rgb c = strip_item_rgb(s);
@@ -186,6 +186,8 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       break;
     }
   }
+  // EVERY role ends here (polish review 2026-11-15): a fill over a dim rest, or a dimmed frame, is capped once more,
+  // so no role and no length can pass the budget. Dimming only lowers a capped frame, so this changes nothing there.
   strip_cap(px, n, budget_ma);
   return role;
 }

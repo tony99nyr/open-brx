@@ -4,6 +4,7 @@
 #include "strip_roles.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <vector>
 
@@ -234,7 +235,39 @@ static void each_power_mode_has_its_own_budget() {
   CHECK_EQ(e[0].r, 255);
 }
 
+// Polish review 2026-11-15: a capture's dim neutral rest, and an ended hill with no owner, returned before the final cap,
+// so from 80 LEDs on GROVE the frame went over the budget (548 mA at 144). Every role, every length, both budgets.
+static void every_role_stays_under_the_budget_at_every_length() {
+  std::vector<StickState> states;
+  for (int pct : {1, 25, 50, 99, 100}) { states.push_back(hill(-1, 1, pct)); states.push_back(hill(0, 0, pct)); states.push_back(hill(2, 2, pct)); }
+  states.push_back(hill(-1, -1, 0));
+  StickState ended = hill(-1, -1, 0); ended.control_ended = true; states.push_back(ended);
+  StickState ended_owned = hill(1, 1, 100); ended_owned.control_ended = true; states.push_back(ended_owned);
+  StickState contested = hill(0, 1, 50); contested.control_contested = true; contested.control_contest_a = 0; contested.control_contest_b = 1;
+  states.push_back(contested);
+  StickState waiting = hill(-1, -1, 0); waiting.control_waiting = true; states.push_back(waiting);
+  for (bool flash : {false, true}) { StickState r; r.link_state = LinkState::ASSIGNED; r.mc_connected = true; r.respawn_present = true;
+    r.respawn_team = 2; r.respawn_redeploy = flash; states.push_back(r); }
+  for (bool avail : {false, true}) { StickState p; p.link_state = LinkState::ASSIGNED; p.mc_connected = true; p.powerup_present = true;
+    p.powerup_available = avail; p.powerup_known = true; p.powerup_period_s = 30; p.powerup_remaining_s = 3; p.item_color_hex = "#ffffff"; states.push_back(p); }
+  StickState nolink; nolink.link_state = LinkState::ASSIGNED; nolink.mc_connected = false; states.push_back(nolink);
+  for (uint32_t budget : {STRIP_BUDGET_MA, STRIP_EXT_BUDGET_MA}) {
+    for (size_t n : {size_t(1), size_t(60), size_t(79), size_t(80), size_t(100), size_t(STRIP_MAX_LEDS)}) {
+      for (const StickState& st : states) {
+        for (uint32_t now : {0u, 700u, 1500u, 2900u}) {
+          std::vector<Rgb> px(n);
+          strip_render_role(st, now, px.data(), n, budget);
+          const uint32_t ma = strip_estimate_ma(px.data(), n);
+          if (ma > budget) std::fprintf(stderr, "role %s n=%zu budget=%u: %u mA\n", strip_role_name(strip_role(st)), n, budget, ma);
+          CHECK(ma <= budget);
+        }
+      }
+    }
+  }
+}
+
 int main() {
+  every_role_stays_under_the_budget_at_every_length();
   every_full_frame_stays_under_the_budget();
   a_small_frame_is_not_dimmed();
   the_cap_keeps_the_hue();
