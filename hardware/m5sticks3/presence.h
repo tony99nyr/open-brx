@@ -948,11 +948,12 @@ class HillFollower {
       if (!have || (int32_t)(t - at) < 0) at = t;
       have = true;
     }
-    if (have) {
-      if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
-      end.has_end_at = true;
-      end.end_exact = true;
-    }
+    if (have) end_at_earliest(at);
+  }
+  void end_at_earliest(uint32_t at) {
+    if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
+    end.has_end_at = true;
+    end.end_exact = true;
   }
   // brx1 2026-11-15 (H6 follow-up; control.js endByMc): MC's END (`ends_in_ms:0`) names the game it ends. For the followed
   // game it ends that game here at `at`, as a whistle heard would, so a hill that heard no phone at END still freezes.
@@ -960,9 +961,7 @@ class HillFollower {
   void end_by_mc(uint8_t game, uint32_t at) {
     if (!follows || !has_current || game == 0 || game != current) return;
     end.ended = true;
-    if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
-    end.has_end_at = true;
-    end.end_exact = true;
+    end_at_earliest(at);
   }
   // A88: control.js tallies: the current game's, then the most recently heard other game with a saved state, heard within
   // stale_ms. Returns how many (0..2).

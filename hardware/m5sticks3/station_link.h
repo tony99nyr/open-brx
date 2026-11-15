@@ -1993,6 +1993,10 @@ class StationLink {
       hill_offline_waiting_ = false;
       if (!hill_restore_guard_) hill_.thaw();
     }
+    // MC's END for a following hill ends its game at this time: MC's deadline for the same game when it has passed (the
+    // recap delay is not possession, as utility.js `applyHillClock` says), else now. Read before the block below drops it.
+    const uint32_t mc_end_at = deadline_known_ && !kind_or_id_changed && !game_changed &&
+                               (int32_t)(received_at_ms - hill_deadline_ms_) >= 0 ? hill_deadline_ms_ : received_at_ms;
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
         (a.duration_ms > 0 && !duration_anchor_known_)) {
@@ -2011,7 +2015,7 @@ class StationLink {
     if (a.ends_in_ms == 0) hill_.freeze();
     // brx1 2026-11-15: following, MC's END for the followed game ends it here (FollowEnd), so tick_players keeps the hill
     // frozen; without it the next tick thaws a hill that heard no phone at END. MC's END for another game is ignored.
-    if (a.kind == "control" && a.ends_in_ms == 0) follower_.end_by_mc((uint8_t)a.game, received_at_ms);
+    if (a.kind == "control" && a.ends_in_ms == 0) follower_.end_by_mc((uint8_t)a.game, mc_end_at);
     // F386 for a pickup: END/recap/RECALL (`ends_in_ms:0`) freezes the schedule into MATCH OVER, the
     // same edge the hill above reads off the same field. A config carrying a fresh START (`starts_known`)
     // is a new match clock, whatever kind the station is, so it lifts the freeze; either edge beats the

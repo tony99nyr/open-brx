@@ -3321,23 +3321,28 @@ static void test_mc_end_for_the_followed_game_ends_a_following_hill() {
   FollowHillBench b;
   b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
   CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
-  b.run(5000, {});  // red walks out of earshot, still live: the hill stays owned and the game stays live here
-  CHECK(!b.link.hill_ended());
-  // MC's END for another game: ignored
-  StationAssignment other = b.link.assignment(); other.game = 40; other.starts_known = true; other.starts_in_ms = -25000; other.ends_in_ms = 0;
+  // MC's END for another game (the wire shape MC sends: ends_in_ms 0, no start): ignored
+  StationAssignment other = b.link.assignment(); other.game = 40; other.ends_in_ms = 0;
   b.link.apply_station_config(other, b.t);
   b.run(1000, {});
   CHECK(!b.link.hill_ended() && !b.link.follower().end.ended);
-  // MC's END for game 41: the followed game ends here at that time, exact, and the hill freezes
-  StationAssignment end = b.link.assignment(); end.game = 41; end.starts_known = true; end.starts_in_ms = -26000; end.ends_in_ms = 0;
-  const uint32_t end_at = b.t;
+  // MC's START for game 41 with a whistle 5 s from now; red walks out of earshot, still live, so no whistle is heard
+  StationAssignment start = b.link.assignment(); start.game = 41; start.starts_known = true; start.starts_in_ms = -21000; start.ends_in_ms = 5000;
+  b.link.apply_station_config(start, b.t);
+  const uint32_t whistle = b.t + 5000;
+  b.run(5000, {});
+  const uint32_t own_at_whistle = b.link.hill().own_ms[0];
+  b.run(30000, {});  // the Stick misses END: red's empty hill keeps banking
+  CHECK(!b.link.hill_ended() && b.link.hill().own_ms[0] > own_at_whistle + 20000);
+  // MC's END for game 41, 30 s late (a reconnect in the recap): the game ends at MC's whistle, exact, and the hill freezes
+  StationAssignment end = b.link.assignment(); end.game = 41; end.starts_known = false; end.ends_in_ms = 0;
   b.link.apply_station_config(end, b.t);
   b.run(1000, {});
-  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == end_at);
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == whistle);
+  CHECK(b.link.hill().own_ms[0] == own_at_whistle);  // the recap delay is not possession
   CHECK(b.link.hill_ended() && strip_role(b.state()) == StripRole::HILL_ENDED);
-  const uint32_t own = b.link.hill().own_ms[0];
   b.run(30000, {{5, 1, 41, LIVE_ALIVE, 0}});  // a blue phone that missed END builds nothing
-  CHECK(b.link.hill().owner == 0 && b.link.hill().own_ms[0] == own && b.link.hill().capturing != 1);
+  CHECK(b.link.hill().owner == 0 && b.link.hill().own_ms[0] == own_at_whistle && b.link.hill().capturing != 1);
   TallyView tv[2];
   CHECK(b.link.follower().tallies(b.link.hill(), b.t, tv) >= 1 && tv[0].game == 41 && tv[0].final);
   // the next live game takes the hill at once

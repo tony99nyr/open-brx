@@ -101,16 +101,23 @@ test('F658 review: MC re-arms a following hill as another id: the point and the 
   await api.applyStationConfig({ ...hill, game: 60 });   // back to id 9 for the tests after this one
 });
 
-test('MC END for the followed game ends it at a hill that heard no phone at END; MC END for another game does not', async () => {
+test('MC END for the followed game ends it at MC\'s whistle on a hill that heard no phone at END; MC END for another game does not', async () => {
   await api.applyStationConfig({ ...hill, game: 74 });
   stand(15000, [{ id: 3, team: RED, game: 75, live: true }]);
   assert.equal(airGame(), 75);
   assert.equal(api.point.owner, RED, 'red owns game 75');
-  stand(3000, []);   // red walks out of earshot, still live: no whistle heard here
-  await api.applyStationConfig({ ...hill, game: 74, starts_in_ms: -20000, ends_in_ms: 0 });
-  stand(1000, [{ id: 5, team: BLUE, game: 75, live: true }]);
+  await api.applyStationConfig({ ...hill, game: 74, ends_in_ms: 0 });   // the wire shape MC sends: no start
+  stand(1000, [{ id: 3, team: RED, game: 75, live: true }, { id: 5, team: BLUE, game: 75, live: true }]);
   assert.equal(api.point.contested, true, "MC's END for game 74 says nothing about game 75");
-  await api.applyStationConfig({ ...hill, game: 75, starts_in_ms: -20000, ends_in_ms: 0 });
+  // MC's START for game 75 with a whistle 5 s from now; everyone walks out of earshot, still live
+  await api.applyStationConfig({ ...hill, game: 75, starts_in_ms: -16000, ends_in_ms: 5000 });
+  stand(5000, []);
+  const ownAtWhistle = api.point.ownMs[RED];
+  stand(30000, []);   // the hill misses END: red's empty hill keeps banking
+  assert.ok(api.point.ownMs[RED] > ownAtWhistle + 20000);
+  await api.applyStationConfig({ ...hill, game: 75, ends_in_ms: 0 });   // 30 s late, a reconnect in the recap
+  stand(1000, []);
+  assert.ok(Math.abs(api.point.ownMs[RED] - ownAtWhistle) <= 250, 'the game ends at MC\'s whistle: the recap delay is not possession');
   const own = api.point.ownMs[RED];
   stand(20000, [{ id: 5, team: BLUE, game: 75, live: true }]);
   assert.equal(api.point.owner, RED, 'blue, still live in the ended game, drains nothing');
