@@ -38,6 +38,7 @@
 #include "button_controller.h" // host-tested button decisions and ordered effects
 #include "stick_state.h"    // the pure mapping: the Stick's real state -> StickState (host-tested, sim/)
 #include "led_strip.h"      // the LED strip's patterns, power cap and wire bytes (host-tested)
+#include "strip_roles.h"    // the strip's role patterns, from the screen's StickState (host-tested)
 
 using namespace brx;
 
@@ -72,6 +73,7 @@ struct Settings {
   uint8_t rxpin = IR_RX_ONBOARD;
   uint8_t strippin = 0;  // 0 = no strip; 9 or 10 = the SK6812 strip's data pin (STRIPPIN)
   uint16_t stripn = STRIP_DEFAULT_LEDS;
+  uint8_t strippower = (uint8_t)StripPower::GROVE;  // GROVE (300 mA cap) or EXT (the strip on its own 5 V)
 } settings;
 
 static void loadSettings() {
@@ -83,6 +85,7 @@ static void loadSettings() {
   settings.rxpin = prefs.getUChar("rxpin", settings.rxpin);
   settings.strippin = prefs.getUChar("strippin", settings.strippin);
   settings.stripn = prefs.getUShort("stripn", settings.stripn);
+  settings.strippower = prefs.getUChar("strippower", settings.strippower) == (uint8_t)StripPower::EXT ? (uint8_t)StripPower::EXT : (uint8_t)StripPower::GROVE;
   if (settings.stripn < 1 || settings.stripn > STRIP_MAX_LEDS) settings.stripn = STRIP_DEFAULT_LEDS;
   prefs.end();
 }
@@ -95,6 +98,7 @@ static void saveSettings() {
   prefs.putUChar("rxpin", settings.rxpin);
   prefs.putUChar("strippin", settings.strippin);
   prefs.putUShort("stripn", settings.stripn);
+  prefs.putUChar("strippower", settings.strippower);
   prefs.end();
 }
 
@@ -255,10 +259,15 @@ static void pollRx() {
 // ---- LED strip (SK6812 on a Grove pin; led_strip.h holds the patterns and the power cap) ------------ //
 // RMT at 10 MHz (100 ns a tick). SK6812: a 0 bit is 0.3 us high + 0.9 us low, a 1 bit 0.6 + 0.6, and a
 // low of at least 80 us latches the frame. 60 LEDs are 1440 bits, about 1.8 ms; rmtWrite blocks for it.
-// Every frame passes strip_cap() first: see led_strip.h for the 300 mA budget on the 0.38 A EXT_5V rail.
+// Every frame passes strip_cap() first: see led_strip.h for the budget (300 mA of the 0.38 A EXT_5V rail, or
+// 2000 mA with STRIPPOWER EXT).
+static uint32_t stripBudgetMa() { return strip_budget_ma((StripPower)settings.strippower); }
 static const uint32_t STRIP_TICK_HZ = 10000000;
 int stripPinActive = -1;
-StripPattern stripPattern = StripPattern::OFF;
+StripPattern stripPattern = StripPattern::AUTO;  // the station role; STRIP <pattern> overrides it for the bench
+StripRole stripRoleLast = StripRole::OFF;
+uint32_t stripLastFrameMs = 0;
+static StickState buildStickState(uint32_t now);  // the display section below
 int stripTeam = 0;
 uint32_t stripStartMs = 0;
 long stripWalkLast = -1;
@@ -292,6 +301,9 @@ static bool initStrip(int pin) {
 
 static void stripSend() {
   if (stripPinActive < 0) return;
+  static std::vector<Rgb> sent;
+  if (!stripDirty && sent == stripPx) return;  // an unchanged role frame costs no RMT time
+  sent = stripPx;
   const size_t n = stripPx.size();
   stripLastMa = strip_estimate_ma(stripPx.data(), n);
   strip_bytes(stripPx.data(), n, stripGrb, stripWire.data());
@@ -319,8 +331,9 @@ static void stripBlank() {
 static void printStrip() {
   Serial.printf("STRIP pin=%d n=%u pattern=%s", stripPinActive, settings.stripn, strip_pattern_name(stripPattern));
   if (stripPattern == StripPattern::TEAM) Serial.printf(" team=%d", stripTeam);
-  Serial.printf(" order=%s est_ma=%lu budget_ma=%lu\n", stripGrb ? "GRB" : "RGB", (unsigned long)stripLastMa,
-                (unsigned long)STRIP_BUDGET_MA);
+  if (stripPattern == StripPattern::AUTO) Serial.printf(" role=%s", strip_role_name(stripRoleLast));
+  Serial.printf(" order=%s power=%s est_ma=%lu budget_ma=%lu\n", stripGrb ? "GRB" : "RGB",
+                strip_power_name((StripPower)settings.strippower), (unsigned long)stripLastMa, (unsigned long)stripBudgetMa());
 }
 
 static void pollStrip(uint32_t now) {
@@ -334,10 +347,19 @@ static void pollStrip(uint32_t now) {
       Serial.printf("STRIP walk %ld\n", idx);  // LED 0 is the one nearest the plug
     }
   }
+  if (stripPattern == StripPattern::AUTO) {
+    if (!stripDirty && now - stripLastFrameMs < STRIP_FRAME_MS) return;
+    stripLastFrameMs = now;
+    StripRole role = strip_render_role(buildStickState(now), now, stripPx.data(), stripPx.size(), stripBudgetMa());
+    if (role != stripRoleLast) { stripRoleLast = role; Serial.printf("STRIP role %s\n", strip_role_name(role)); }
+    stripSend();
+    stripDirty = false;
+    return;
+  }
   if (!stripDirty) return;
-  stripDirty = false;
-  strip_render(stripPattern, stripTeam, elapsed, stripPx.data(), stripPx.size());
+  strip_render(stripPattern, stripTeam, elapsed, stripPx.data(), stripPx.size(), stripBudgetMa());
   stripSend();
+  stripDirty = false;
 }
 
 // ---- IR transmit (RMT + hardware 38 kHz carrier) ---------------------------------------------- //
@@ -888,6 +910,18 @@ static void handleLine(String line) {
     Serial.printf("STRIPN %u\n", settings.stripn);
     return;
   }
+  if (line.startsWith("STRIPPOWER ")) {
+    String m = line.substring(11); m.trim(); m.toUpperCase();
+    if (m == "GROVE") settings.strippower = (uint8_t)StripPower::GROVE;
+    else if (m == "EXT") settings.strippower = (uint8_t)StripPower::EXT;
+    else { Serial.println("ERR STRIPPOWER GROVE|EXT"); return; }
+    saveSettings();
+    stripDirty = true;
+    Serial.printf("STRIPPOWER %s budget_ma=%lu%s\n", strip_power_name((StripPower)settings.strippower),
+                  (unsigned long)stripBudgetMa(),
+                  settings.strippower == (uint8_t)StripPower::EXT ? " (the strip must have its own 5 V; see README)" : "");
+    return;
+  }
   if (line.startsWith("STRIPORDER ")) {
     String o = line.substring(11); o.trim();
     if (o == "GRB") stripGrb = true;
@@ -901,7 +935,7 @@ static void handleLine(String line) {
     String a = line.substring(6); a.trim(); a.toLowerCase();
     StripPattern pat; int team = stripTeam;
     if (!parse_strip_pattern(std::string(a.c_str()), pat, team)) {
-      Serial.println("ERR STRIP off|red|green|blue|white|walk|teams|team <0-3>");
+      Serial.println("ERR STRIP auto|off|red|green|blue|white|walk|teams|team <0-3>");
       return;
     }
     stripPattern = pat; stripTeam = team; stripStartMs = millis(); stripWalkLast = -1; stripDirty = true;
@@ -1077,7 +1111,7 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RXPIN 42|9|10 | BL <n> | RESET | r s c");
-  Serial.println("# Strip: STRIPPIN 9|10|OFF | STRIPN <n> | STRIP [off|red|green|blue|white|walk|teams|team <0-3>] | STRIPORDER GRB|RGB");
+  Serial.println("# Strip: STRIPPIN 9|10|OFF | STRIPN <n> | STRIP [auto|off|red|green|blue|white|walk|teams|team <0-3>] | STRIPPOWER GROVE|EXT | STRIPORDER GRB|RGB");
   Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK HELD(default)|MUSTER|OFF|RECONNECT | ACTIONS ON|OFF");
   Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
   IR_RX_PIN = (settings.rxpin == IR_TX_GROVE || settings.rxpin == IR_TX_GROVE_ALT) ? settings.rxpin : IR_RX_ONBOARD;

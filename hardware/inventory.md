@@ -31,6 +31,7 @@ from Mouser.
 | item | why | note |
 |---|---|---|
 | Seeed Grove RGB LED Ring, 16× WS2813 Mini | owner colour visible across a field; the Stick's LCD is not | both Seeed modules signal on Grove pin 1 (G9), so the ring takes the Grove port and the emitter moves to the HAT header via a Grove-to-Dupont cable |
+| M5Stack Unit TypeC2Grove (U151), 6 | the SK6812 strip on its own 5 V, brighter than the Grove rail allows (`STRIPPOWER EXT`, Tony 2026-11-14) | Stick Grove to the INPUT port (its 5 V and GND are not connected), the strip on CH1, the U151's USB-C from the power bank's second port. Wiring: `hardware/m5sticks3/README.md` "LED strip" |
 | Grove to 4-pin female Dupont conversion cable, 5-pack (Seeed 110990028) | puts the second Grove module on the HAT header (5 V, GND, one GPIO) | only needed once the ring is added |
 | USB-C power bank, 5,000 to 10,000 mAh | the Stick's 250 mAh is about two hours | pick one that does not auto-off at low draw |
 

@@ -317,6 +317,8 @@ struct StickState {
   int control_bar_team = -1;  // advert byte 9 when not 255: the owner while held, else the team building it
   bool control_contested = false;
   int control_dir = 0;        // +1 rising, -1 falling, 0 static
+  int control_contest_a = -1;  // while contested: the two largest teams on the point (ties to the lower tid), else -1
+  int control_contest_b = -1;
 
   // respawn (an MC-armed Bluetooth respawn station: advert state 1, revives counted here)
   bool respawn_present = false;
