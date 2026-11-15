@@ -165,3 +165,31 @@ def test_the_free_vent_a_bind_re_equip_waits_out_an_energy_rifle_lock():
             await asyncio.sleep(0)
         assert weap0 in sent, f"vented: the re-equip goes out: {sent}"
     asyncio.run(go())
+
+
+def test_polish_r2_no_f226_reload_while_the_energy_rifle_lock_holds_the_shared_heat():
+    """engine.js `_chargeLock` (polish r2): with the Energy Rifle latched, a hot Charge Rifle reading is that lock: no write."""
+    async def go():
+        clock = StageClock(); st, sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "charge_rifle"}]}}
+        st._on_ammo(201, 600, 0, 101)
+        assert st._vent_locked(), "setup: the Energy Rifle is latched"
+        st.active_slot = 1
+        st._charge_lock(1, 4, 4, 30, 156)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert not _rows(sent), sent
+        assert any("Energy Rifle's lock" in l["text"] for l in st.log)
+    asyncio.run(go())
+
+
+def test_polish_r2_a_late_echo_of_our_own_write_keeps_the_latch():
+    """ammo.js `heatLockFrame` (polish r2): a drop inside an echo window is our own write coming back, not a round."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "usp"}]}}
+        st._on_ammo(201, 600, 0, 101)
+        st._acct_wrote(0, 201, 600)
+        st._on_ammo(0, 0, 0, 65)
+        assert st._vent_locked()
+    asyncio.run(go())

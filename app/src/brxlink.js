@@ -979,7 +979,12 @@ export class BrxLink {
           sentFrames++;
           if (this.blockFrames > 0 && this.blockPauseMs > 0 && sentFrames % this.blockFrames === 0 && i < list.length) await sleep(this.blockPauseMs);
         }
-      } finally { batch.open = false; if (this._openBatch === batch) this._openBatch = null; }
+      } finally {
+        batch.open = false; if (this._openBatch === batch) this._openBatch = null;
+        // Polish r2 (Codex): a late chunk error the loop has not handled yet (a `$*` reset's own, then `shouldSend` said no)
+        // still leaves the gun's parser unsure, so the next write starts with `$*`.
+        if (batch.failed != null) this._resetOwed.add(id);
+      }
       if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
       if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return outcome('ble', false, 'chunks lost'); }
       return outcome('sent', true);

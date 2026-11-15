@@ -761,6 +761,21 @@ test('SR16: contact bounce on the press edge keeps a held lever held: the chain 
   assert.equal(gun.slot(1).mag, from + 2);
   assert.deepEqual(eng.held, {}, 'the real release let the lever go');
 });
+// Polish r2 (brx4; Codex + Opus): a bounce whose release landed just before a shell was due ended the chain at that shell, and
+// its press, just after, found no reload to keep: the lever was still held and the chain was over.
+test('SR16: a bounce across a shell deadline keeps a held lever\'s chain going', async () => {
+  const { h, eng, gun, shells } = await shotgunInHandArFiredLast(67);
+  const t0 = h.now();
+  gun.feed('$BUT,2,1,*');
+  const r = eng.am.reloading;
+  assert.ok(r && r.soft && r.chain, 'setup: the phone loads the chain');
+  await h.advance(r.ms - 1); gun.feed('$BUT,2,0,*');            // bounce: the release just before the shell
+  await h.advance(2); gun.feed('$BUT,2,1,*');                   // ...and its press just after
+  await h.advance(r.ms + 100);
+  gun.feed('$BUT,2,0,*');
+  await h.advance(3000);
+  assert.deepEqual(shells.map(t => t - t0), [r.ms, 2 * r.ms], `two shells while held: ${shells.map(t => t - t0)}`);
+});
 test('the put-back log line names a refill only when one was put back', async () => {
   const { h, gun } = await shotgunInHandArFiredLast(64, { arFull: true });   // the gun's lever has nothing to refill
   const n = h.logs.length;

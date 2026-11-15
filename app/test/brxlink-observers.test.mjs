@@ -168,3 +168,26 @@ test('review: a reset chunk that fails late, then a code error, still leaves the
   const three = link.write('$SPAWN,,*', 'three'); await settle(); assert.equal(await three, true);
   assert.deepEqual(chunks.slice(2), [PARSER_RESET, '$SPAWN,,*'], 'the failed reset is owed again');
 });
+
+// Polish r2 (brx4; Codex): the same late reset failure, then `shouldSend` says no in the frame gap. The skipped batch closed
+// without the failure, so the next write went out with no `$*` onto a parser that may hold part of a frame.
+test('review: a reset chunk that fails late, then a skipped batch, still leaves the reset owed', async ctx => {
+  const settle = useClock(ctx, 600);
+  const chunks = [];
+  const writeChunk = (id, dv) => {
+    const i = chunks.length; chunks.push(textOf(dv));
+    if (i === 0) return Promise.reject(new Error('Writing characteristic failed.'));                       // inside the cap: a reset is owed
+    if (i === 1) return new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 60));              // the reset itself fails past the cap
+    return Promise.resolve();
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, writeChunk, log: () => {}, ackCapMs: 50, frameGapMs: 100 });
+  await link.connect('A', 'GUN-A-1111');
+  const one = link.write('$PING,*', 'one'); await settle(); assert.equal(await one, false);
+  let asks = 0;
+  const two = link.write('$TID,1,*', 'two', { shouldSend: () => ++asks < 3 }); await settle();   // no after its reset
+  assert.equal(await two, null, 'setup: skipped after its reset');
+  assert.deepEqual(chunks.slice(0, 2), ['$PING,*', PARSER_RESET], 'setup: the second write sent its reset first');
+  const three = link.write('$SPAWN,,*', 'three'); await settle(); assert.equal(await three, true);
+  assert.deepEqual(chunks.slice(2), [PARSER_RESET, '$SPAWN,,*'], 'the failed reset is owed again');
+});
