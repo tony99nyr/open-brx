@@ -2369,8 +2369,8 @@ KNOWN_UNMIRRORED = {
     # A87 own_change (2026-11-07): an MC uplink fact in Domination only. The stage has no MC and sends no facts; the
     # possession clock it scores from is mirrored. The phone half is tested in app/test/engine.test.mjs.
     "hl.ownChange", "hl.ownTick",
-    # Tony 2026-11-14 (the free vent): a pickup equip's `$WEAP` waits out an Energy Rifle lock. The stage has no pickup equip;
-    # the held bind re-equip is mirrored (`_vent_holds`, `_vent_flush`, test_stage_charge_lock).
+    # Tony 2026-11-14 (the free vent): a pickup equip goes out at once and logs the heat lock it clears. The stage has no pickup
+    # equip; the held bind re-equip is mirrored (`_vent_holds`, `_vent_flush`, test_stage_charge_lock).
     "_weapWrite",
     # F665 bench switch (2026-11-03): a melee not-ready sound, off by default, tried by ear at MN1. Not mirrored while it is an
     # experiment; port it if Tony keeps it (FOLLOWUPS F665)

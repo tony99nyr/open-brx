@@ -458,7 +458,7 @@ export class PlayerPowerups {
     h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
     const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
-    // Tony 2026-11-14: `weapWrite` holds the equip while the gun reads an Energy Rifle lock (a `$WEAP` would vent it for free)
+    // Tony 2026-11-14: `weapWrite` sends at once, even on a heat-locked gun (its `$WEAP` clears the lock: accepted)
     Promise.resolve(h.weapWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
       if (ok !== false) return;
       // F417 (bench 2026-09-26): a lost equip left the gun on the old weapon ("ON TRIGGER" but the sniper fired) or
