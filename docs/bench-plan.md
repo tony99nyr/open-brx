@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-11-15. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-11-16. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 The next sitting is NEXT GAME PREP ([below](#next-game-prep-one-sitting-in-this-order-2026-11-02)), from its *Start here* list, before the next game; it includes the rest of the swap and reload sheet. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
@@ -58,6 +58,8 @@ before any step that uses the rig emitter.
 | P12 | can wait | 85 | The hit effect of accuracy, HE1-HE5, plus the 25 m set-up. It decides F662's recoil numbers before the R2 flag goes on. | [HE1-HE5](#next-the-hit-effect-of-accuracy-f662) |
 | P13 | can wait | 85 | The Energy Shotgun frame, ES0-ES5. It ships F661 (the row is hidden until then). | [ES0-ES5](#next-the-energy-shotgun-frame-f661) |
 | P14 | in the game | – | The Charge Rifle play-test (F646, option A): include it in one TDM preset, and after that match ask the players how it felt. Note who carried it and their kills. | [`balance-decisions.md`](balance-decisions.md), 2026-11-02 |
+| P16 | in the game | – | Watch two surfaces through a whole game (F644, F657). (1) The MC console updates by itself across match end, the recap and PLAY AGAIN, on every open tab, with no reload. Note each reload that was needed and what the tab showed. (2) After a KOTH match, the phone FINAL screen and the history headline the held time, with `KILLS n` under it, and the MC recap leads with hill time. | FOLLOWUPS F644, F657 |
+| P17 | before a game on the Mac, and once on a Windows-native start | 5 | F660: `./start.sh` on the MacBook (and `start.cmd` on Windows, not WSL) prints one `keep-awake:` line that says held. On the Mac, unplug the charger before the start: the line warns about battery. Then leave the laptop idle for 15 min with the lid open: it does not sleep and the console still answers. | FOLLOWUPS F660; `mcp/brx_mcp/mc/keepawake.py` |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
 
