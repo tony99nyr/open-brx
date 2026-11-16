@@ -149,6 +149,18 @@ static void an_owned_hill_is_solid_and_pulses_slowly() {
   CHECK_EQ(strip_pulse_pct(STRIP_PULSE_MS / 2), 100u);
 }
 
+// Tony 2026-11-15 (bench on 419e5707c, via brx1): an owned hill that scores nothing is steady at 15 % of the owner colour,
+// well under the pulse's low level, so a glance tells it from a scoring hill.
+static void an_idle_owned_hill_is_steady_at_15_percent() {
+  auto scoring = hill(2, 2, 100);
+  auto idle = scoring; idle.control_scoring = false;
+  CHECK(strip_role(idle) == StripRole::HILL_OWNED_IDLE);
+  const Rgb peak = role_frame(scoring, STRIP_PULSE_MS / 2)[0];
+  auto a = role_frame(idle, 0), b = role_frame(idle, STRIP_PULSE_MS / 2);
+  CHECK(a[0] == b[0] && a[0] == a[59]);  // steady: no breath
+  CHECK(a[0] == strip_scale(peak, 15, 100));
+}
+
 static void a_contested_hill_flashes_the_two_teams_in_turn() {
   auto s = hill(0, 0, 100);
   s.control_contested = true;
@@ -280,6 +292,7 @@ int main() {
   a_neutral_hill_is_dim_white();
   a_capture_fills_the_strip_in_the_capturers_colour_at_the_progress();
   an_owned_hill_is_solid_and_pulses_slowly();
+  an_idle_owned_hill_is_steady_at_15_percent();
   a_contested_hill_flashes_the_two_teams_in_turn();
   a_respawn_is_steady_and_flashes_brighter_on_a_respawn();
   a_ready_powerup_chases_and_a_spent_one_refills_dark();

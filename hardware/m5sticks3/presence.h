@@ -755,9 +755,11 @@ class BleControlPoint {
 // ---- F658 game end (control.js noteGameEnd / followSwitch): one rule for the hill and the powerup follower ---------
 // Tony 2026-11-07: a following station never leaves its current game for another while the current game is live. The
 // current game ENDS here when a player this station heard live in it advertises without the live bit (its whistle; a
-// countdown phone was never heard live, so it cannot end a game), or when no live player of it has been heard for
-// HILL_RING_STALE_MS (10 min). Only an in-scope advert of the current byte counts. Then the strongest other live game
-// takes the station at once; the first follow takes a game at once too. Not saved: a restart has heard no one live yet.
+// countdown phone was never heard live, so it cannot end a game), or, for a hill, when MC's END names it
+// (HillFollower::end_by_mc). Only an in-scope advert of the current byte counts. 10 minutes (HILL_RING_STALE_MS) with no
+// live player of it heard also ends it, but only once another live game is heard (switch_now): silence alone never
+// ends a game. Then the strongest other live game takes the station at once; the first follow takes a game at once too.
+// Not saved: a restart has heard no one live yet.
 struct FollowEnd {
   uint64_t live_ids = 0;  // bit n: player n heard live in the current game (player_num 1..63)
   bool ended = false;
@@ -946,11 +948,20 @@ class HillFollower {
       if (!have || (int32_t)(t - at) < 0) at = t;
       have = true;
     }
-    if (have) {
-      if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
-      end.has_end_at = true;
-      end.end_exact = true;
-    }
+    if (have) end_at_earliest(at);
+  }
+  void end_at_earliest(uint32_t at) {
+    if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
+    end.has_end_at = true;
+    end.end_exact = true;
+  }
+  // brx1 2026-11-15 (H6 follow-up; control.js endByMc): MC's END (`ends_in_ms:0`) names the game it ends. For the followed
+  // game it ends that game here at `at`, as a whistle heard would, so a hill that heard no phone at END still freezes.
+  // MC's END for another game says nothing about the followed one; game 0 (unscoped) never matches.
+  void end_by_mc(uint8_t game, uint32_t at) {
+    if (!follows || !has_current || game == 0 || game != current) return;
+    end.ended = true;
+    end_at_earliest(at);
   }
   // A88: control.js tallies: the current game's, then the most recently heard other game with a saved state, heard within
   // stale_ms. Returns how many (0..2).

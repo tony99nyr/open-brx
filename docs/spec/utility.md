@@ -705,8 +705,11 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    ends at the station when either:
    - a player the station heard live in that game advertises without the live bit (its whistle). A countdown phone
      was never heard live, so it cannot end a game. A phone that missed MC's END still drops the bit at its own time
-     limit; or
-   - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes).
+     limit;
+   - for a hill, MC's END (`ends_in_ms: 0`) names that game's byte (brx1 2026-11-15). This ends the game at a hill
+     that heard no phone at END. MC's END for another byte, or for game 0, is ignored; or
+   - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes), and another live game is
+     heard. Silence alone never ends a game.
    Only an in-scope advert of the current game's own byte counts, so no advert of another game can end it, however
    strong. Once the current game has ended, the strongest other live game takes the station at once, so the next
    game loses no time. The end evidence is saved with the follower, so a restart keeps it; after a power-on every
@@ -716,8 +719,9 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    `presence.h` `FollowEnd`).
 3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
    A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
-   The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
-   the current game's byte, so that game's phones read it.
+   The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, and no freeze at MC's deadline. The
+   hill freezes when the current game ends (item 2), and MC's END for that game's byte is one of the ends. The hill
+   advertises the current game's byte, so that game's phones read it.
 4. **The tally ring.** The hill keeps one point state per game byte and the last time each byte was heard, at most
    `HILL_RING_SIZE` (4). Each entry keeps the owner, the progress and the team building it, the last owner and the
    possession and owned tallies per team (`hold_ms`, `own_ms`). The phone also keeps its capture log; the Stick has no capture log. A byte heard again

@@ -334,6 +334,8 @@ function applyHillClock(cfg, now, sameStation = true) {
   else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
   else if (!liveResend) settings.hillEndsAt = null;
   if (wasFrozen && !frozenAtWhistle()) { point.at = null; point.heldBy = null; }
+  // Following: MC's END for the followed game ends it here, at MC's whistle when that has passed (set just above)
+  if (cfg.ends_in_ms === 0) follower.endByMc(settings.game, settings.hillEndsAt);
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,

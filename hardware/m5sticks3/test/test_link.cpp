@@ -3314,6 +3314,42 @@ static void test_h6_a_following_hill_ends_with_its_game() {
   CHECK(b.link.hill().capturing == 1 && b.link.hill().progress > 0);
 }
 
+// brx1 2026-11-15 (H6 follow-up): a following hill that hears no phone at END (every phone of the game out of range at
+// the whistle) still ends with its game when MC's END names the followed game. MC's END for another game, or for game 0
+// (unscoped), says nothing about the followed one.
+static void test_mc_end_for_the_followed_game_ends_a_following_hill() {
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
+  // MC's END for another game (the wire shape MC sends: ends_in_ms 0, no start): ignored
+  StationAssignment other = b.link.assignment(); other.game = 40; other.ends_in_ms = 0;
+  b.link.apply_station_config(other, b.t);
+  b.run(1000, {});
+  CHECK(!b.link.hill_ended() && !b.link.follower().end.ended);
+  // MC's START for game 41 with a whistle 5 s from now; red walks out of earshot, still live, so no whistle is heard
+  StationAssignment start = b.link.assignment(); start.game = 41; start.starts_known = true; start.starts_in_ms = -21000; start.ends_in_ms = 5000;
+  b.link.apply_station_config(start, b.t);
+  const uint32_t whistle = b.t + 5000;
+  b.run(5000, {});
+  const uint32_t own_at_whistle = b.link.hill().own_ms[0];
+  b.run(30000, {});  // the Stick misses END: red's empty hill keeps banking
+  CHECK(!b.link.hill_ended() && b.link.hill().own_ms[0] > own_at_whistle + 20000);
+  // MC's END for game 41, 30 s late (a reconnect in the recap): the game ends at MC's whistle, exact, and the hill freezes
+  StationAssignment end = b.link.assignment(); end.game = 41; end.starts_known = false; end.ends_in_ms = 0;
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == whistle);
+  CHECK(b.link.hill().own_ms[0] == own_at_whistle);  // the recap delay is not possession
+  CHECK(b.link.hill_ended() && strip_role(b.state()) == StripRole::HILL_ENDED);
+  b.run(30000, {{5, 1, 41, LIVE_ALIVE, 0}});  // a blue phone that missed END builds nothing
+  CHECK(b.link.hill().owner == 0 && b.link.hill().own_ms[0] == own_at_whistle && b.link.hill().capturing != 1);
+  TallyView tv[2];
+  CHECK(b.link.follower().tallies(b.link.hill(), b.t, tv) >= 1 && tv[0].game == 41 && tv[0].final);
+  // the next live game takes the hill at once
+  b.run(3000, {{6, 1, 42, LIVE_ALIVE, 0}});
+  CHECK(!b.link.hill_ended() && b.link.hill_game() == 42 && b.link.hill().capturing == 1);
+}
+
 // Tony 2026-11-15 (option 1; F554 scores an owned hill only while a living owner player is counted on it, not
 // contested): the strip pulses only while the owner scores, and the screen's HELD clock counts only that time.
 static void test_owned_hill_shows_scoring_only_while_the_owner_scores() {
@@ -3360,6 +3396,7 @@ int main(int argc, char** argv) {
   test_hill_ring_keeps_the_current_game_end();
   test_f658_hill_follows_the_live_game();
   test_h6_a_following_hill_ends_with_its_game();
+  test_mc_end_for_the_followed_game_ends_a_following_hill();
   test_owned_hill_shows_scoring_only_while_the_owner_scores();
   test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();

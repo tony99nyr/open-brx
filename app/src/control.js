@@ -531,7 +531,16 @@ export class HillFollower {
     noteGameEnd(this, p);
     let at = !was && this.ended ? heardAt : null;
     if (code) { this.ended = true; at = at == null ? t : Math.min(at, t); }
-    if (at != null) { this.endAt = this.endAt == null ? at : Math.min(this.endAt, at); this.endExact = true; }
+    if (at != null) this._endAtEarliest(at);
+  }
+  _endAtEarliest(at) { this.endAt = this.endAt == null ? at : Math.min(this.endAt, at); this.endExact = true; }
+  /** brx1 2026-11-15 (H6 follow-up; presence.h `end_by_mc`): MC's END (`ends_in_ms: 0`) for the followed game ends it here
+   *  at `at`, as a whistle heard would, so a hill that heard no phone at END still holds. MC's END for another game says
+   *  nothing about the followed one; game 0 (unscoped) never matches. */
+  endByMc(game, at) {
+    if (!this.follows || this.current == null || !game || game !== this.current) return;
+    this.ended = true;
+    this._endAtEarliest(at);
   }
   /** A88: the tallies the hill advertises: the current game, then its most recently heard other game (a game it switched
    *  away from, so one that ended here) when heard within `staleMs`. `{ game, final, ownMs }` each. */

@@ -77,7 +77,8 @@ advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows th
 A Stick hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones on an app with F658
 set the `live` bit (advert byte 10, 128) from go-live to the whistle. Once the hill hears any live-bit player it
 follows the newest live game (`presence.h` `HillFollower`, the same rules as `control.js`): it counts only live-bit
-players of that game, advertises that game's byte, and ignores MC's timing (no WAITING, no MATCH OVER freeze). It
+players of that game, advertises that game's byte, and ignores MC's go-live and deadline (no WAITING). It freezes at MATCH OVER when the
+followed game ends here: a whistle or end info heard from a phone of it, or MC's END for that game's byte. It
 keeps one tally per game byte, four at most; a byte unheard for 10 minutes starts fresh. Presence is keyed by game
 and player number while a hill is assigned. The ring is saved in NVS as `hill_ring` (`encode_hill_ring`) when follow
 mode starts, on a game switch, on a change of owner and at most every 30 s while the tally grows, and restored at boot
@@ -161,9 +162,9 @@ bench HILL shows it too):
 | hill, neutral or waiting to open | dim white |
 | hill, being captured (or drained) | fills from LED 0 in that team's colour, at the capture progress; the rest dim white |
 | hill, owned and scoring (`hill-owned`) | solid owner colour, a slow 2 s pulse. Only while a living owner player is counted on the point and no other team is (F554: only then does the owner score) |
-| hill, owned and not scoring (`hill-owned-idle`) | the owner's colour, steady at the pulse's low level (40 %), no pulse: nobody of the owner is on the point. Tony 2026-11-15, option 1 |
+| hill, owned and not scoring (`hill-owned-idle`) | the owner's colour, steady at 15 % (`STRIP_OWNED_IDLE_PCT`), no pulse: nobody of the owner is on the point. Tony 2026-11-15, option 1 |
 | hill, contested | the two largest teams' colours in turn, 400 ms each |
-| hill, game over (`hill-ended`) | the owner's colour, dim (a third) and still. A hill that follows the live game (F658) ends when it hears the game end: a whistle or end info from a phone of it. A quiet spell is no end (in Domination the players may be at other hills), so a hill that hears no phone at the end stays owned until the next game takes it |
+| hill, game over (`hill-ended`) | the owner's colour, dim (a third) and still. A hill that follows the live game (F658) ends when the game ends: a whistle or end info heard from a phone of it, or MC's END for that game's byte. A quiet spell is no end (in Domination the players may be at other hills), so a hill that hears neither stays owned until the next game takes it |
 | respawn | steady team colour at half the budget; a full-budget flash on each respawn (only with the post-MVP revive feedback) |
 | power-up, ready | a chase in the item's colour |
 | power-up, refilling | dark, with a dim bar that grows to full at the next spawn; off once the match is over |
