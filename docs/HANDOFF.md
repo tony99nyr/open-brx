@@ -15,10 +15,15 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 
 ## Lane: brx1, orchestration
-**State:** 2026-10-28: the MVP desk is empty (F630 to F635 closed). Tony's calls: the marksman rush test is relative with the shipped Sniper as the baseline (F578), F607 moved to post-MVP, and F324 stays behaviour-level only. The doc accuracy, DRY and archive pass landed in four lanes (docs/ about 441 KB smaller, contracts.md 280 to 192 KB, every review P1 re-checked gone on main). The 0.4.30 notes are on main, untagged. The Stick IR range results of 2026-10-24 are in the log.
-**Next:** build the 0.4.30 APK locally from main (Tony asked); publish only on his separate yes. Then F580 (victim-side melee and Shotgun cutoffs) and the Stick-to-Stick IR range.
-**Blocked:** B21 on the MacBook; publishing waits for Tony's go. Power-cycle the gun after a CLI `deathmatch` run: the
-Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
+**State (2026-11-15):** the 2026-11-14/15 bench is recorded (log 2026-11-14/15, `bench-plan.md` *Start here*). The SR
+sheet passed on 0.4.43 and 0.4.44 after the fixes it found: the revive P0, Easy Reload's 97 row, ALT bounce, the bind
+on time, the Shotgun hold-to-chain and the heat HUD. The Stick strip hill passed H1 to H6 and PU. 0.4.44 (main
+`0d8802917`) is on the three bench phones, local only. New rows: F671 to F674. Branch `brx1-stick-idle-8`
+(`286bbd269`, idle 8 % and the scoring band, Tony: "perfect") is not on main. `~/wt-heat` holds brx3's uncommitted
+Energy Rifle heat numbers (F575 note).
+**Next:** land `brx1-stick-idle-8`. Build the next APK from main (the phones lack `acb16124b`). Then the re-bench in
+`bench-plan.md` *Start here*: SR23 taps, SR22, SR5 part 3, SR13, P2 parts 2 and 5, H7.
+**Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State (2026-11-02):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
