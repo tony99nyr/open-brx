@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F675 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F676 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -67,6 +67,7 @@ A keyboard is enough. Highest value first.
 - **F670 🟡 THE PHONE HILL HAS NO MATCH OVER SCREEN WHEN ITS FOLLOWED GAME ENDS.** brx-hill-strip 2026-11-15, from bench H6. The Stick hill now shows MATCH OVER and the `hill-ended` strip when its followed game ends (a whistle or end info heard, or MC's END for that game). The phone hill (`utility.js`) stops counting at the same end, but its screen still shows the owned point. Fix: an ended state on the phone hill screen, the same words as the Stick. It is a UI change, so a storyboard goes to Tony first. Owner brx4. `desk`.
 - **F671 🟡 MC'S DELETE OF A STATION DOES NOT REACH THE STICK.** Bench 2026-11-15 (H7 set-up, brx1). `DELETE /api/stations` sent the Stick no message, so it stayed MC-ARMED as a control station in `hill-owned` until a reboot or a new assignment. An unassigned Stick keeps playing its last hill. Fix: MC tells the station it is unassigned (or the console says the Stick keeps its role until a reboot); a test that a DELETE sends the Stick a message. Owner brx4. `desk`. [log 2026-11-14/15](experiment-log/2026-11.md).
 - **F674 🟡 A STICK HILL THAT MISSES END KEEPS THE OLD GAME.** brx-hill-strip 2026-11-15, after F658's MC END fix (`ba164bad4`); follows F386. (1) A Stick that hears neither MC's END nor a phone of the followed game keeps that game until 10 min of silence. (2) After a Stick reboot, a late MC END ends the hill at the time the Stick gets it, not at MC's whistle (the phone uses MC's whistle). Fix: decide whether (1) needs a shorter silence end, and send MC's whistle time with a late END. Owner brx4. `desk`. [log 2026-11-14/15](experiment-log/2026-11.md).
+- **F675 🟢 A 144-LED STICK STRIP AT THE GROVE CAP CANNOT SHOW FOUR IDLE HILL COLOURS.** brx1 2026-11-15. At the 300 mA Grove cap, the 8 % owned-idle hill on a 144-LED strip shows red and yellow both as (1,0,0), and blue and purple both as (0,0,1). Four distinct idle colours there need `STRIPPOWER EXT`. The 60-LED strip in use keeps all four apart. Fix: a floor per channel at idle, or document EXT for a long strip. Owner brx4. `desk`. [log 2026-11-14/15](experiment-log/2026-11.md).
 
 ## MVP BENCH
 
