@@ -18,10 +18,10 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 **State (2026-11-15):** the 2026-11-14/15 bench is recorded (log 2026-11-14/15, `bench-plan.md` *Start here*). The SR
 sheet passed on 0.4.43 and 0.4.44 after the fixes it found: the revive P0, Easy Reload's 97 row, ALT bounce, the bind
 on time, the Shotgun hold-to-chain and the heat HUD. The Stick strip hill passed H1 to H6 and PU. 0.4.44 (main
-`0d8802917`) is on the three bench phones, local only. New rows: F671 to F674. Branch `brx1-stick-idle-8`
-(`286bbd269`, idle 8 % and the scoring band, Tony: "perfect") is not on main. `~/wt-heat` holds brx3's uncommitted
+`0d8802917`) is on the three bench phones, local only. New rows: F671 to F675. The Stick strip's idle 8 % and
+scoring band (Tony: "perfect") are on main (`3c8b06008`), and the bench Stick runs that build. `~/wt-heat` holds brx3's uncommitted
 Energy Rifle heat numbers (F575 note).
-**Next:** land `brx1-stick-idle-8`. Build the next APK from main (the phones lack `acb16124b`). Then the re-bench in
+**Next:** build the next APK from main (the phones lack `acb16124b` and `04147c037`). Then the re-bench in
 `bench-plan.md` *Start here*: SR23 taps, SR22, SR5 part 3, SR13, P2 parts 2 and 5, H7.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 
