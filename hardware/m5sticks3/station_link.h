@@ -1939,6 +1939,12 @@ class StationLink {
     // 0-is-never-real sentinel that excluded exactly this case.
     bool game_changed = !assignment_.present || assignment_.game != a.game;
     bool changed = kind_or_id_changed || assignment_.team != a.team || game_changed;
+    // MC arms a new game after its last one's whistle: a following hill that missed MC's END for that game ends it here
+    // at the whistle, as the END would, so the next live game takes the hill at once and not after 10 minutes of silence.
+    // Only a whistle that has passed: a fresh MC (RESUME MATCH) can arm another byte while the old game is still live.
+    if (a.kind == "control" && !kind_or_id_changed && game_changed && deadline_known_ &&
+        (int32_t)(received_at_ms - hill_deadline_ms_) >= 0)
+      follower_.end_by_mc((uint8_t)assignment_.game, hill_deadline_ms_);
     // Polish round 3: a new GAME is a new match, and a match's spawn schedule starts again from first_at_s, so the
     // taker and anchor of the last match must not carry over (under MUSTER no station_update can arrive to correct it
     // before play). Only a same-game re-push (the same config sent again) keeps the schedule.
@@ -1969,6 +1975,8 @@ class StationLink {
     }
     if (a.kind == "control" && a.starts_known) {
       if (a.starts_in_ms > 0 && hill_live_ && !follower_.follows) hill_.reset();   // F658: following, the live bit is the window
+      // A countdown START for a game that already ended here is a new match on a reused byte
+      if (a.starts_in_ms > 0) follower_.restart_ended((uint8_t)a.game, hill_, received_at_ms);
       heard_start_ = true;
       mc_start_known_ = true;
       duration_anchor_known_ = false;

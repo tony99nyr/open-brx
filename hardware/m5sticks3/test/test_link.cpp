@@ -3319,6 +3319,8 @@ static void test_h6_a_following_hill_ends_with_its_game() {
 // (unscoped), says nothing about the followed one.
 static void test_mc_end_for_the_followed_game_ends_a_following_hill() {
   FollowHillBench b;
+  StationAssignment armed40 = b.link.assignment(); armed40.game = 40;  // MC's game is 40; the hill will follow 41
+  b.link.apply_station_config(armed40, b.t);
   b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
   CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
   // MC's END for another game (the wire shape MC sends: ends_in_ms 0, no start): ignored
@@ -3348,6 +3350,81 @@ static void test_mc_end_for_the_followed_game_ends_a_following_hill() {
   // the next live game takes the hill at once
   b.run(3000, {{6, 1, 42, LIVE_ALIVE, 0}});
   CHECK(!b.link.hill_ended() && b.link.hill_game() == 42 && b.link.hill().capturing == 1);
+}
+
+// A following hill that misses MC's END for its game still ends that game when MC arms the next one: MC arms a new game
+// only after the last one is over. Without it the old game held the hill until 10 minutes of silence, and the next live
+// game could not take it.
+static void test_mc_arming_a_new_game_ends_a_missed_end() {
+  FollowHillBench b;
+  StationAssignment start = b.link.assignment(); start.starts_known = true; start.starts_in_ms = 0; start.ends_in_ms = 20000;
+  b.link.apply_station_config(start, b.t);
+  const uint32_t whistle = b.t + 20000;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
+  b.run(30000, {});  // red walks out of earshot, still live; the Stick misses END
+  CHECK(!b.link.follower().end.ended);
+  StationAssignment next = b.link.assignment(); next.game = 42; next.starts_known = false; next.ends_in_ms = -1;
+  b.link.apply_station_config(next, b.t);
+  CHECK(b.link.follower().end.ended && b.link.follower().end.end_at == whistle);  // at MC's whistle, not at the arming
+  b.run(1000, {});
+  CHECK(b.link.hill_ended());
+  b.run(3000, {{6, 1, 42, LIVE_ALIVE, 0}});  // the next live game takes the hill at once
+  CHECK(!b.link.hill_ended() && b.link.hill_game() == 42 && b.link.hill().capturing == 1);
+}
+
+// A game the hill follows but MC did not arm it with is not MC's to end: MC arming another game leaves it live.
+static void test_mc_arming_leaves_a_game_it_did_not_arm() {
+  FollowHillBench b;  // MC armed game 41
+  b.run(20000, {{3, 0, 45, LIVE_ALIVE, 0}});  // the hill follows game 45 (another MC, or hand-played)
+  CHECK(b.link.hill_game() == 45 && b.link.hill().owner == 0);
+  StationAssignment next = b.link.assignment(); next.game = 42;
+  b.link.apply_station_config(next, b.t);
+  CHECK(!b.link.follower().end.ended);
+  b.run(5000, {{3, 0, 45, LIVE_ALIVE, 0}});
+  CHECK(!b.link.hill_ended() && b.link.hill().owner == 0);
+}
+
+// A fresh MC (RESUME MATCH after a crash) can arm another byte while the followed game is still live, before its
+// whistle. That arming must not end the live game.
+static void test_mc_arming_before_the_whistle_leaves_the_live_game() {
+  FollowHillBench b;
+  StationAssignment start = b.link.assignment(); start.starts_known = true; start.starts_in_ms = 0; start.ends_in_ms = 600000;
+  b.link.apply_station_config(start, b.t);
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  StationAssignment fresh = b.link.assignment(); fresh.game = 1; fresh.starts_known = false; fresh.ends_in_ms = -1;
+  b.link.apply_station_config(fresh, b.t);
+  CHECK(!b.link.follower().end.ended);
+  const uint32_t own = b.link.hill().own_ms[0];
+  b.run(5000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(!b.link.hill_ended() && b.link.hill_game() == 41 && b.link.hill().own_ms[0] > own);
+}
+
+// An MC session reset can reuse a game byte. A countdown START for the followed game after it ended here is a new match:
+// the hill starts it fresh and counts at once, not after 10 minutes of silence on that byte.
+static void test_a_countdown_start_restarts_an_ended_followed_game() {
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  StationAssignment end = b.link.assignment(); end.ends_in_ms = 0;
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.hill_ended() && b.link.hill().owner == 0);
+  StationAssignment other = b.link.assignment(); other.game = 41; other.starts_known = true; other.starts_in_ms = -5000; other.ends_in_ms = 60000;
+  b.link.apply_station_config(other, b.t);
+  b.run(1000, {});
+  CHECK(b.link.hill_ended());  // a LIVE re-send (start already past) is not a new match
+  StationAssignment again = b.link.assignment(); again.game = 41; again.starts_known = true; again.starts_in_ms = 5000; again.ends_in_ms = 600000;
+  b.link.apply_station_config(again, b.t);
+  CHECK(!b.link.follower().end.ended && b.link.hill().owner == contract::STATION_TEAM_ANY);
+  b.run(5000, {});
+  b.run(5000, {{5, 1, 41, LIVE_ALIVE, 0}});  // blue goes live in the new match on byte 41
+  CHECK(!b.link.hill_ended() && b.link.hill_game() == 41 && b.link.hill().capturing == 1);
+  // Codex review: a reused byte the hill switched away from keeps no saved tally of the old match
+  b.run(3000, {{5, 1, 41, 0, 0}, {6, 0, 42, LIVE_ALIVE, 0}});
+  CHECK(b.link.hill_game() == 42 && b.link.follower().get(41) && b.link.follower().get(41)->has_snap);
+  StationAssignment reuse = b.link.assignment(); reuse.game = 41; reuse.starts_known = true; reuse.starts_in_ms = 5000; reuse.ends_in_ms = 600000;
+  b.link.apply_station_config(reuse, b.t);
+  CHECK(!b.link.follower().get(41)->has_snap && b.link.hill_game() == 42);
 }
 
 // Tony 2026-11-15 (option 1; F554 scores an owned hill only while a living owner player is counted on it, not
@@ -3397,6 +3474,10 @@ int main(int argc, char** argv) {
   test_f658_hill_follows_the_live_game();
   test_h6_a_following_hill_ends_with_its_game();
   test_mc_end_for_the_followed_game_ends_a_following_hill();
+  test_mc_arming_a_new_game_ends_a_missed_end();
+  test_mc_arming_leaves_a_game_it_did_not_arm();
+  test_mc_arming_before_the_whistle_leaves_the_live_game();
+  test_a_countdown_start_restarts_an_ended_followed_game();
   test_owned_hill_shows_scoring_only_while_the_owner_scores();
   test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();

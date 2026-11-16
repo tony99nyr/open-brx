@@ -275,6 +275,13 @@ async function applyStationConfig(body) {
   // F658: a following hill keeps its tally ring; the live bit decides which game it counts, not this arming.
   // F658 review (2026-11-06): another kind or id is another station, so its point and ring go, as the Stick's
   // apply_station_config does. Kept, the ring reported the old station's tallies under the new id.
+  // MC arms a new game after its last one's whistle: a following hill that missed MC's END for that game ends it here at
+  // the whistle, as the END would, so the next live game takes the hill at once and not after 10 minutes of silence
+  // (station_link.h does the same). Only a whistle that has passed: a fresh MC (RESUME MATCH) can arm another byte while
+  // the old game is still live. MC's last armed game, never a byte the drawer set.
+  const mcGame = settings.mcArmed ? settings.mcArmed.game : null;
+  if (sameStation && cfg.kind === 'control' && mcGame != null && cfg.game !== mcGame && settings.hillEndsAt != null && settings.hillEndsAt <= stationNow())
+    follower.endByMc(mcGame, settings.hillEndsAt);
   if (!sameStation) resetPoint(`MC armed ${cfg.kind} ${cfg.id}`);
   else if (settings.game !== wasGame && !(cfg.kind === 'control' && follower.follows)) resetPoint(`MC armed game ${settings.game}`);
   if (settings.game !== wasGame) { wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
@@ -323,6 +330,7 @@ function applyHillClock(cfg, now, sameStation = true) {
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
     if (cfg.starts_in_ms > 0 && counting && counted && !follower.follows) resetPoint('MC START: the lobby and the countdown score nothing');   // F658: following, the live bit is the window
     settings.hillStartsAt = now + cfg.starts_in_ms;
+    if (cfg.starts_in_ms > 0) follower.restartEnded(settings.game, point, now);   // a new match on a reused byte
     if (cfg.starts_in_ms > 0 && !follower.follows) { point.at = null; _hillWaited = true; }   // anchor at go-live even if no tick runs before it (F658: not while following)
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
   // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
