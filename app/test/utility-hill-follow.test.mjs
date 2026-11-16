@@ -145,3 +145,35 @@ test('bench H6: once the followed game ends here, a phone that missed END builds
   assert.equal(airGame(), 72, 'the next live game takes the hill');
   assert.equal(api.point.capturing, BLUE, 'and counts at once');
 });
+
+test('MC arming a new game ends the followed game whose END the hill missed, at MC\'s whistle', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });   // another id forgets every game, then MC's game 90
+  await api.applyStationConfig({ ...hill, game: 90, starts_in_ms: 0, ends_in_ms: 20000 });
+  stand(20000, [{ id: 7, team: RED, game: 90, live: true }]);
+  assert.equal(airGame(), 90);
+  assert.equal(api.point.owner, RED, 'red owns game 90');
+  const ownAtWhistle = api.point.ownMs[RED];
+  stand(30000, []);   // red walks out of earshot, still live; the hill misses END
+  await api.applyStationConfig({ ...hill, game: 91 });   // MC arms the next game
+  stand(1000, []);
+  assert.ok(Math.abs(api.point.ownMs[RED] - ownAtWhistle) <= 250, 'game 90 ends at MC\'s whistle, not at the arming');
+  stand(3000, [{ id: 8, team: BLUE, game: 91, live: true }]);
+  assert.equal(airGame(), 91, 'the next live game takes the hill at once');
+  assert.equal(api.point.capturing, BLUE);
+});
+
+test('a countdown START for the followed game after it ended here starts a new match on that byte', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });
+  await api.applyStationConfig({ ...hill, game: 92 });
+  stand(20000, [{ id: 12, team: RED, game: 92, live: true }]);
+  assert.equal(api.point.owner, RED);
+  await api.applyStationConfig({ ...hill, game: 92, ends_in_ms: 0 });   // MC END
+  stand(1000, []);
+  await api.applyStationConfig({ ...hill, game: 92, starts_in_ms: -5000, ends_in_ms: 60000 });   // a LIVE re-send
+  assert.equal(api.point.owner, RED, 'a re-send whose start is past is not a new match');
+  await api.applyStationConfig({ ...hill, game: 92, starts_in_ms: 5000, ends_in_ms: 600000 });   // MC reset reused 92
+  assert.equal(api.point.owner, 255, 'the new match on byte 92 starts neutral');
+  stand(5000, [{ id: 13, team: BLUE, game: 92, live: true }]);
+  assert.equal(airGame(), 92);
+  assert.equal(api.point.capturing, BLUE, 'and counts at once');
+});

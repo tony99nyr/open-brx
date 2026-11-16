@@ -542,6 +542,17 @@ export class HillFollower {
     this.ended = true;
     this._endAtEarliest(at);
   }
+  /** presence.h `restart_ended`: MC's countdown START for the followed game, once that game has ended here, is a new match
+   *  on the same byte (an MC session reset reuses bytes). It starts fresh at `now`, as the byte back after `staleMs` does,
+   *  so the new match counts at once and end info from the old one says nothing about it. True when it did. */
+  restartEnded(game, point, now) {
+    if (!this.follows || this.current == null || !game || game !== this.current || !this.ended) return false;
+    startGameEnd(this);
+    loadPoint(point, null);
+    const e = this.games.get(this.current);
+    if (e) { e.snap = null; e.since = now; }
+    return true;
+  }
   /** A88: the tallies the hill advertises: the current game, then its most recently heard other game (a game it switched
    *  away from, so one that ended here) when heard within `staleMs`. `{ game, final, ownMs }` each. */
   tallies(point, now) {

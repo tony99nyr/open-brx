@@ -1738,6 +1738,10 @@ class StationLink {
     hill_deadline_ms_ = now_ms + (uint32_t)assignment_.duration_ms;
     return true;
   }
+  // MC's deadline for the armed game when it has passed by `now`, else `now`: the recap delay is not possession
+  uint32_t passed_whistle_or(uint32_t now) const {
+    return deadline_known_ && (int32_t)(now - hill_deadline_ms_) >= 0 ? hill_deadline_ms_ : now;
+  }
   // The ms left on a duration hill's running clock, for SavedHillClock: -1 when none runs (no duration, not
   // yet anchored or live, or a restored hill still waiting), 0 once the hill froze.
   int32_t hill_clock_remaining_ms(uint32_t now_ms) const {
@@ -1939,6 +1943,10 @@ class StationLink {
     // 0-is-never-real sentinel that excluded exactly this case.
     bool game_changed = !assignment_.present || assignment_.game != a.game;
     bool changed = kind_or_id_changed || assignment_.team != a.team || game_changed;
+    // MC arms a new game only after its last one is over. A following hill that missed MC's END for that game ends it
+    // here, as the END would, so the next live game takes the hill at once and not after 10 minutes of silence.
+    if (a.kind == "control" && !kind_or_id_changed && game_changed)
+      follower_.end_by_mc((uint8_t)assignment_.game, passed_whistle_or(received_at_ms));
     // Polish round 3: a new GAME is a new match, and a match's spawn schedule starts again from first_at_s, so the
     // taker and anchor of the last match must not carry over (under MUSTER no station_update can arrive to correct it
     // before play). Only a same-game re-push (the same config sent again) keeps the schedule.
@@ -1969,6 +1977,8 @@ class StationLink {
     }
     if (a.kind == "control" && a.starts_known) {
       if (a.starts_in_ms > 0 && hill_live_ && !follower_.follows) hill_.reset();   // F658: following, the live bit is the window
+      // A countdown START for a followed game that already ended here is a new match on a reused byte
+      if (a.starts_in_ms > 0) follower_.restart_ended((uint8_t)a.game, hill_, received_at_ms);
       heard_start_ = true;
       mc_start_known_ = true;
       duration_anchor_known_ = false;
@@ -1995,8 +2005,7 @@ class StationLink {
     }
     // MC's END for a following hill ends its game at this time: MC's deadline for the same game when it has passed (the
     // recap delay is not possession, as utility.js `applyHillClock` says), else now. Read before the block below drops it.
-    const uint32_t mc_end_at = deadline_known_ && !kind_or_id_changed && !game_changed &&
-                               (int32_t)(received_at_ms - hill_deadline_ms_) >= 0 ? hill_deadline_ms_ : received_at_ms;
+    const uint32_t mc_end_at = !kind_or_id_changed && !game_changed ? passed_whistle_or(received_at_ms) : received_at_ms;
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
         (a.duration_ms > 0 && !duration_anchor_known_)) {

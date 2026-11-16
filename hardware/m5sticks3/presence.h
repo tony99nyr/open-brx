@@ -755,8 +755,8 @@ class BleControlPoint {
 // ---- F658 game end (control.js noteGameEnd / followSwitch): one rule for the hill and the powerup follower ---------
 // Tony 2026-11-07: a following station never leaves its current game for another while the current game is live. The
 // current game ENDS here when a player this station heard live in it advertises without the live bit (its whistle; a
-// countdown phone was never heard live, so it cannot end a game), or, for a hill, when MC's END names it
-// (HillFollower::end_by_mc). Only an in-scope advert of the current byte counts. 10 minutes (HILL_RING_STALE_MS) with no
+// countdown phone was never heard live, so it cannot end a game), or, for a hill, when MC's END names it or MC arms its
+// next game after it (HillFollower::end_by_mc). Only an in-scope advert of the current byte counts. 10 minutes (HILL_RING_STALE_MS) with no
 // live player of it heard also ends it, but only once another live game is heard (switch_now): silence alone never
 // ends a game. Then the strongest other live game takes the station at once; the first follow takes a game at once too.
 // Not saved: a restart has heard no one live yet.
@@ -962,6 +962,16 @@ class HillFollower {
     if (!follows || !has_current || game == 0 || game != current) return;
     end.ended = true;
     end_at_earliest(at);
+  }
+  // control.js restartEnded: MC's countdown START for the followed game, once that game has ended here, is a new match on
+  // the same byte (an MC session reset reuses bytes). It starts fresh at `now`, as the byte back after stale_ms does, so
+  // the new match counts at once and end info from the old one says nothing about it. True when it did.
+  bool restart_ended(uint8_t game, BleControlPoint& point, uint32_t now) {
+    if (!follows || !has_current || game == 0 || game != current || !end.ended) return false;
+    end.reset();
+    point.load(nullptr);
+    if (HillGame* e = find(current)) { e->has_snap = false; e->since = now; }
+    return true;
   }
   // A88: control.js tallies: the current game's, then the most recently heard other game with a saved state, heard within
   // stale_ms. Returns how many (0..2).
