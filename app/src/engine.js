@@ -1294,7 +1294,7 @@ export class Engine {
       field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
       for (const slot of Object.keys(this.am.heatAt)) field(this.am.heatAt, slot);   // T2 r1: the heat times, each until a new reading
       if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
-      { const am = /** @type {Ammo} */ (this.am); if (am.ventLock != null) field(am, 'ventLockAt'); }   // heat HUD: the vent lock's OVERHEAT cap
+      { const am = /** @type {Ammo} */ (this.am); if (am.ventLock != null && Number.isFinite(s.heat && s.heat.ventAt)) field(am, 'ventLockAt'); }   // heat HUD: the vent lock's OVERHEAT cap (an older save's guess is on this clock already)
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
     obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']); obj(() => this._emp, ['readyAt']);

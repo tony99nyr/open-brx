@@ -5310,6 +5310,14 @@ test('SR8: a vent to 0 reported on the other slot ends OVERHEAT on the locked sl
   h.eng.activeSlot = 0;
   assert.equal(h.eng.state().overheatShown, false, 'back on the Energy Rifle: no OVERHEAT after the lock ended');
 });
+test('SR8: a down player gets no OVERHEAT from the vent lock', () => {
+  const h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,65,*');                         // part-vented: still locked
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().alive, false, 'setup: down');
+  assert.equal(h.eng.am.ventLocked(), true, 'setup: the lock is still on');
+  assert.equal(h.eng.state().overheatShown, false);
+});
 test('SR8: a round fired ends the vent lock and its OVERHEAT; OVERHEAT_CAP_MS bounds an unvented lock', () => {
   let h = energyHarness();
   h.frame('$ALCD,201,100,0,600,30,*'); h.adv(2000);
