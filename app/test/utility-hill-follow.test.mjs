@@ -177,3 +177,19 @@ test('a countdown START for the followed game after it ended here starts a new m
   assert.equal(airGame(), 92);
   assert.equal(api.point.capturing, BLUE, 'and counts at once');
 });
+
+test('MC arming another game leaves a game MC did not arm, and a live game before its whistle (a fresh MC resuming)', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });
+  await api.applyStationConfig({ ...hill, game: 93 });   // MC's game 93; the hill follows game 94
+  stand(20000, [{ id: 14, team: RED, game: 94, live: true }]);
+  assert.equal(airGame(), 94);
+  await api.applyStationConfig({ ...hill, game: 95 });
+  stand(3000, [{ id: 14, team: RED, game: 94, live: true }]);
+  assert.equal(api.point.owner, RED, 'game 94 was not MC\'s to end');
+  const own = api.point.ownMs[RED];
+  await api.applyStationConfig({ ...hill, game: 94, starts_in_ms: -20000, ends_in_ms: 600000 });   // MC's 94, whistle ahead
+  await api.applyStationConfig({ ...hill, game: 1 });   // a fresh MC re-arms on byte 1 before RESUME MATCH
+  stand(3000, [{ id: 14, team: RED, game: 94, live: true }]);
+  assert.equal(airGame(), 94);
+  assert.ok(api.point.ownMs[RED] > own, 'the live game 94 still banks');
+});

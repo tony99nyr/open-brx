@@ -963,15 +963,17 @@ class HillFollower {
     end.ended = true;
     end_at_earliest(at);
   }
-  // control.js restartEnded: MC's countdown START for the followed game, once that game has ended here, is a new match on
-  // the same byte (an MC session reset reuses bytes). It starts fresh at `now`, as the byte back after stale_ms does, so
-  // the new match counts at once and end info from the old one says nothing about it. True when it did.
-  bool restart_ended(uint8_t game, BleControlPoint& point, uint32_t now) {
-    if (!follows || !has_current || game == 0 || game != current || !end.ended) return false;
-    end.reset();
-    point.load(nullptr);
-    if (HillGame* e = find(current)) { e->has_snap = false; e->since = now; }
-    return true;
+  // control.js restartEnded: MC's countdown START for a game that ended here is a new match on the same byte (an MC
+  // session reset reuses bytes). That byte starts fresh at `now`, as a byte back after stale_ms does: the current game
+  // once it ended, or a game the hill switched away from (so one that ended), whose saved tally is the old match's.
+  void restart_ended(uint8_t game, BleControlPoint& point, uint32_t now) {
+    if (!follows || game == 0) return;
+    if (has_current && game == current) {
+      if (!end.ended) return;  // a live game: a countdown START for it changes nothing
+      end.reset();
+      point.load(nullptr);
+    }
+    if (HillGame* e = find(game)) { e->has_snap = false; e->since = now; }
   }
   // A88: control.js tallies: the current game's, then the most recently heard other game with a saved state, heard within
   // stale_ms. Returns how many (0..2).
