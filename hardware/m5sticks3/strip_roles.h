@@ -4,9 +4,9 @@
 //
 // The roles (brx1's 2026-10-18 design):
 //   - hill: neutral is dim white; a capture fills the strip from LED 0 in the capturer's colour at the
-//     capture progress (an owner losing the point drains the same way); owned is solid with a slow pulse
-//     only while the owner scores (a living owner player counted on it, not contested: F554); owned with
-//     no owner scoring holds the owner's colour steady at 15 % (Tony 2026-11-15, option 1);
+//     capture progress (an owner losing the point drains the same way); owned breathes for 8 s, then a
+//     bright band cascades from LED 0 to the end, and repeats, only while the owner scores (a living owner player counted on it, not contested: F554); owned with
+//     no owner scoring holds the owner's colour steady at 8 % (Tony 2026-11-15, option 1);
 //     contested flashes the two largest teams' colours in turn; an ended game holds the owner's colour
 //     dim (a third) and still.
 //   - respawn: a steady team colour at half the budget, and the full budget for a flash on each respawn
@@ -29,9 +29,13 @@ constexpr Rgb STRIP_NEUTRAL{12, 12, 12};
 constexpr Rgb STRIP_AMBER{32, 12, 0};  // 60 LEDs at this fit the budget uncapped
 constexpr Rgb STRIP_ITEM_WEAPON{238, 249, 255};  // the screen's COL_NUM, the weapon pickup's default
 constexpr Rgb STRIP_ITEM_SPECIAL{36, 217, 196};  // the screen's COL_SHIELD
-constexpr uint32_t STRIP_PULSE_MS = 2000;        // owned: one slow breath
+constexpr uint32_t STRIP_PULSE_MS = 2000;        // owned and scoring: one slow breath
+constexpr uint32_t STRIP_PULSES = 4;              // owned and scoring: this many breaths (8 s), then one cascade (Tony 2026-11-15)
+constexpr uint32_t STRIP_CASCADE_MS = 1200;       // the cascade: a bright band runs from LED 0 to the far end
+constexpr size_t STRIP_CASCADE_LEN = 10;          // the band's length in LEDs, head brightest
+constexpr uint32_t STRIP_OWNED_CYCLE_MS = STRIP_PULSES * STRIP_PULSE_MS + STRIP_CASCADE_MS;
 constexpr uint32_t STRIP_CONTEST_MS = 400;       // contested: each colour's turn
-constexpr uint32_t STRIP_OWNED_IDLE_PCT = 15;    // owned, scoring nothing: steady at this share of the owner colour (Tony 2026-11-15)
+constexpr uint32_t STRIP_OWNED_IDLE_PCT = 8;     // owned, scoring nothing: steady at this share of the owner colour (Tony 2026-11-15: 15 was too bright)
 constexpr uint32_t STRIP_CHASE_STEP_MS = 50;     // power-up ready: one LED a step
 constexpr size_t STRIP_CHASE_LEN = 6;
 constexpr uint32_t STRIP_AMBER_PERIOD_MS = 2000; // no link: 500 ms on, 1500 ms off
@@ -118,11 +122,27 @@ inline size_t strip_fill_count(int pct, size_t n) {
   return k ? k : 1;
 }
 
-// The owned pulse level, 40..100 percent, a triangle over STRIP_PULSE_MS.
+// The owned pulse level, 40..100 percent, a triangle over STRIP_PULSE_MS. The cascade (below) replaces it in its window.
 inline uint32_t strip_pulse_pct(uint32_t now_ms) {
-  const uint32_t ph = now_ms % STRIP_PULSE_MS, half = STRIP_PULSE_MS / 2;
+  // phase inside the cycle, so each cycle's first breath starts low again after the cascade
+  const uint32_t ph = now_ms % STRIP_OWNED_CYCLE_MS % STRIP_PULSE_MS, half = STRIP_PULSE_MS / 2;
   const uint32_t up = ph < half ? ph : STRIP_PULSE_MS - ph;  // 0..half
   return 40 + 60 * up / half;
+}
+
+// The cascade's head LED at now_ms, or -1 outside the cascade. The head runs 0..n+LEN-1, so the band's tail leaves the end.
+inline int strip_cascade_head(uint32_t now_ms, size_t n) {
+  const uint32_t ph = now_ms % STRIP_OWNED_CYCLE_MS, start = STRIP_PULSES * STRIP_PULSE_MS;
+  if (ph < start || !n) return -1;
+  return (int)((uint64_t)(ph - start) * (n + STRIP_CASCADE_LEN) / STRIP_CASCADE_MS);
+}
+
+// The level of LED i in the cascade: 100 at the head, down to 20 at the band's tail, 20 off the band. The rest drops
+// below the pulse's low level so the moving band reads at a glance, out of the corner of the eye (Tony 2026-11-15).
+inline uint32_t strip_cascade_pct(int head, size_t i) {
+  const int d = head - (int)i;
+  if (d < 0 || d >= (int)STRIP_CASCADE_LEN) return 20;
+  return 100 - 80 * (uint32_t)d / STRIP_CASCADE_LEN;
 }
 
 inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px, size_t n,
@@ -152,7 +172,18 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
     case StripRole::HILL_OWNED_IDLE:  // the owner scores nothing: no pulse, steady and dim
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
       strip_cap(px, n, budget_ma);
-      strip_dim(px, n, role == StripRole::HILL_OWNED ? strip_pulse_pct(now_ms) : STRIP_OWNED_IDLE_PCT, 100);
+      if (role == StripRole::HILL_OWNED_IDLE) {
+        strip_dim(px, n, STRIP_OWNED_IDLE_PCT, 100);
+        // A long strip on the Grove cap scales to black at 8 %: light the colour's brightest channel at 1 (cross-review 2026-11-15)
+        const Rgb c = team_rgb(s.control_owner);
+        for (size_t i = 0; i < n; i++)
+          if (!px[i].r && !px[i].g && !px[i].b)
+            px[i] = c.r >= c.g && c.r >= c.b ? Rgb{1, 0, 0} : c.g >= c.b ? Rgb{0, 1, 0} : Rgb{0, 0, 1};
+      } else if (const int head = strip_cascade_head(now_ms, n); head >= 0) {
+        for (size_t i = 0; i < n; i++) px[i] = strip_scale(px[i], strip_cascade_pct(head, i), 100);
+      } else {
+        strip_dim(px, n, strip_pulse_pct(now_ms), 100);
+      }
       break;
     case StripRole::HILL_CONTESTED: {
       const int t = (now_ms / STRIP_CONTEST_MS) % 2 ? s.control_contest_b : s.control_contest_a;
