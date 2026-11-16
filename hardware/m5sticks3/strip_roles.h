@@ -122,12 +122,11 @@ inline size_t strip_fill_count(int pct, size_t n) {
   return k ? k : 1;
 }
 
-// The owned pulse level, 40..100 percent: STRIP_PULSES triangles of STRIP_PULSE_MS, then 40 for the cascade.
+// The owned pulse level, 40..100 percent, a triangle over STRIP_PULSE_MS. The cascade (below) replaces it in its window.
 inline uint32_t strip_pulse_pct(uint32_t now_ms) {
-  const uint32_t ph = now_ms % STRIP_OWNED_CYCLE_MS;
-  if (ph >= STRIP_PULSES * STRIP_PULSE_MS) return 40;
-  const uint32_t p = ph % STRIP_PULSE_MS, half = STRIP_PULSE_MS / 2;
-  const uint32_t up = p < half ? p : STRIP_PULSE_MS - p;  // 0..half
+  // phase inside the cycle, so each cycle's first breath starts low again after the cascade
+  const uint32_t ph = now_ms % STRIP_OWNED_CYCLE_MS % STRIP_PULSE_MS, half = STRIP_PULSE_MS / 2;
+  const uint32_t up = ph < half ? ph : STRIP_PULSE_MS - ph;  // 0..half
   return 40 + 60 * up / half;
 }
 
@@ -175,6 +174,11 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       strip_cap(px, n, budget_ma);
       if (role == StripRole::HILL_OWNED_IDLE) {
         strip_dim(px, n, STRIP_OWNED_IDLE_PCT, 100);
+        // A long strip on the Grove cap scales to black at 8 %: light the colour's brightest channel at 1 (cross-review 2026-11-15)
+        const Rgb c = team_rgb(s.control_owner);
+        for (size_t i = 0; i < n; i++)
+          if (!px[i].r && !px[i].g && !px[i].b)
+            px[i] = c.r >= c.g && c.r >= c.b ? Rgb{1, 0, 0} : c.g >= c.b ? Rgb{0, 1, 0} : Rgb{0, 0, 1};
       } else if (const int head = strip_cascade_head(now_ms, n); head >= 0) {
         for (size_t i = 0; i < n; i++) px[i] = strip_scale(px[i], strip_cascade_pct(head, i), 100);
       } else {
