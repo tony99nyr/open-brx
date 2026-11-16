@@ -662,7 +662,8 @@ export class Ammo {
    *  30) and the trigger is dead on either slot (one heat value). OVERHEAT stays up for the whole lock, so the player sees why
    *  the trigger does nothing. It ends with the lock (a reading of 0 or a round fired), and OVERHEAT_CAP_MS still bounds it. */
   overheatOnHud(now = this.host.now()) {
-    if (this.ventLock != null && this.host.alive && now - this.ventLockAt < OVERHEAT_CAP_MS) return true;   // never on a down player
+    if (!this.host.alive) return false;   // never on a down player (the heat bar and the hero row read this too)
+    if (this.ventLock != null && now - this.ventLockAt < OVERHEAT_CAP_MS) return true;
     const L = this.heatLock;
     return !!(L && L.slot === this.host.activeSlot && now - L.lastAt < OVERHEAT_SHOWN_MS && now - L.at < OVERHEAT_CAP_MS);
   }

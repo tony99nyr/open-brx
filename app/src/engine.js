@@ -1287,16 +1287,20 @@ export class Engine {
    *  - Rebuilt from the time LEFT by `_loadTimed`: the stun and the poison. Already on the load's clock.
    *  MC's own times (`start.go_live_t`, the `result` body) are on MC's clock by definition and are never moved. */
   _restoredClock(s) {
-    const offset = this.clockOffset(), items = [];
+    const offset = this.clockOffset(), items = [], am = /** @type {Ammo} */ (this.am);
+    // Heat HUD: the vent lock's OVERHEAT cap. A saved `ventAt` is on the saved clock; an older save's guess (`heatRestore`) is on
+    // this clock already, like the stun below, so it skips the first shift and is still tracked after.
+    const vent = am.ventLock == null ? null : Number.isFinite(s.heat && s.heat.ventAt) ? 'saved' : 'guessed';
     const field = (o, k) => { let v = o[k]; if (Number.isFinite(v) && v) items.push({ live: () => o[k] === v, shift: d => { v += d; o[k] = v; } }); };
     const obj = (get, keys) => { const o = get(); if (o && typeof o === 'object') items.push({ live: () => get() === o, shift: d => { for (const k of keys) if (Number.isFinite(o[k])) o[k] += d; } }); };
     if (Number.isFinite(s.clockOffset) && Number.isFinite(offset)) {
       field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
       for (const slot of Object.keys(this.am.heatAt)) field(this.am.heatAt, slot);   // T2 r1: the heat times, each until a new reading
       if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
-      { const am = /** @type {Ammo} */ (this.am); if (am.ventLock != null) field(am, 'ventLockAt'); }   // heat HUD: the vent lock's OVERHEAT cap
+      if (vent === 'saved') field(am, 'ventLockAt');
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
+    if (vent === 'guessed') field(am, 'ventLockAt');
     obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']); obj(() => this._emp, ['readyAt']);
     return items.length && Number.isFinite(offset) ? { offset, items } : null;
   }
