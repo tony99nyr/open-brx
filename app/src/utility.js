@@ -339,7 +339,9 @@ function applyHillClock(cfg, now, sameStation = true) {
   // trusts no time limit) keeps the deadline the original START gave, or the hill counts past its whistle until END.
   const liveResend = cfg.starts_in_ms != null && cfg.starts_in_ms <= 0 && sameStation;   // as the Stick: the same point only
   if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
-  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
+  // F677 (the Stick's F674 rule, station_link.h): an END ends at the earliest of a passed deadline, MC's whistle when the END
+  // names how long ago it was (`end_age_ms`: a late END, or one that sat in a queue), and receipt.
+  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = Math.min(settings.hillEndsAt ?? now, now, cfg.end_age_ms >= 0 ? now - cfg.end_age_ms : now);
   else if (!liveResend) settings.hillEndsAt = null;
   if (wasFrozen && !frozenAtWhistle()) { point.at = null; point.heldBy = null; }
   // Following: MC's END for the followed game ends it here, at MC's whistle when that has passed (set just above)

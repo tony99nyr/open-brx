@@ -193,3 +193,40 @@ test('MC arming another game leaves a game MC did not arm, and a live game befor
   assert.equal(airGame(), 94);
   assert.ok(api.point.ownMs[RED] > own, 'the live game 94 still banks');
 });
+
+// F677 (2), the Stick's F674 tests (test_link.cpp): a late END with no deadline the phone knows ended the game at
+// receipt, so the recap delay counted as possession. The END's `end_age_ms` names MC's whistle.
+test('F677: a late END ends the followed game at MC\'s whistle from end_age_ms', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });
+  await api.applyStationConfig({ ...hill, game: 96 });   // untimed: no deadline
+  stand(20000, [{ id: 15, team: RED, game: 96, live: true }]);
+  assert.equal(api.point.owner, RED, 'red owns game 96');
+  stand(5000, []);   // red walks out of earshot, still live: the hill misses END
+  const ownAtWhistle = api.point.ownMs[RED];
+  stand(30000, []);
+  assert.ok(api.point.ownMs[RED] > ownAtWhistle + 20000, 'setup: the empty hill banks past the whistle');
+  await api.applyStationConfig({ ...hill, game: 96, ends_in_ms: 0, end_age_ms: 30000 });   // a reconnect in the recap
+  stand(1000, []);
+  assert.ok(Math.abs(api.point.ownMs[RED] - ownAtWhistle) <= 250, 'the game ends at MC\'s whistle: the recap delay is not possession');
+});
+
+test('F677: a queued END never ends a game after a deadline that has passed, and a negative age is receipt', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });
+  await api.applyStationConfig({ ...hill, game: 97, starts_in_ms: -1000, ends_in_ms: 30000 });
+  stand(30000, [{ id: 16, team: RED, game: 97, live: true }]);
+  const ownAtDeadline = api.point.ownMs[RED];
+  assert.ok(ownAtDeadline > 10000, `setup: red banked before the deadline (${ownAtDeadline})`);
+  stand(10000, []);   // past the deadline, the hill missed END
+  await api.applyStationConfig({ ...hill, game: 97, ends_in_ms: 0, end_age_ms: 1000 });   // queued: names t - 1 s
+  stand(1000, []);
+  assert.ok(Math.abs(api.point.ownMs[RED] - ownAtDeadline) <= 250, 'the game ends at the passed deadline, the earlier time');
+  // CONTROL: a negative age is not a time, so an untimed game's END is at receipt, as before
+  await api.applyStationConfig({ ...hill, id: 10, game: 89 });
+  await api.applyStationConfig({ ...hill, game: 98 });
+  stand(20000, [{ id: 17, team: RED, game: 98, live: true }]);
+  stand(5000, []);
+  const ownAtEnd = api.point.ownMs[RED];
+  await api.applyStationConfig({ ...hill, game: 98, ends_in_ms: 0, end_age_ms: -5 });
+  stand(1000, []);
+  assert.ok(Math.abs(api.point.ownMs[RED] - ownAtEnd) <= 250, 'the END at receipt keeps what was banked up to it');
+});
