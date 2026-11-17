@@ -32,7 +32,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F680 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F681 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -52,6 +52,8 @@ A keyboard is enough. Highest value first.
 - **F676 🟡 DOMINATION'S PRESENTATION LEFTOVERS (FROM F666).** brx-desk-reds 2026-11-16, split from F666 items (2), (3) and (4). (1) The Stick's station screen shows no hill letter: MC sets `config.stations[].letter`, but the station config does not carry it, and `station_render.h` shows only RED HOLDS, CAPTURING and CONTESTED. It needs a contract field, the firmware parse, and a screen layout that Tony picks. (2) Domination mode art for both asset folders (`test_ui_contract.py` `mode_gaps`). (3) A voice line with the hill letter needs clips. Owner: brx1 routes it. `desk`. [log 2026-11-16](experiment-log/2026-11.md).
 
 - **F679 🟡 A LATE END CANNOT LOWER A HILL TALLY MC ALREADY TOOK.** brx-desk-four 2026-11-16, Codex in the F677 review. A following hill that reconnects in the recap may beat its tally (counted past the whistle) before it applies MC's END with `end_age_ms`. MC keeps the largest `hold_ms` it has seen (`stations.py _keep_tally`), so the hill's own correction to MC's whistle never lowers MC's copy. The same holds for a Stick (F674). Is it reachable in a recap MC scores from? Check whether the recap reads the tally after the whistle (`frozen_stations`), and if so let the END-corrected tally for that game replace the max. Owner brx1 routes it. `desk`. [log 2026-11-16](experiment-log/2026-11.md).
+
+- **F680 🟢 THE STAGE'S PLAY-QUEUE JUMP DIFFERS FROM THE ENGINE FOR A CUE QUEUED ON THE LOCK.** brx-desk-three review (Low), routed by brx1 to brx-desk-four 2026-11-16. `play-queue.js _jumpIndex` lets an interrupt-slot write pass every trailing passable cue in the queue. The stage (`stage.py _acquire_play_or_jump`) opens a jump only while a passable cue SLEEPS for the gun or the gap; a passable cue that waits for the play lock itself, behind a write on the link, keeps its FIFO place, so a stun goes after it on the stage and before it on the phone. Exact parity needs a priority rule on the stage's lock queue that keeps the engine's order against a write with gun rows queued after the cue. Fix with a stage test of that order. Owner brx1 routes it. `desk`. [log 2026-11-16](experiment-log/2026-11.md).
 
 ## MVP BENCH
 
