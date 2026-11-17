@@ -948,6 +948,11 @@ def test_f677_the_cleared_list_is_bounded_and_a_fresh_session_empties_it():
     assert snap["cleared_sticks"][-1] == f"stick-{CLEARED_STATIONS_MAX + 4:012x}"
     s.new_session(keep_roster=True)   # NEXT MATCH keeps the list
     assert len(reg.to_snapshot()["cleared_sticks"]) == CLEARED_STATIONS_MAX
+    s2 = _sess()                       # a restart keeps the cap's order across Sticks and phones
+    reg.release("util-9")              # a phone, then a Stick: the Stick is the newest
+    reg.release("stick-0000000000ff")
+    s2.station_registry.restore(reg.to_snapshot())
+    assert list(s2.station_registry._cleared)[-2:] == ["util-9", "stick-0000000000ff"], "a restart keeps the order"
     s.new_session(keep_roster=False)  # FRESH SESSION
     assert reg.to_snapshot()["cleared_sticks"] == [], "a FRESH SESSION stops telling the last one's cleared stations"
     s.net.pushed.clear()

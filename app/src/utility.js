@@ -136,7 +136,7 @@ async function readBattery() {
 let lastBattery = null;
 
 // ---------- the station ----------
-let _advertStops = 0;   // F677 review: counts stops, so a start that a stop overtook knows it lost
+let _advertStops = 0, _advertStarts = 0;   // F677 review: a start that a stop overtook loses; a stop that a start overtook leaves it
 let advertising = false, advertisingPending = 0, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
@@ -210,6 +210,7 @@ function stationUuid() {
 /** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
  *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
 async function startAdvert(quiet = false) {
+  _advertStarts++;
   // Record the intent FIRST, whatever happens next: `seq` (byte 12) bumps on every change, and the
   // republish check in tick() is driven off what we last decided to publish. Doing this inside the try
   // below left the stage (no radio) asking to republish on every 250 ms tick, forever.
@@ -221,13 +222,13 @@ async function startAdvert(quiet = false) {
   // not after iOS/Android finishes powering the advertiser on.
   advertisingPending++;
   render();
+  const stops = _advertStops;
   try {
     const uuid = stationUuid();
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
     // A88: a following hill's tally rides as manufacturer data (Android; iOS cannot send it). It needs the TX-power
     // field's 3 bytes to fit the 31-byte legacy advert, and nothing reads that field.
     const md = tally ? { manufacturerId: ADVERT_TALLY_COMPANY, manufacturerData: tally.map(v => v.toString(16).padStart(2, '0')).join('') } : {};
-    const stops = _advertStops;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: !tally, ...md });
     // F677 review: a stop (MC's clear, the operator's STOP) that landed while this start was on its way is the newer
     // intent. Without this the late start put a cleared station's old advert back on air.
@@ -244,7 +245,7 @@ async function startAdvert(quiet = false) {
     if (!quiet) log(`advertising ${name} as ${TEAM_NAME_BY_TID[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
   } catch (e) {
     advertising = false; save(); log('advertise failed: ' + (e && e.message || e), 'le');
-    if (tally && !tallyRefused && /too large/i.test(String(e && e.message || e))) { tallyRefused = true; log('A88: advertising again without the hill tally', 'le'); return startAdvert(quiet); }
+    if (tally && !tallyRefused && stops === _advertStops && /too large/i.test(String(e && e.message || e))) { tallyRefused = true; log('A88: advertising again without the hill tally', 'le'); return startAdvert(quiet); }
   }
   finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
@@ -548,8 +549,11 @@ function stageMcMessage(kind, body) {
 
 async function stopAdvert() {
   _advertStops++;
+  const starts = _advertStarts;
   settings.live = false; save();   // before the wait (F677 review): a tick re-key must not start the advert again mid-stop
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
+  // A start that began while the radio stopped (MC armed the station again) is the newer intent: it owns the state.
+  if (_advertStarts !== starts) return;
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }
 /** F677: the operator CLEARED this station on MC (`control{cmd:"clear_station"}`, `stations.py release`). It stops
@@ -562,12 +566,14 @@ async function clearedByMc() {
   const armed = settings.mcArmed;
   await stopAdvert();
   if (settings.mcArmed !== armed) return;   // MC armed it again while the stop was in flight: the new role stands
-  settings.mcArmed = null; settings.lockUntil = 0;
+  settings.mcArmed = null; settings.lockUntil = 0; settings.hillStartsAt = settings.hillEndsAt = null;
   resetPoint('MC cleared the station');
+  // the old role's powerup state goes too, as an arming of another station clears it (`applyStationConfig`)
+  puFollower.clear(); pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.awardedNext = null; savePowerup();   // `pu.unsent` stays: the next flush still reports a TAKEN
   save(); render();
   if (transport && transport.state === 'bound') transport.status(utilityStatusBody());
 }
-async function restartIfLive() { if (advertising) await startAdvert(); else render(); }
+async function restartIfLive() { if (advertising && settings.live) await startAdvert(); else render(); }   // not mid-stop
 
 /** Field 2026-09-12: the ONLY exit from utility mode was this same code, reachable only through the
  *  seven-tap-in-3s gate on ⓘ that opens the settings drawer BACK TO HUD lives inside -- one gesture with

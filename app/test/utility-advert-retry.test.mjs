@@ -144,3 +144,19 @@ test('a tick during a pending stop starts nothing', async () => {
   await stopping;
   assert.equal(api.statusBody().live, false);
 });
+
+// F677 review (Low): MC re-arms the station while the clear's stop waits on the radio. The new start owns the state.
+test('a start that begins during a pending stop stays on air', async () => {
+  const beacon = fakeBeacon();
+  api.plugins.beacon = beacon;
+  await api.startAdvert();
+  let release;
+  beacon.stop = async () => { await new Promise(r => { release = r; }); };
+  const stopping = api.stopAdvert();
+  await api.startAdvert();   // the re-arm, while the stop is in flight
+  release();
+  await stopping;
+  assert.equal(api.statusBody().live, true, 'the re-arm is the newer intent');
+  beacon.stop = async () => {};
+  await api.stopAdvert();
+});

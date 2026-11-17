@@ -311,6 +311,7 @@ class StationRegistry:
             "hill_letters": {str(k): v for k, v in self._hill_letters.items()},
             "cleared_sticks": [n for n, stick in self._cleared.items() if stick],
             "cleared_phones": [n for n, stick in self._cleared.items() if not stick],
+            "cleared_order": list(self._cleared),   # oldest first, so a restart keeps the cap's order across both lists
         }
 
     def capture_state(self) -> dict:
@@ -355,11 +356,14 @@ class StationRegistry:
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
         self._cleared, self._clear_held = {}, set()
+        kinds: dict[str, bool] = {}
         for key, stick in (("cleared_sticks", True), ("cleared_phones", False)):   # F677: phones too, additive
             cleared = snap.get(key)
-            for n in cleared if isinstance(cleared, list) else []:
-                if isinstance(n, str):
-                    self._note_clear(n, stick)
+            kinds.update({n: stick for n in (cleared if isinstance(cleared, list) else []) if isinstance(n, str)})
+        order = snap.get("cleared_order")   # absent in an older snapshot: Sticks first, then phones
+        ordered = [n for n in order if isinstance(n, str) and n in kinds] if isinstance(order, list) else []
+        for n in ordered + [n for n in kinds if n not in ordered]:
+            self._note_clear(n, kinds[n])
         letters = snap.get("hill_letters")
         self._hill_letters = ({int(k): v for k, v in letters.items() if isinstance(k, str) and k.isdigit()
                                and isinstance(v, str) and 0 < len(v) <= 3} if isinstance(letters, dict) else {})

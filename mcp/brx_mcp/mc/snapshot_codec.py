@@ -169,6 +169,7 @@ class SnapshotCodec:
                     # F671: cleared Sticks not yet shown to have dropped their role. Additive: absent = none.
                     **({"cleared_sticks": station["cleared_sticks"]} if station["cleared_sticks"] else {}),
                     **({"cleared_phones": station["cleared_phones"]} if station["cleared_phones"] else {}),   # F677: phones too
+                    **({"cleared_order": station["cleared_order"]} if station["cleared_order"] else {}),   # F677: the cap's order
                     "join_secret": self.host.join_secret,
                     # Bench 2026-11-01: the LOAD announcement (which game the host loaded). Without it a restart read NOT
                     # LOADED on GAMES and the heartbeat retry never ran. Only the host's decision is kept, never who was
