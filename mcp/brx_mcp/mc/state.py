@@ -3717,7 +3717,9 @@ class Session:
         Closes its socket, unbinds its player and forgets everything it claimed (ready/ack) so the next legit hello
         re-hydrates by gun (A5.5). Returns False for an id nobody has heard of."""
         known = nid in self.nodes or nid in self.node_player or nid in self.net.nodes
-        self.station_registry.release_if_assigned_stick(nid)   # F671: while its socket is still open
+        if not self.in_play():
+            # F671: while its socket is still open. Never in play: a kicked hill keeps scoring, as a DELETE is refused then.
+            self.station_registry.release_if_assigned_stick(nid)
         self.net.evict(nid)
         pid = self.node_player.pop(nid, None)
         if self.in_play() or self.phase == "recap":

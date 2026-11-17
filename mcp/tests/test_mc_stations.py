@@ -888,7 +888,14 @@ def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     s.net.pushed.clear()
     s.net.simulate_utility_hello(stick, platform="esp32")
     assert _pushed(s, "control", stick) == [], "CONTROL: a re-armed Stick is not released"
-    # DELETE /api/nodes on an assigned Stick releases it too, before its socket closes
+    # DELETE /api/nodes on an assigned Stick releases it too, before its socket closes, but never in play
+    s.phase = "live"
+    s.evict_node(stick)
+    assert _pushed(s, "control", stick) == [], "CONTROL: a hill kicked in play keeps its role"
+    s.phase = "lobby"
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    s.set_station(stick, {"kind": "control", "team": "any"})
+    s.net.pushed.clear()
     close = s.net.evict
     s.net.evict = lambda n: (s.net.pushed.append((n, "socket_closed", {})), close(n))[1]
     s.evict_node(stick)
