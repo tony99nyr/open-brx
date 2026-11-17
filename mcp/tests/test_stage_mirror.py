@@ -3426,16 +3426,19 @@ def test_a_stand_down_mid_refill_re_earns_the_delay_and_never_announces_twice():
         assert st.stunned is not None, "setup: stunned"
         await shield_run(st, mgr, clock, 0.5)
         assert grants(mgr, n2) == 0, "setup: a disarmed gun is not granted to"
+        n_expiry = mark(mgr)
         clock.advance(st.stun_s + 0.1); st.poll(); await settle(st)
         assert st.stunned is None, "setup: the stun has expired"
+        # F678: the stun clip X17 (7.9 s) outlasts the 1 s stun, so the expiry stops it (cues.test.mjs, the same case)
+        assert since(mgr, n_expiry).count(S.PLAYX) == 1, f"the expiry stops the stun clip: {since(mgr, n_expiry)}"
         n3 = mark(mgr)
         await shield_run(st, mgr, clock, 1.5)
         assert grants(mgr, n3) == 0, "the refill must serve a fresh quiet window, not resume on the next tick"
         assert c["shield_charging"] not in since(mgr, n3), "one refill is one piece of news"
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
-        # F463: the stun clip X17 (7.9 s) is still on the gun when this refill starts, so its line waits past the 1.5 s
-        # status TTL and is dropped (cues.test.mjs, the same case on the phone)
-        assert since(mgr, n3).count(c["shield_charging"]) == 0, "the refill after the new quiet is not said over the stun clip"
+        # F678: with X17 stopped at the expiry the gun is quiet when this refill starts, so its line is said inside the
+        # 1.5 s status TTL (cues.test.mjs, the same case on the phone)
+        assert since(mgr, n3).count(c["shield_charging"]) == 1, "the refill after the new quiet is said: the stun clip was stopped"
     asyncio.run(go())
 
 

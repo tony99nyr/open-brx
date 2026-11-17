@@ -676,6 +676,7 @@ export const NODE_KINDS = new Set([
 ]);
 export const CONTROL_CMDS = new Set([
   'abort_start',
+  'clear_station',
   'clock_resync',
   'end',
   'panic',

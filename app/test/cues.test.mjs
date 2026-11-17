@@ -200,6 +200,7 @@ test('with no shield ceiling a grant is a grant, not a full charge', () => {
 
 const DOWN = golden.cues.shield_down;           // $PLAY,,4,6,N101,* -- the break
 const CHARGING = golden.cues.shield_charging;   // $PLAY,,4,6,N102,* -- the first grant of a refill
+const PLAYX = '$PLAYX,0,*';                     // F678: the stop a stun expiry writes
 const LOOP = golden.cues.shield_loop;           // $PLAY,,4,6,N74,*  -- the heartbeat while it is gone
 const DELAY = 6500;
 
@@ -334,16 +335,64 @@ test('S29: a stand-down mid-refill re-earns the delay, and never announces the r
   h.eng._stun();
   h.run(500, { echo: false });
   assert.equal(h.grants(), mid, 'setup: a disarmed gun is not granted to');
+  const stops = h.count(PLAYX);
   h.eng._stunRestore('expired');
+  // F678: the stun clip X17 (7.9 s) is still playing 0.5 s into it, so the expiry stops it with one `$PLAYX`
+  assert.equal(h.count(PLAYX), stops + 1, 'the expiry stops the stun clip that outlasts the stun');
   h.run(1500, { echo: false });
   assert.equal(h.grants(), mid, 'the refill must serve a fresh quiet window, not resume on the next tick');
   assert.equal(h.count(CHARGING), 1, 'one refill is one piece of news, however many stand-downs interrupt it');
   h.run(DELAY + 3000);
   assert.equal(h.eng.shield, MAX_SHIELD, 'the refill after the new quiet window ran');
-  // F463: the stun's clip X17 holds the gun for 7.9 s from the stand-down. This refill starts 6.5 s after it, so its line
-  // would wait 1.4 s plus the gap, past the 1.5 s status TTL, and is dropped unsaid. Without the clip (2.5 s timing
-  // before F463) C4 let it speak: the rest of this pool is three grants, 3 s.
-  assert.equal(h.count(CHARGING), 1, 'the refill after the new quiet window is not said over the stun clip');
+  // F463 made X17 7.9 s long, so this refill's line waited past the 1.5 s status TTL and was dropped (F678). With
+  // the stop above the gun is quiet when the refill starts, and the line is said.
+  assert.equal(h.count(CHARGING), 2, 'the refill after the new quiet window is said: the stun clip was stopped');
+});
+
+test('F678: a stun expiry stops only the stun clip, and only while it plays', () => {
+  // A stun that outlasts X17: the clip ended long before the expiry, so the expiry writes no stop.
+  const h = shielded(), hStops = h.count(PLAYX);   // the spawn burst carries its own stop
+  h.eng.config.stun = { duration_s: 10 };
+  h.eng._stun();
+  h.run(10100, { echo: false });
+  assert.equal(h.eng.stunned, null, 'setup: the stun expired on its own timer');
+  assert.equal(h.count(PLAYX), hStops, 'X17 had ended: there is nothing to stop');
+  // A short stun, then an interrupt-slot clip after X17: on the gun it cut X17, so a stop would land on it. No stop.
+  const g = shielded(), gStops = g.count(PLAYX);
+  g.eng.config.stun = { duration_s: 1 };
+  g.eng._stun();
+  g.run(500, { echo: false });
+  g.eng._gun.addPlay('$PLAY,H21,4,6,,,,,*', 'an interrupt-slot clip', g.eng.now());
+  g.eng._stunRestore('expired');
+  assert.equal(g.count(PLAYX), gStops, 'a clip that is not X17 plays: no stop');
+  // A hit sound queues behind X17 (`_audioHit`), so X17 still plays: it is stopped, and the hit sound plays from now.
+  const k = shielded(), kStops = k.count(PLAYX);
+  k.eng.config.stun = { duration_s: 1 };
+  k.eng._stun();
+  k.run(500, { echo: false });
+  k.eng._gun.add(1000, 'hit sound H21', k.eng.now(), 'H21');
+  k.eng._stunRestore('expired');
+  assert.equal(k.count(PLAYX), kStops + 1, 'a hit during the stun does not keep X17 on the gun');
+  assert.deepEqual(k.eng._gun.clips.map(c => [c.id, c.start - k.eng.now()]), [['H21', 0]], 'the hit sound plays from the stop');
+  // Codex review: a clip still QUEUED when X17 was sent survived on the gun (token 1 cuts only the clip playing), so
+  // the stop leaves it in the model, playing from now. The clip that was playing then was cut.
+  const q = shielded();
+  q.eng.config.stun = { duration_s: 1 };
+  q.eng._gun.clear();
+  q.eng._gun.add(3000, 'a line playing', q.eng.now(), 'VA1');
+  q.eng._gun.add(2000, 'a line queued', q.eng.now(), 'VA2');
+  q.eng._stun();
+  q.run(500, { echo: false });
+  q.eng._stunRestore('expired');
+  assert.deepEqual(q.eng._gun.clips.map(c => [c.id, c.start - q.eng.now()]), [['VA2', 0]], 'the queued line plays on; the cut one is gone');
+  // CONTROL: the same short stun with X17 at the front is stopped once.
+  const c = shielded(), cStops = c.count(PLAYX);
+  c.eng.config.stun = { duration_s: 1 };
+  c.eng._stun();
+  c.run(500, { echo: false });
+  c.eng._stunRestore('expired');
+  assert.equal(c.count(PLAYX), cStops + 1, 'X17 playing at the expiry is stopped with one $PLAYX');
+  assert.equal(c.eng._gun.outstanding(c.eng.now()), 0, 'and the gun model is quiet');
 });
 
 test('S29: a gun that never answers stops the heartbeat too, not just the grants', () => {
