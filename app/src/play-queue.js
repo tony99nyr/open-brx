@@ -76,10 +76,12 @@ export class GunAudio {
     let tail = now;
     for (const c of this.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
   }
-  /** F678: one stop the phone wrote itself cut clip `ix`, which plays on the gun now: it and every clip before it leave
-   *  the model (an interrupt-slot clip cut those when it started), and the clips behind it play on from `now`. */
+  /** F678: one stop the phone wrote itself cut clip `ix`, an interrupt-slot clip that plays on the gun now. It leaves the
+   *  model, and so does the clip it cut when it was sent (one that had started by then). A clip still queued then
+   *  survived on the gun and plays on, with the clips behind it, from `now`. */
   cutAt(ix, now) {
-    this.clips.splice(0, ix + 1);
+    const at = this.clips[ix].at;
+    this.clips = this.clips.filter((c, i) => i > ix || (i < ix && c.start > at));
     let tail = now;
     for (const c of this.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
   }

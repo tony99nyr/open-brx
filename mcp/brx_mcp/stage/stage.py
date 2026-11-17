@@ -764,9 +764,11 @@ class GunAudio:
         return playing
 
     def cut_at(self, ix: int, now: int) -> None:
-        """play-queue.js `cutAt` (F678): one stop the node wrote cut clip `ix`, which plays on the gun now. It and every
-        clip before it leave the model; the clips behind it play on from `now`."""
-        del self.clips[:ix + 1]
+        """play-queue.js `cutAt` (F678): one stop the node wrote cut clip `ix`, an interrupt-slot clip that plays on the gun
+        now. It leaves the model, and so does the clip it cut when it was sent. A clip still queued then plays on, with
+        the clips behind it, from `now`."""
+        at = self.clips[ix]["at"]
+        self.clips = [c for i, c in enumerate(self.clips) if i > ix or (i < ix and c["start"] > at)]
         tail = now
         for c in self.clips:
             c["start"] = tail
@@ -6792,18 +6794,29 @@ class GunStage:
         so a "Shields charging" line queued behind it is said inside its status TTL. X17 rides the interrupt slot, so it
         plays from when it was sent: it still plays when less than its length has passed since then and no
         interrupt-slot clip came after it. A hit sound queues behind it and does not count. The stop carries no `$PLAY`,
-        so the play lock never holds it. The model drops X17 and the clips before it at once (`cut_at`)."""
-        if not self.connected:
+        so the play lock never holds it. The test runs again at the send point, after any write ahead of it on the link,
+        and the model drops X17 (`cut_at`) only when the stop goes."""
+        if not self.connected or self._stun_clip_ix() < 0:
             return
+
+        def sent(_frame: str) -> None:
+            ix = self._stun_clip_ix()
+            if ix >= 0:
+                self._gun_audio.cut_at(ix, self._now_ms())
+
+        self._spawn_task(self.write([PLAYX], "stun over: stop the stun clip X17", gap_ms=0, model=False,
+                                    should_send=lambda: self._stun_clip_ix() >= 0, on_frame_sent=sent))
+
+    def _stun_clip_ix(self) -> int:
+        """engine.js `_stunClipIx`: the model index of X17 while it still plays on the gun, else -1."""
         now = self._now_ms()
         g = self._gun_audio
         g._prune(now)
         sid = _cue_id(STUN_PLAY)
         ix = max((i for i, c in enumerate(g.clips) if c["id"] == sid), default=-1)
         if ix < 0 or g.clips[ix]["at"] + g.clips[ix]["ms"] <= now or any(c.get("irq") for c in g.clips[ix + 1:]):
-            return
-        self._spawn_task(self.write([PLAYX], "stun over: stop the stun clip X17", gap_ms=0, model=False))
-        g.cut_at(ix, now)
+            return -1
+        return ix
 
     # ---------- S42/F259: node-driven recoil, the `$TMP` t4 accuracy writer (engine.js `_recoil*`) ----------
     # A port, method for method, of engine.js's writer. Every weapon ships t21 == t22 == 100 (the native walk is

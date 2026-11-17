@@ -374,6 +374,17 @@ test('F678: a stun expiry stops only the stun clip, and only while it plays', ()
   k.eng._stunRestore('expired');
   assert.equal(k.count(PLAYX), kStops + 1, 'a hit during the stun does not keep X17 on the gun');
   assert.deepEqual(k.eng._gun.clips.map(c => [c.id, c.start - k.eng.now()]), [['H21', 0]], 'the hit sound plays from the stop');
+  // Codex review: a clip still QUEUED when X17 was sent survived on the gun (token 1 cuts only the clip playing), so
+  // the stop leaves it in the model, playing from now. The clip that was playing then was cut.
+  const q = shielded();
+  q.eng.config.stun = { duration_s: 1 };
+  q.eng._gun.clear();
+  q.eng._gun.add(3000, 'a line playing', q.eng.now(), 'VA1');
+  q.eng._gun.add(2000, 'a line queued', q.eng.now(), 'VA2');
+  q.eng._stun();
+  q.run(500, { echo: false });
+  q.eng._stunRestore('expired');
+  assert.deepEqual(q.eng._gun.clips.map(c => [c.id, c.start - q.eng.now()]), [['VA2', 0]], 'the queued line plays on; the cut one is gone');
   // CONTROL: the same short stun with X17 at the front is stopped once.
   const c = shielded(), cStops = c.count(PLAYX);
   c.eng.config.stun = { duration_s: 1 };
