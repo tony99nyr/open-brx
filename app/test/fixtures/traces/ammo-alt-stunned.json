@@ -135,6 +135,7 @@
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
         "$BMAP,0,1,,,,,*",
+        "$PLAYX,0,*",
         "$AMMO,0,30,192,1,*",
         "$AMMO,1,6,48,1,*"
       ]

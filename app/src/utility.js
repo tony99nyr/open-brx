@@ -406,8 +406,11 @@ function connectMc(rawUrl, { wsFactory, trusted = true, pub, secret } = {}) {
     if (!m) return;
     if (m.kind === 'station_config') applyStationConfig(m.body);
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
-    else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
-    else if (m.kind === 'control' && m.body && m.body.cmd === 'clear_station') clearedByMc();
+    else if (m.kind === 'control') {
+      const cmd = m.body && /** @type {{cmd?: unknown}} */ (m.body).cmd;
+      if (cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
+      else if (cmd === 'clear_station') clearedByMc();   // F677: stop advertising, stay a station
+    }
   });
   candidate.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
     if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();

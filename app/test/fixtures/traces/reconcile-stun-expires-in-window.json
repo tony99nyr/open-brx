@@ -119,7 +119,9 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"reconciling":true,"switching":false,"reloading":false},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$PLAYX,0,*"
+      ]
     },
     {
       "at": "window_ended",
