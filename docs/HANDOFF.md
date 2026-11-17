@@ -53,7 +53,6 @@ strip on the Grove port: bench commands, a 300 mA cap and an LED team palette (b
 and `STRIPPOWER EXT` (2000 mA, the strip on a U151 from the bank). stick.py has a build lock and a 30 min limit.
 **Next:** whatever brx1 assigns. Bench: the role patterns on a live hill, the U151 wiring, a current reading.
 **Blocked:** none.
-**Blocked:** none.
 
 ## Lane: brx5, cross-language seams and the stage
 **State (2026-10-27):** F574 (the mc-play vite proxy on IPv4), F512 (`mc-play` is a blocking CI gate), F624 (the
@@ -69,7 +68,7 @@ by F661). F643, F644, F648, F657 and F660 moved to MVP BENCH: `bench-plan.md` P5
 ## Lane: brx-row-triage, the MVP BENCH rows (2026-11-16)
 **State (2026-11-16):** every MVP BENCH row has a verdict (log 2026-11-16). Seven closed; 89 left, each in
 `bench-plan.md` *Start here* in rig order.
-**Next:** none; brx1 routes F453's desk fix and F444's card. **Blocked:** none.
+**Next:** none; a new desk lane takes F453, F444 and F463 step 1. **Blocked:** none.
 
 ## Start here
 
