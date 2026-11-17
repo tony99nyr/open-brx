@@ -2537,7 +2537,8 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
                         # `welcome.join` carries. Broadcast, not pushed, so `test_mc_envelope_kinds.py`'s AST
                         # scan (which reads `self.net.push(...)` sites only) does NOT cover it.
             "station_config",   # (A13.5 note below)
-            "station_update"}   # A56 (S58): MC -> a powerup station: available / taken + the time to the next spawn.
+            "station_update",   # A56 (S58): MC -> a powerup station: available / taken + the time to the next spawn.
+            "action_ack"}   # F453: MC handled a station_action; the station stops resending that envelope id.
                                 # A13.5 (F104, 2026-09-11): MC -> a utility node. An unlisted kind is dropped
                                 # as malformed before `onMessage` ever sees it (the `alert` trap); the phone
                                 # reads this set from the generated contract.gen.js (A33).

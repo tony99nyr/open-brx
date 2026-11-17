@@ -36,6 +36,7 @@ log = logging.getLogger("brx.mc.net")
 
 HELLO_TIMEOUT_S = 5.0          # net.md §8: no valid hello within the grace window → close
 REORDER_WINDOW = 256           # net.md §4: small recent-set to tolerate reordering
+ACTION_ID_WINDOW = 32          # F453: recent station_action envelope ids per node (a Stick queues at most 8)
 HOLE_LIMIT = 400              # F513: seqs past an unfilled hole before MC gives up on it; under the phone ring's 500
 HOLE_REFUSALS = 2             # F513: a hole refused this many times is permanent (the phone resends the same bytes)
 # F513 (brx5's landed-late review): a phone resends its ring only after a reconnect, so a hole it has not resent within two
@@ -178,6 +179,9 @@ class NodeRecord:
     lost_seqs: set = field(default_factory=set)        # holes given up: a later resend of one never reopens it
     lost_hi: int = 0                                   # the highest seq given up; the ack may run through it (seq_hi stays stored-only)
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
+    # F453: the envelope ids of the last station_action reports MC handled. A station resends a report until
+    # `action_ack` names it, so a resend whose first copy did arrive is acked again and not applied twice.
+    action_ids: deque = field(default_factory=lambda: deque(maxlen=ACTION_ID_WINDOW))
 
     @property
     def connected(self) -> bool:
@@ -993,6 +997,21 @@ class NetServer:
         if kind == "time_req":
             self._clock_sample(rec, env, t_recv, kind)
             self._send(rec, "time_res", {"t_node": body["t_node"], "server_t": E.now_ms()})
+            return
+        if kind == "station_action":
+            # F453: ack every report by its envelope id, after MC handled it. A station resends a report until the
+            # ack names it, so a resend whose first copy did arrive is acked again and not handled twice.
+            # A handler that raised acks nothing, so the station sends the report again (at most 5 sends, each one logged).
+            aid = env["id"]
+            if aid not in rec.action_ids:
+                try:
+                    for cb in self._on_node_message:
+                        cb(rec.node_id, kind, dict(body), t_recv)
+                except Exception:
+                    log.exception("station_action %s from %s raised; not acked", aid, rec.node_id)
+                    return
+                rec.action_ids.append(aid)
+            self._send(rec, "action_ack", {"id": aid})
             return
         # ack_config / log_offer / log_data / ready
         for cb in self._on_node_message:

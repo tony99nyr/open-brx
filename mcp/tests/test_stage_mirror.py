@@ -2564,6 +2564,8 @@ KNOWN_UNMIRRORED = {
     "hl.begins", "hl.rival", "hl.report", "hl.holdTally", "hl.accrue", "hl.accrueStations", "hl.hill",
     # Engine keeps these doors for call order and persistence; the listener owns their state and rules.
     "_accrueHold", "_reportPossession", "hill", "_possessionSaved",
+    # F444: the ENEMY CAPTURED card is a HUD lane item only (no write, no sound), like `hl.begins`' badge; the stage has no lanes
+    "hl.enemyCaptured",
 
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
@@ -3431,7 +3433,9 @@ def test_a_stand_down_mid_refill_re_earns_the_delay_and_never_announces_twice():
         assert grants(mgr, n3) == 0, "the refill must serve a fresh quiet window, not resume on the next tick"
         assert c["shield_charging"] not in since(mgr, n3), "one refill is one piece of news"
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
-        assert since(mgr, n3).count(c["shield_charging"]) == 1, "and the refill after the new quiet is its own news"
+        # F463: the stun clip X17 (7.9 s) is still on the gun when this refill starts, so its line waits past the 1.5 s
+        # status TTL and is dropped (cues.test.mjs, the same case on the phone)
+        assert since(mgr, n3).count(c["shield_charging"]) == 0, "the refill after the new quiet is not said over the stun clip"
     asyncio.run(go())
 
 

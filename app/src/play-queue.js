@@ -150,11 +150,16 @@ export class PlayQueue extends GunAudio {
     });
     const pending = groups.filter(group => group.length);
     if (mustHear) this.dropWaiting(why);   // F419: the cues still on the PHONE are what the old FIFO's stops cut
+    // F463 review: the whole write jumps or none of it does, so its groups keep their order.
+    const jumps = !mustHear && !frames.some(isQueueSlotPlay);
+    const start = jumps ? this._jumpIndex() : this.queue.length;
+    let at = start;
     const writes = pending.map((group, i) => new Promise(resolve => {
       const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now };
       this.pending.add(job);
-      this.queue.push(job);
+      this.queue.splice(at++, 0, job);
     }));
+    if (jumps && start === 0) this._replanWaiting(at);   // only when nothing it may not pass stands behind the waiting job
     this.drain();
     return Promise.all(writes).then(results => results.every(ok => ok !== false));
   }
@@ -169,8 +174,35 @@ export class PlayQueue extends GunAudio {
    *  (token 1) cuts the playing clip by design and keeps the plain PLAY_GAP_MS; a must-hear line, and any write that
    *  carries its own `$PLAYX` (the hill callout's preempt), stops the clip itself and must not wait for it to end. */
   _step(job, { t, next, last, model }) {
-    const waits = !job.mustHear && !job.group.includes(PLAYX) && job.group.some(isQueueSlotPlay);
+    const waits = this._waitsForGun(job);
     return { waits, at: Math.max(t, next || 0, last == null ? 0 : last + this.gapMs, waits ? model.freeAt(t) : 0) };
+  }
+  /** A job that waits for the gun's clip to end before it goes (F419): a queue-slot cue that is not must-hear and carries
+   *  no `$PLAYX` of its own. PURE. */
+  _waitsForGun(job) {
+    return !job.mustHear && !job.group.includes(PLAYX) && job.group.some(isQueueSlotPlay);
+  }
+  /** F463 review (brx1, 2026-11-16): a write whose sounds are all on the interrupt slot and is not must-hear (a stun's
+   *  disarm and its clip) never waits for the gun, so it never waits BEHIND a cue that does either. It goes ahead of the
+   *  tail of queued jobs it may pass (`_passable`), and the job planned for later on the gun goes back to the queue
+   *  behind it when nothing else stands between them (`_replanWaiting`). Before, a stun queued behind a reload sound
+   *  that waited out the last stun's clip, and the second stun reached the gun late. */
+  _jumpIndex() {
+    let ix = this.queue.length;
+    while (ix > 0 && this._passable(this.queue[ix - 1])) ix--;
+    return ix;
+  }
+  /** A job a jumping write may pass: a sound-only cue that waits for the gun. Never a spawn/revive burst or a job that
+   *  carries gun rows (`$AMMO`, `$SIR`...): its rows must keep their order against the stun's. PURE. */
+  _passable(job) {
+    return this._waitsForGun(job) && !job.life && job.group.every(f => f === PLAYX || isPlay(f));
+  }
+  _replanWaiting(at) {
+    const w = this.waiting;
+    if (!w || this.inFlight || !this._passable(w)) return;
+    w.plan++;   // its timer is void
+    this.waiting = null; this.busy = false;
+    this.queue.splice(at, 0, w);
   }
   /** THE stale rule (F419 review): a job that waited for the gun is dropped, not played late, once it is sent more than
    *  `staleMs` after it was queued. F493 r1: a spawn/revive burst is never stale. Dropped, the gun never gets its
@@ -182,11 +214,12 @@ export class PlayQueue extends GunAudio {
   /** Plans the next job, and sends it now or when `_step` says. One job at a time: the next drains when it settles. */
   drain() {
     if (this.busy || !this.queue.length) return;
-    const job = this.queue.shift(), generation = this.gen;
+    const job = this.queue.shift(), generation = this.gen, plan = job.plan = (job.plan || 0) + 1;
     this.busy = true;
     const now = this._now();
     const { waits, at } = this._step(job, { t: now, next: this.nextAt, last: this.lastAt, model: this });
     const send = () => {
+      if (job.plan !== plan) return;   // `_replanWaiting` put it back in the queue: a later drain plans it again
       if (this.waiting === job) this.waiting = null;
       if (job.cancelled || generation !== this.gen) return;
       this.nextAt = 0;

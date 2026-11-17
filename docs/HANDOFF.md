@@ -70,6 +70,12 @@ closed, F640 (2)(3) on bench P19. Batch B: F674 closed, F671 and F675 on bench P
 `bench-plan.md` *Start here* in rig order.
 **Next:** none; a new desk lane takes F453, F444 and F463 step 1. **Blocked:** none.
 
+## Lane: brx-desk-three, F453, F463 step 1, F444 (2026-11-16)
+**State (2026-11-16):** landed: the Stick claim ack (F453, A90), the play-queue stun jump, every on-gun clip timed
+(F463 step 1) and the enemy-captured HUD card (F444). Log 2026-11-16 brx-desk-three.
+**Next:** the bench rows: F453 (NEXT step 76), F463 step 1, F444. F678 (the dropped TTL line) is for brx1 and Tony.
+**Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row

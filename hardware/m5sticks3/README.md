@@ -429,7 +429,9 @@ player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is
 best-effort as `station_action {id, action:"taken", player_num, t}` (contract A56, `docs/spec/contracts.md`). The BLE callback only records claim candidates. The loop awards after the short window and enqueues
 (`PendingActionQueue`, bounded at 8, the newest report per spawn instant replacing any older one for
 the same instant); `mcLoop` is the only place anything is ever sent, draining the queue once per
-tick while a socket is live (still gated by `ACTIONS`, below).
+tick while a socket is live (still gated by `ACTIONS`, below). F453 (A90): a sent report stays queued until MC's
+`action_ack` names its envelope id; the Stick resends it under the same id every 2 s of connected time, and drops
+and counts it after 5 sends with no ack.
 
 **Buttons and RESET.** Once Wi-Fi has ever been configured (the first `WIFI` command, ever, even across a reboot),
 the Stick's two buttons become OPERATOR controls; players never press anything. The current map is the table in

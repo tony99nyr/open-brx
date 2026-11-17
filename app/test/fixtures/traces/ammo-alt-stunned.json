@@ -144,9 +144,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1250},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":5560,"ms":400,"leftMs":400}},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$PLAY,,4,6,D27,,,,*"
-      ]
+      "writes": []
     }
   ]
 }

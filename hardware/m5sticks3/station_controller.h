@@ -70,6 +70,7 @@ class StationController {
     else if (kind == "station_config") on_station_config(link, parse_station_config(body), now_ms, fx);
     else if (kind == "station_update") on_station_update(link, parse_station_update(body), now_ms, fx);
     else if (kind == "control" && parse_control_cmd(body) == "release_utility") on_release(link, fx);
+    else if (kind == "action_ack") link.ack_pending_action(body.get("id").as_string());   // F453
   }
 
   void on_welcome(StationLink& link, const WelcomeMsg& w, StationEffects& fx) {

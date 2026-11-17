@@ -1423,7 +1423,29 @@ struct PendingTakenReport {
   uint32_t spawn_instant_ms = 0;
   int64_t t_ms = 0;
   int game = 0;  // Codex review 2026-11-07: the game byte the item was awarded in (0 = any), so MC drops another game's taker
+  // F453: the report stays queued after a send until MC's `action_ack` names `env_id`. A resend keeps the same id, so
+  // MC handles the report once. Empty = never sent.
+  std::string env_id;
+  uint32_t sent_ms = 0;
+  uint8_t sends = 0;
 };
+
+// A fresh, never-sent report (the send fields keep their defaults).
+inline PendingTakenReport taken_report(int station_id, int player_num, uint32_t spawn_instant_ms, int64_t t_ms, int game = 0) {
+  PendingTakenReport r;
+  r.station_id = station_id;
+  r.player_num = player_num;
+  r.spawn_instant_ms = spawn_instant_ms;
+  r.t_ms = t_ms;
+  r.game = game;
+  return r;
+}
+
+// F453: a sent report with no `action_ack` is sent again after ACTION_RESEND_MS (connected time only: the glue
+// flushes only on a welcomed socket). After ACTION_MAX_SENDS sends with no ack (an MC older than the ack), the
+// Stick discards the report and counts it as dropped.
+constexpr uint32_t ACTION_RESEND_MS = 2000;
+constexpr uint8_t ACTION_MAX_SENDS = 5;
 
 class PendingActionQueue {
  public:
@@ -1435,6 +1457,8 @@ class PendingActionQueue {
         e.player_num = player_num;
         e.t_ms = t_ms;
         e.game = game;
+        e.env_id.clear();   // F453: a changed report is a new report; an ack for the old one must not clear it
+        e.sends = 0;
         return;
       }
     }
@@ -1442,7 +1466,7 @@ class PendingActionQueue {
       entries_.erase(entries_.begin());
       dropped_++;   // O10: a claim MC will now never hear of. Counted, and reported in the status heartbeat.
     }
-    entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms, game});
+    entries_.push_back(taken_report(station_id, player_num, spawn_instant_ms, t_ms, game));
   }
 
   bool empty() const { return entries_.empty(); }
@@ -1467,6 +1491,30 @@ class PendingActionQueue {
   }
   void discard_front() {
     if (!entries_.empty()) entries_.erase(entries_.begin());
+  }
+  // F453: the oldest report went out under envelope id `id` at `now_ms`.
+  void mark_front_sent(const std::string& id, uint32_t now_ms) {
+    if (entries_.empty()) return;
+    entries_.front().env_id = id;
+    entries_.front().sent_ms = now_ms;
+    entries_.front().sends++;
+  }
+  // F453: the oldest report was sent ACTION_MAX_SENDS times and MC never acked it.
+  void give_up_front() {
+    if (entries_.empty()) return;
+    entries_.erase(entries_.begin());
+    dropped_++;
+  }
+  // F453: MC's `action_ack {id}`. Removes the report sent under `id`; false when no queued report has that id.
+  bool ack(const std::string& id) {
+    if (id.empty()) return false;
+    for (auto it = entries_.begin(); it != entries_.end(); ++it) {
+      if (it->env_id == id) {
+        entries_.erase(it);
+        return true;
+      }
+    }
+    return false;
   }
   // O10: how many claims overflow evicted since boot (a clear() at a new game is not a drop: that is
   // deliberate, and the game those reports belonged to is over).
@@ -2269,6 +2317,9 @@ class StationLink {
   // O10: the send path peeks, sends, and discards only on success (see PendingActionQueue::peek_front).
   bool peek_pending_action(PendingTakenReport& out) const { return pending_actions_.peek_front(out); }
   void discard_pending_action() { pending_actions_.discard_front(); }
+  void mark_pending_action_sent(const std::string& id, uint32_t now_ms) { pending_actions_.mark_front_sent(id, now_ms); }
+  void give_up_pending_action() { pending_actions_.give_up_front(); }
+  bool ack_pending_action(const std::string& id) { return pending_actions_.ack(id); }
   uint32_t pending_actions_dropped() const { return pending_actions_.dropped(); }
   bool has_pending_actions() const { return !pending_actions_.empty(); }
   size_t pending_action_count() const { return pending_actions_.size(); }

@@ -9,25 +9,13 @@ Run: python3 run_tests.py clip_ms_generated
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import pathlib
 import re
-import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-GENERATOR = REPO / "mcp" / "tools" / "gen_clip_ms.py"
 JS_OUT = REPO / "app" / "src" / "clipms.gen.js"
 CATALOG = REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json"
-
-
-def _load():
-    spec = importlib.util.spec_from_file_location("gen_clip_ms", GENERATOR)
-    assert spec and spec.loader, f"no generator at {GENERATOR}"
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def _on_disk_rows() -> dict[str, int]:
@@ -37,19 +25,16 @@ def _on_disk_rows() -> dict[str, int]:
     return {k.strip("'"): int(v) for k, v in re.findall(r"('[^']+'|[A-Za-z_$][\w$]*): (\d+)", body.group(1))}
 
 
-def test_every_row_is_the_catalogue_length_and_every_golden_bundle_sound_has_one():
-    """A floor under the freshness test: an empty render and an empty file would otherwise agree."""
+def test_every_on_gun_sound_has_its_catalogue_length():
+    """A floor under the freshness test: an empty render and an empty file would otherwise agree. F463: every on-gun id
+    with a length has a row, so no clip the gun holds runs on the 2.5 s default."""
     rows = _on_disk_rows()
-    gen = _load()
     sounds = json.loads(CATALOG.read_text(encoding="utf-8"))["sounds"]
-    on_gun = {s["id"]: s["duration_s"] for s in sounds if s.get("on_gun")}
+    on_gun = {s["id"]: s["duration_s"] for s in sounds
+              if s.get("on_gun") and isinstance(s.get("duration_s"), (int, float)) and s["duration_s"] > 0}
+    assert set(rows) == set(on_gun), sorted(set(rows) ^ set(on_gun))[:10]
     for sid, ms in rows.items():
-        assert sid in on_gun, f"{sid} is not on the gun"
         assert ms == int(on_gun[sid] * 1000 + 0.5), sid
-    golden = gen._golden_ids(set(on_gun))
-    assert len(golden) > 60, "the golden bundle walk found almost nothing"
-    assert golden - set(gen.DEFERRED) <= set(rows), sorted(golden - set(gen.DEFERRED) - set(rows))
-    assert set(gen.EXTRAS) <= set(rows) and not set(gen.DEFERRED) & set(rows)
-    # the four hill lines and the tick, which the node's literal fallbacks time by
+    # the four hill lines and the tick, which the node's literal fallbacks time by; F463's stun clip and victory sting
     assert (rows["VB0N"], rows["VB0P"], rows["VB0O"], rows["VB0Q"], rows["U100"]) == (1924, 2976, 2078, 2424, 114)
-
+    assert (rows["X17"], rows["VSF"]) == (7883, 1860), (rows["X17"], rows["VSF"])

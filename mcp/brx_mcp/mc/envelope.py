@@ -71,6 +71,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "time_res": ("t_node", "server_t"),
     "pull_log": (),
     "ack": ("seq_hi",),
+    "action_ack": ("id",),   # F453: MC handled the station_action whose envelope id is `id`
     "apply": ("frames",),   # A6: best-effort "write these frames now" (coverage-zone runtime effects)
     "loadout_ack": ("slot", "ok"),   # A10: `reason`/`loadout` optional
     "score": ("player_id",), # A7: MC pushes a player's current ScoreRow to its node (coverage-zone live K/A/ACC)
