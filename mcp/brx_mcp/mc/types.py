@@ -2548,6 +2548,9 @@ CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
                                                  # ignores one for another match or player (`engine.js control`).
                 "clock_resync",   # F474: MC -> ONE phone whose wall clock stepped after its sync: run a fresh 5-sample
                                   # time_req burst. Allowed in any phase; no player_id or match_id (it is about the clock).
+                "clear_station",   # F677: MC -> ONE phone station the operator CLEARED: it stops advertising and stays a
+                                   # station (`utility.js clearedByMc`). Not `release_utility`, which sends a phone BACK
+                                   # TO HUD. A Stick is sent `release_utility`, its UNASSIGNED (`stations.py release`).
                 "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
                                       # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
                                       # the same undiscoverable seven-tap gesture its settings drawer uses, and

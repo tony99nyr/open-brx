@@ -35,9 +35,9 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
    8 (S10), 9 (F128), 12 to 15 (F272, F269, F270, F274: the screamers sheet, 130 min). F637 on one gun (10 min, its
    row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
 3. **One gun and both rig boards (about 31 min).** Steps 16 (F449), 17 (F322) and 18 (F264).
-4. **One gun, its phone, MC and the rig emitter (about 133 min).** P8's open SR steps: SR5 part 3, SR13 and the
+4. **One gun, its phone, MC and the rig emitter (about 143 min).** P8's open SR steps: SR5 part 3, SR13 and the
    SR23 tap cases (F650, 18 min). P19 (F640, 10 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
-   28 (F545), 29 (F3), 30 (F340), 31 (F293), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
+   28 (F545), 29 (F3), 30 (F340), 31 (F293), 108 (F678), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
    107 (F641). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
 6. **Two guns, both phones, MC and a phone station (about 135 min).** Steps 36 (F395, F21), 38 (F438), 40 (F298,
@@ -465,7 +465,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    life, A16), and a pull fires. Closes the 2026-10-26 code read: a positive `$LIFE` frees the trigger and `$SIR` does
    not. F264 stays open for step 39. Keep `$GSET` t8 at its compiled value. (FOLLOWUPS F264)
 
-### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 175 min)
+### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 185 min)
 
 Tactix-9498 with the green Pixel 5. The rig emitter is the shooter wherever a step needs a hit or a kill (0422 Sitting
 A).
@@ -516,6 +516,12 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
+108. **F678**, the stun clip stops at the stun's end (10 min, ears). One gun at `$VOL,65` in a Shields game with
+   `config.stun` at `{"duration_s": 4}` (shorter than X17's 7.9 s). The rig emitter sends the `<8,0>` word with the
+   shield part-used, so the refill starts after the stun. Control: a stun of 10 s (X17 ends before the stun does), then
+   the refill. A/B/A: 10 s, 4 s, 10 s. Pass: in the 4 s runs X17 stops at the stun's end (the log shows `stun over:
+   stop the stun clip X17`) and "Shields charging" plays at the refill. In the 10 s runs no stop is written and the
+   line plays too. (FOLLOWUPS F678)
 ### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 175 min)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with

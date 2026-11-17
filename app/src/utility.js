@@ -136,6 +136,7 @@ async function readBattery() {
 let lastBattery = null;
 
 // ---------- the station ----------
+let _advertStops = 0;   // F677 review: counts stops, so a start that a stop overtook knows it lost
 let advertising = false, advertisingPending = 0, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
@@ -226,7 +227,14 @@ async function startAdvert(quiet = false) {
     // A88: a following hill's tally rides as manufacturer data (Android; iOS cannot send it). It needs the TX-power
     // field's 3 bytes to fit the 31-byte legacy advert, and nothing reads that field.
     const md = tally ? { manufacturerId: ADVERT_TALLY_COMPANY, manufacturerData: tally.map(v => v.toString(16).padStart(2, '0')).join('') } : {};
+    const stops = _advertStops;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: !tally, ...md });
+    // F677 review: a stop (MC's clear, the operator's STOP) that landed while this start was on its way is the newer
+    // intent. Without this the late start put a cleared station's old advert back on air.
+    if (stops !== _advertStops) {
+      try { await plugins.beacon.stop(); } catch (_) { /* ignore */ }
+      advertising = false; save(); log('a stop came while the advert was starting: it stays off', 'li'); render(); return;
+    }
     advertising = !!(r && r.advertising);
     // `live` is the operator's intent: a reload mid-game comes back advertising (the settings stay behind the ⓘ gate).
     // F648 (game 2026-11-01 issue 7): a failed start never clears it, or the ticks' retry (gated on `live`) never runs and one
@@ -343,7 +351,9 @@ function applyHillClock(cfg, now, sameStation = true) {
   // trusts no time limit) keeps the deadline the original START gave, or the hill counts past its whistle until END.
   const liveResend = cfg.starts_in_ms != null && cfg.starts_in_ms <= 0 && sameStation;   // as the Stick: the same point only
   if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
-  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
+  // F677 (the Stick's F674 rule, station_link.h): an END ends at the earliest of a passed deadline, MC's whistle when the END
+  // names how long ago it was (`end_age_ms`: a late END, or one that sat in a queue), and receipt.
+  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = Math.min(settings.hillEndsAt ?? now, now, cfg.end_age_ms >= 0 ? now - cfg.end_age_ms : now);
   else if (!liveResend) settings.hillEndsAt = null;
   if (wasFrozen && !frozenAtWhistle()) { point.at = null; point.heldBy = null; }
   // Following: MC's END for the followed game ends it here, at MC's whistle when that has passed (set just above)
@@ -408,7 +418,11 @@ function connectMc(rawUrl, { wsFactory, trusted = true, pub, secret } = {}) {
     if (!m) return;
     if (m.kind === 'station_config') applyStationConfig(m.body);
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
-    else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
+    else if (m.kind === 'control') {
+      const cmd = m.body && /** @type {{cmd?: unknown}} */ (m.body).cmd;
+      if (cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
+      else if (cmd === 'clear_station') clearedByMc();   // F677: stop advertising, stay a station
+    }
   });
   candidate.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
     if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();
@@ -533,8 +547,25 @@ function stageMcMessage(kind, body) {
 }
 
 async function stopAdvert() {
+  _advertStops++;
+  settings.live = false; save();   // before the wait (F677 review): a tick re-key must not start the advert again mid-stop
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
+}
+/** F677: the operator CLEARED this station on MC (`control{cmd:"clear_station"}`, `stations.py release`). It stops
+ *  advertising its old role and stays a station, unarmed and unlocked, as the Stick's UNASSIGNED does: never BACK TO HUD,
+ *  which is `release_utility`. The next beat says `armed: false`, and that is MC's proof the clear arrived. */
+async function clearedByMc() {
+  log('Mission Control cleared this station: it stops advertising and waits for a new role', 'lk');
+  // The advert stops BEFORE `mcArmed` goes (Codex review): a beat sent while the stop is in flight must not say
+  // `armed: false`, which MC takes as proof that the old advert is off the air.
+  const armed = settings.mcArmed;
+  await stopAdvert();
+  if (settings.mcArmed !== armed) return;   // MC armed it again while the stop was in flight: the new role stands
+  settings.mcArmed = null; settings.lockUntil = 0;
+  resetPoint('MC cleared the station');
+  save(); render();
+  if (transport && transport.state === 'bound') transport.status(utilityStatusBody());
 }
 async function restartIfLive() { if (advertising) await startAdvert(); else render(); }
 
@@ -1347,7 +1378,7 @@ function wireExit() {
   await startScan();
   setInterval(tick, STATION_TICK_MS);
   if (DEMO) seedDemo();
-  window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
+  window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, clearedByMc, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
     // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked
     startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need

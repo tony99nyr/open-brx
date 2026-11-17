@@ -763,6 +763,18 @@ class GunAudio:
         self.clips.insert(0, c)
         return playing
 
+    def cut_at(self, ix: int, now: int) -> None:
+        """play-queue.js `cutAt` (F678): one stop the node wrote cut clip `ix`, an interrupt-slot clip that plays on the gun
+        now. It leaves the model, and so does the clip it cut when it was sent. A clip still queued then plays on, with
+        the clips behind it, from `now`."""
+        at = self.clips[ix]["at"]
+        self.clips = [c for i, c in enumerate(self.clips) if i > ix or (i < ix and c["start"] > at)]
+        tail = now
+        for c in self.clips:
+            c["start"] = tail
+            c["end"] = tail + c["ms"]
+            tail = c["end"]
+
     def _prune(self, now: int) -> None:
         self.clips = [c for c in self.clips if c["end"] > now]
 
@@ -6767,6 +6779,8 @@ class GunStage:
         if not st:
             return
         self.stunned = None
+        if why == "expired":
+            self._stop_stun_clip()
         if why == "expired" and self.alive and self.connected:
             rows = self._acct_wrote_rows([f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in st["ammo"].items()])   # bug 3a
             self._spawn_task(self._write_ammo(rows, "stun over: restore live ammo", gap_ms=60))
@@ -6774,6 +6788,35 @@ class GunStage:
             self._moment = ("stun_over", self.now())
             self._event_now("stun_over")
         self._log(f"stun over ({why})", "info")
+
+    def _stop_stun_clip(self) -> None:
+        """engine.js `_stopStunClip` (F678): an expiry stops the stun clip X17 with one `$PLAYX,0,*` while it still plays,
+        so a "Shields charging" line queued behind it is said inside its status TTL. X17 rides the interrupt slot, so it
+        plays from when it was sent: it still plays when less than its length has passed since then and no
+        interrupt-slot clip came after it. A hit sound queues behind it and does not count. The stop carries no `$PLAY`,
+        so the play lock never holds it. The test runs again at the send point, after any write ahead of it on the link,
+        and the model drops X17 (`cut_at`) only when the stop goes."""
+        if not self.connected or self._stun_clip_ix() < 0:
+            return
+
+        def sent(_frame: str) -> None:
+            ix = self._stun_clip_ix()
+            if ix >= 0:
+                self._gun_audio.cut_at(ix, self._now_ms())
+
+        self._spawn_task(self.write([PLAYX], "stun over: stop the stun clip X17", gap_ms=0, model=False,
+                                    should_send=lambda: self._stun_clip_ix() >= 0, on_frame_sent=sent))
+
+    def _stun_clip_ix(self) -> int:
+        """engine.js `_stunClipIx`: the model index of X17 while it still plays on the gun, else -1."""
+        now = self._now_ms()
+        g = self._gun_audio
+        g._prune(now)
+        sid = _cue_id(STUN_PLAY)
+        ix = max((i for i, c in enumerate(g.clips) if c["id"] == sid), default=-1)
+        if ix < 0 or g.clips[ix]["at"] + g.clips[ix]["ms"] <= now or any(c.get("irq") for c in g.clips[ix + 1:]):
+            return -1
+        return ix
 
     # ---------- S42/F259: node-driven recoil, the `$TMP` t4 accuracy writer (engine.js `_recoil*`) ----------
     # A port, method for method, of engine.js's writer. Every weapon ships t21 == t22 == 100 (the native walk is
@@ -7255,7 +7298,9 @@ class GunStage:
         for f in frames:
             if f.startswith("$PLAY,"):
                 for one in play_slot_frames(f):   # F437: a two-slot frame is two clips
-                    g.add(self._audio_clip_ms(one), why, now, _cue_id(one))
+                    c = g.add(self._audio_clip_ms(one), why, now, _cue_id(one))
+                    if c is not None and not is_queue_slot_play(one):
+                        c["irq"] = True   # F677 review (play-queue.js `addPlay`): an interrupt-slot clip starts at once
 
     def _audio_hit(self, proto: str, subtype: str) -> None:
         """engine.js `_audioHit`: a hit the gun registered plays its `$SIR` row's sound, into the same FIFO. A row with no

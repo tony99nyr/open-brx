@@ -4809,6 +4809,7 @@ export class Engine {
   _stunRestore(why) {
     const st = this.stunned; if (!st) return;
     this.stunned = null;
+    if (why === 'expired') this._stopStunClip();
     if (why === 'expired' && this.rc.active) {
       // r1 S3: the window is still holding the gun disarmed, and shots inside it are ignored. A restore now would re-arm the
       // gun inside the window; the window's end re-arms with the live counts and serves both, so they are written once.
@@ -4830,6 +4831,35 @@ export class Engine {
     }
     this.log(`stun over (${why})`, 'li');
     this._changed();
+  }
+  /** F678 (brx1's call, 2026-11-16): the stun clip X17 (7.9 s) can outlast the stun, and a "Shields charging" line
+   *  queued behind it then waits past its status TTL and is dropped. So an expiry stops X17 with one `$PLAYX,0,*` while
+   *  it still plays. X17 rides the interrupt slot (token 1), so on the gun it starts when it is sent and cuts the clip
+   *  playing then; the model queues it behind that clip instead (it over-counts on purpose). So "X17 still plays" is:
+   *  less than its length has passed since it was sent, and no interrupt-slot clip came after it (that one cut it). A
+   *  hit sound queues behind it, so it does not count. Never a stop for another clip. The model then drops X17 and the
+   *  clip it cut, and the clips still queued play on from now (`cutAt`). The stop goes straight to the link (no `$PLAY`,
+   *  so the play queue never holds it). stage.py `_stop_stun_clip` mirrors it. */
+  _stopStunClip() {
+    if (!this.bleUp || this._stunClipIx() < 0) return;
+    // Codex review: a `$PLAY` already on the link ahead of the stop can land first and cut X17, so the test runs again at
+    // the send point (`shouldSend`), and the model drops X17 only when the stop goes (`onFrameSent`).
+    let cut = false;
+    const sent = () => { if (cut) return; cut = true; const ix = this._stunClipIx(); if (ix >= 0) this._gun.cutAt(ix, this.now()); };
+    this._mustWrite = true;   // the model is kept by `sent`, not by `_audioWrite`'s front-clip stop
+    let r;
+    try { r = this._write([PLAYX], 'stun over: stop the stun clip X17', { shouldSend: () => this._stunClipIx() >= 0, onFrameSent: sent }); }
+    finally { this._mustWrite = false; }
+    // a writer that reports no frame (the demo gun, a test's) delivered when it did not say false: as `_write`'s `wire.play`
+    if (r && typeof r.then === 'function') r.then(ok => { if (ok !== false && ok !== null) sent(); }, () => {});
+    else if (r !== false && r !== null) sent();
+  }
+  /** F678: the model index of X17 while it still plays on the gun, else -1 (`_stopStunClip`). */
+  _stunClipIx() {
+    const now = this.now(), g = this._gun;
+    g._prune(now);
+    const ix = g.clips.map(c => c.id).lastIndexOf(clipId(STUN_PLAY));
+    return ix < 0 || g.clips[ix].at + g.clips[ix].ms <= now || g.clips.slice(ix + 1).some(c => c.irq) ? -1 : ix;
   }
   // ---------- S16: damage over time, on the node (spec/node.md §3.17) ----------
   /** The tick numbers for an IR protocol, from the bundle's game-wide `dot` table (MC keys it by the protocol the

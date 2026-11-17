@@ -173,7 +173,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
   // HIGH (review, 2026-09-13): RELEASE used to fire on a single tap, styled identically to CLEAR right
   // beside it -- but the two are not remotely equivalent. CLEAR only drops the assignment (the phone
-  // keeps advertising; recoverable from this console). RELEASE navigates the phone AWAY from the page
+  // stops advertising and stays a station, F677; recoverable from this console). RELEASE navigates the phone AWAY from the page
   // that holds its own socket, in ANY phase including LIVE -- after which nothing on this console can
   // reach it again; the only way back is walking to the tagger and doing the seven-tap gesture. A
   // mis-tap here costs a walk across the field mid-match, so it gets the same tap-again confirm
@@ -435,13 +435,13 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
           {applyErr && <ItemChip id="items-apply-err" role="alert" testid="station-apply-error" short="Station not armed" detail={applyErr} />}
-          {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
+          {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the station stops advertising and waits for a new role">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
               a single tap. This works in ANY phase, armed/live included, and on ANY utility phone here,
               assigned or not (the stuck case usually is not). An accepted send clears its assignment and
               allow-list entry; the card remains only until the reloaded HUD proves the old utility identity.
-              Unlike CLEAR (recoverable here — the phone just keeps advertising) this is NOT: it moves the
+              Unlike CLEAR (recoverable here: the phone stays a station) this is NOT: it moves the
               phone off the page holding its socket, so the console loses it the moment it lands. That
               blast-radius mismatch is why it needs its own tap-again confirm rather than CLEAR's look —
               review finding 2026-09-13. First tap only arms the confirm; it sends nothing. */}

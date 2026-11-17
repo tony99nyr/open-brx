@@ -76,6 +76,11 @@ closed, F640 (2)(3) on bench P19. Batch B: F674 closed, F671 and F675 on bench P
 **Next:** the bench rows: F453 (NEXT step 76), F463 step 1, F444. F678 (the dropped TTL line) is for brx1 and Tony.
 **Blocked:** none.
 
+## Lane: brx-desk-four, F678 and F677 (2026-11-16)
+**State (2026-11-16):** F678 built (the stun expiry stops X17), on the bench as NEXT step 108. F677 closed: a cleared
+phone station gets `clear_station`, a phone hill reads `end_age_ms`, MC holds clears in play, the list is bounded.
+**Next:** bench step 108; F679 (the late END and MC's max tally) for brx1 to route. **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row

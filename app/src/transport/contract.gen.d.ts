@@ -707,7 +707,7 @@ export type McKind = 'ack' | 'action_ack' | 'alert' | 'apply' | 'assign' | 'conf
 export declare const NODE_KINDS: ReadonlySet<NodeKind>;
 export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'station_action' | 'status' | 'time_req';
 export declare const CONTROL_CMDS: ReadonlySet<ControlCmd>;
-export type ControlCmd = 'abort_start' | 'clock_resync' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
+export type ControlCmd = 'abort_start' | 'clear_station' | 'clock_resync' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
