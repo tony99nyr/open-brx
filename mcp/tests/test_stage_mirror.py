@@ -2213,6 +2213,8 @@ def _reconcile_methods() -> set[str]:
 _AMMO_JS = _pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "ammo.js"
 _AMMO_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Ammo\s*\{", _re.M)
 _AMMO_PAIRS = {
+    # F665: the swing timed from its slot-4 `$ALCD` after a melee press (the melee not-ready sound reads its cooldown)
+    "am._meleeSwing": "_melee_swing",
     # the F259 magazine account
     "am.acctLive": "_acct_live", "am.acctOutstanding": "_acct_outstanding", "am.acctEchoing": "_acct_echoing",
     "am.acctWrote": "_acct_wrote", "am.acctUnwrite": "_acct_unwrite", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
@@ -2404,9 +2406,6 @@ KNOWN_UNMIRRORED = {
     # Tony 2026-11-14 (the free vent): a pickup equip goes out at once and logs the heat lock it clears. The stage has no pickup
     # equip; the held bind re-equip is mirrored (`_vent_holds`, `_vent_flush`, test_stage_charge_lock).
     "_weapWrite",
-    # F665 bench switch (2026-11-03): a melee not-ready sound, off by default, tried by ear at MN1. Not mirrored while it is an
-    # experiment; port it if Tony keeps it (FOLLOWUPS F665)
-    "setMeleeNotReady", "_meleeNotReadyCue", "_audioBusyNow",
     # The EMP perk's THROW (2026-10-24): a LEFT press on the holder's own phone writes a host `$IRTX`. The stage plays a
     # victim gun, which never throws; the victim half (`_empSpec`, `_empWord`, `_stun(empMs)`) is mirrored.
     "_empThrow", "_empHeld", "_empLeftMs", "_empView", "_empPicked",
@@ -2541,9 +2540,6 @@ KNOWN_UNMIRRORED = {
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
     "_fireIntervalMs", "shotCooldown",
-    # F665: the melee-ready icon (the swing timed from its $ALCD after a melee press, t14 from the head); HUD display only,
-    # no game rule. The swing's rule that IS game state (a slot-4 $ALCD moves nothing) is mirrored in `GunStage` itself.
-    "_meleeButtons", "am._meleeSwing", "meleeCooldown",
     "feedback", "alert", "control", "_cue",
     # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
     # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the
