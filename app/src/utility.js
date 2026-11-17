@@ -544,6 +544,7 @@ function stageMcMessage(kind, body) {
 
 async function stopAdvert() {
   _advertStops++;
+  settings.live = false; save();   // before the wait (F677 review): a tick re-key must not start the advert again mid-stop
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }
@@ -554,7 +555,9 @@ async function clearedByMc() {
   log('Mission Control cleared this station: it stops advertising and waits for a new role', 'lk');
   // The advert stops BEFORE `mcArmed` goes (Codex review): a beat sent while the stop is in flight must not say
   // `armed: false`, which MC takes as proof that the old advert is off the air.
+  const armed = settings.mcArmed;
   await stopAdvert();
+  if (settings.mcArmed !== armed) return;   // MC armed it again while the stop was in flight: the new role stands
   settings.mcArmed = null; settings.lockUntil = 0;
   resetPoint('MC cleared the station');
   save(); render();

@@ -125,3 +125,22 @@ test('a stop that lands while a start is pending wins: the station stays off the
   assert.equal(api.statusBody().live, false, 'MC hears the station is off the air');
   assert.equal(stops, 2, 'the radio is stopped again after the late start');
 });
+
+// F677 review: a tick re-key while the stop waits on the radio put a cleared advert back on air. `live` goes first now.
+test('a tick during a pending stop starts nothing', async () => {
+  const beacon = fakeBeacon();
+  api.plugins.beacon = beacon;
+  api.settings.kind = 'control';
+  await api.startAdvert();
+  let release;
+  beacon.stop = async () => { await new Promise(r => { release = r; }); };
+  const stopping = api.stopAdvert();
+  assert.equal(api.settings.live, false, 'the intent is off before the radio answers');
+  const before = beacon.starts;
+  api.controlTick(later());
+  await new Promise(r => realSetTimeout(r, 20));
+  assert.equal(beacon.starts, before, 'no re-key mid-stop');
+  release();
+  await stopping;
+  assert.equal(api.statusBody().live, false);
+});
