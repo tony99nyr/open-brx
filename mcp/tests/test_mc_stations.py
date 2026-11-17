@@ -852,7 +852,7 @@ def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
 def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     """Bench 2026-11-15: a DELETE sent the Stick nothing, so it stayed MC-ARMED in its old hill role until a reboot.
     The Stick's UNASSIGNED message is `control{release_utility}` (§5g.7). A phone station is not sent it: to a
-    phone it means BACK TO HUD."""
+    phone it means BACK TO HUD. F677: a phone gets `control{clear_station}` instead."""
     s = _sess()
     s.net.simulate_utility_hello("stick-0123456789ab", platform="esp32")
     s.net.simulate_utility_hello("util-1")
@@ -862,7 +862,7 @@ def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     assert s.clear_station("stick-0123456789ab")
     assert _pushed(s, "control", "stick-0123456789ab") == [{"cmd": "release_utility"}]
     assert s.clear_station("util-1")
-    assert _pushed(s, "control", "util-1") == [], "CONTROL: a phone station keeps its utility role"
+    assert _pushed(s, "control", "util-1") == [{"cmd": "clear_station"}], "F677: a phone stops advertising, never BACK TO HUD"
     # Review: a push to a half-open socket can return True and still be lost, so MC sends it again at every hello until
     # a beat shows the Stick has no role. That record outlives the 10 min prune of an unassigned node and a restart.
     stick = "stick-0123456789ab"
@@ -892,6 +892,14 @@ def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     s.phase = "live"
     s.evict_node(stick)
     assert _pushed(s, "control", stick) == [], "CONTROL: a hill kicked in play keeps its role"
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    s.tick()
+    assert _pushed(s, "control", stick) == [], "F677: nor at a hello or a tick while the match is in play"
+    s.phase = "recap"
+    s.tick()
+    assert _pushed(s, "control", stick) == [{"cmd": "release_utility"}], "F677: the release goes once the match leaves play"
+    s.tick()
+    assert len(_pushed(s, "control", stick)) == 1, "once, not every tick"
     s.phase = "lobby"
     s.net.simulate_utility_hello(stick, platform="esp32")
     s.set_station(stick, {"kind": "control", "team": "any"})
@@ -901,6 +909,50 @@ def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     s.evict_node(stick)
     assert [k for n, k, _ in s.net.pushed if n == stick] == ["control", "socket_closed"], s.net.pushed
     assert _pushed(s, "control", stick) == [{"cmd": "release_utility"}]
+
+
+def test_f677_a_cleared_phone_station_is_told_until_it_beats_unarmed():
+    """F677 (1): a cleared phone station kept advertising its old role, because MC sent it nothing. It now gets
+    `control{clear_station}` at the clear and at every hello until a beat says it is not armed, across a restart."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "any"})
+    s.net.pushed.clear()
+    assert s.clear_station("util-1")
+    assert _pushed(s, "control", "util-1") == [{"cmd": "clear_station"}]
+    beat = {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility", "kind": "respawn",
+            "team": 255, "station_id": 3, "threshold": -70, "live": True, "app_ver": "0.4.45"}
+    s.net.simulate_status("util-1", {**beat, "armed": True}, s.now_ms())   # an older app ignores the cmd
+    s.net.simulate_utility_hello("util-1")
+    assert len(_pushed(s, "control", "util-1")) == 2, "still armed: told again"
+    s2 = _sess()
+    s2.station_registry.restore(s.station_registry.to_snapshot())
+    s2.net.simulate_utility_hello("util-1")
+    assert _pushed(s2, "control", "util-1") == [{"cmd": "clear_station"}], "the restart keeps it"
+    s2.net.simulate_status("util-1", {**beat, "armed": False, "live": False}, s2.now_ms())
+    s2.net.simulate_utility_hello("util-1")
+    assert len(_pushed(s2, "control", "util-1")) == 1, "an unarmed beat proves delivery: no more sends"
+
+
+def test_f677_the_cleared_list_is_bounded_and_a_fresh_session_empties_it():
+    """F677 (4): the list had no bound and no FRESH SESSION reset, so a Stick that never came back stayed in the
+    snapshot for good."""
+    from brx_mcp.mc.stations import CLEARED_STATIONS_MAX
+    s = _sess()
+    reg = s.station_registry
+    for i in range(CLEARED_STATIONS_MAX + 5):
+        reg.release(f"stick-{i:012x}")
+    snap = reg.to_snapshot()
+    assert len(snap["cleared_sticks"]) == CLEARED_STATIONS_MAX
+    assert "stick-000000000000" not in snap["cleared_sticks"], "the oldest goes first"
+    assert snap["cleared_sticks"][-1] == f"stick-{CLEARED_STATIONS_MAX + 4:012x}"
+    s.new_session(keep_roster=True)   # NEXT MATCH keeps the list
+    assert len(reg.to_snapshot()["cleared_sticks"]) == CLEARED_STATIONS_MAX
+    s.new_session(keep_roster=False)  # FRESH SESSION
+    assert reg.to_snapshot()["cleared_sticks"] == [], "a FRESH SESSION stops telling the last one's cleared stations"
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello("stick-000000000044", platform="esp32")
+    assert _pushed(s, "control", "stick-000000000044") == []
 
 
 # --------------------------------------------------------------------------- review 2026-09-11

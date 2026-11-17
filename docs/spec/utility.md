@@ -354,6 +354,18 @@ this is the rule. Build row: K1 in `docs/post-mvp.md` §2 (built, F94). A contro
 player phone ignores a control advert (F535). **Everything in §5d works with no LAN at all** — the
 Wi-Fi-coupled extensions are the archived utility-roadmap §8 5e and are a separate, opt-in mode.
 
+### 5c.2 `control{cmd:"clear_station"}` (MC → utility phone): the clear message (F677)
+
+`{ cmd: "clear_station" }`, on the `control` kind. MC sends it to a phone station when the operator CLEARS its
+assignment (`DELETE /api/stations/{nid}`, or `DELETE /api/nodes/{nid}` on an assigned station). The phone stops
+advertising, drops MC's arming and the A58 lock, resets its point, and stays a station (`utility.js clearedByMc`).
+It never goes BACK TO HUD: that is §5c.1. A Stick gets `release_utility` for the same clear, because to a Stick
+that means UNASSIGNED (§5g.7). MC sends the clear again at each hello until a beat proves it: a phone beats
+`armed: false`, a Stick beats station id 0. MC sends neither while a match is ARMED or LIVE, because a kicked hill
+may still score; a clear held then goes once the match leaves play. MC keeps at most 64 cleared stations (the
+oldest goes first), keeps them in the snapshot, and empties the list on a FRESH SESSION (`stations.py release`).
+An older phone ignores the cmd and keeps advertising until its operator stops it.
+
 ### 5d.0 The circle (Tony, 2026-10-02)
 
 "Imagine a 15 m diameter circle around the phone. Contested is anywhere in the circle." A hill's presence radius is
@@ -1041,7 +1053,7 @@ in the operator's voice.** Nothing here asks for that to change.
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED
   (advert off, screen says NOT ARMED BY MISSION CONTROL), which is the nearest true equivalent: stop being an
-  item on the field. It also lifts any A58 match lock, so MC must clear its own lock state for that station. **F671 (2026-11-16):** MC's CLEAR of a Stick's assignment (`DELETE /api/stations/{node_id}`) sends the same message, and so does `DELETE /api/nodes/{node_id}` on an assigned Stick outside play (a hill kicked in play keeps scoring). MC sends it again at every hello from that Stick until a status beat names station id 0 (unassigned), so a Stick out of Wi-Fi, or one whose socket was half-open, still drops its role. The list of such Sticks survives an MC restart. A cleared phone station is sent nothing: to a phone the message means BACK TO HUD.
+  item on the field. It also lifts any A58 match lock, so MC must clear its own lock state for that station. **F671 (2026-11-16):** MC's CLEAR of a Stick's assignment (`DELETE /api/stations/{node_id}`) sends the same message, and so does `DELETE /api/nodes/{node_id}` on an assigned Stick. MC sends it again at every hello from that Stick until a status beat names station id 0 (unassigned), so a Stick out of Wi-Fi, or one whose socket was half-open, still drops its role. The list of such Sticks survives an MC restart. **F677:** MC sends it only outside play: a hill kicked in play keeps scoring, and gets its release once the match leaves play. A cleared phone station gets `clear_station` instead (§5c.2), because to a phone `release_utility` means BACK TO HUD.
 
 ### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
 

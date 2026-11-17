@@ -230,3 +230,21 @@ test('F677: a queued END never ends a game after a deadline that has passed, and
   stand(1000, []);
   assert.ok(Math.abs(api.point.ownMs[RED] - ownAtEnd) <= 250, 'the END at receipt keeps what was banked up to it');
 });
+
+// F677 (1): MC's CLEAR sent a phone station nothing, so it kept advertising its old role. `control{clear_station}` stops
+// the advert, unarms and unlocks it, and the phone stays a station (never BACK TO HUD, which is `release_utility`).
+test('F677: clear_station stops the advert and unarms the station, and it stays a station', async () => {
+  await api.applyStationConfig({ ...hill, id: 10, game: 99, lock_s: 600 });
+  await api.startAdvert(true);
+  assert.equal(api.statusBody().live, true, 'setup: on air');
+  assert.equal(api.statusBody().armed, true, 'setup: MC-armed');
+  assert.ok(api.settings.lockUntil > 0, 'setup: locked');
+  await api.clearedByMc();
+  const st = api.statusBody();
+  assert.equal(st.live, false, 'the advert stops');
+  assert.equal(st.armed, false, 'unarmed: the beat MC reads as proof');
+  assert.equal(api.settings.lockUntil, 0, 'unlocked');
+  assert.equal(st.role, 'utility', 'still a station: not BACK TO HUD');
+  await api.applyStationConfig({ ...hill, game: 100 });   // a new role arms it again, for the tests after this one
+  assert.equal(api.statusBody().armed, true);
+});

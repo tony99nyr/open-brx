@@ -20,6 +20,9 @@ from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL
 
 # F221 battery rule: under 30 % is AMBER for the gun, the phone and the station alike.
 BATTERY_LOW_PCT = 30
+# F677: the most cleared stations MC keeps telling. The oldest goes first: a station that has not come back after this many
+# later clears is not coming back to this session.
+CLEARED_STATIONS_MAX = 64
 _STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot", "tally")
 
 
@@ -192,13 +195,18 @@ class StationRegistry:
         # back. Kept across NEXT MATCH and an MC restart (the snapshot); gone when that node is assigned again or on a
         # FRESH SESSION. `line` and the view are derived (`departures_view`).
         self._station_departures: dict[str, dict] = {}
-        # F671: Sticks MC cleared that have not yet shown it. Kept past `forget`, the 10 min prune and a restart, so a
-        # Stick out of Wi-Fi at the clear still drops its role at its next hello. A beat with station id 0 proves delivery.
-        self._cleared_sticks: set[str] = set()
+        # F671/F677: stations MC cleared that have not yet shown it, node_id -> True for a Stick, False for a phone, oldest
+        # first and at most CLEARED_STATIONS_MAX. Kept past `forget`, the 10 min prune and a restart, so a station out of
+        # Wi-Fi at the clear still drops its role at its next hello; gone on a FRESH SESSION. Proof of delivery: a Stick
+        # beats station id 0, a phone beats `armed` false.
+        self._cleared: dict[str, bool] = {}
+        # F677: the cleared stations whose clear waits for the match to leave play (`_send_clear`). Not persisted: a
+        # restart's re-hello holds it again.
+        self._clear_held: set[str] = set()
         self._stations_unlocked = False
         self._range_epoch = 0
         # F535: every game byte MC armed a CONTROL station on. A hill keeps advertising its byte after a CLEAR (which
-        # sends it nothing) and across an MC restart, so a push in a mode with no hill must not reuse one of these.
+        # may not reach it: an older phone, a station out of Wi-Fi) and across an MC restart, so a push in a mode with no hill must not reuse one of these.
         self._hill_bytes: set[int] = set()
         # Review 2026-11-06: Domination's hill letters as frozen at START, {hill id: letter} (`station_ids`)
         self._hill_letters: dict[int, str] = {}
@@ -234,8 +242,8 @@ class StationRegistry:
         st["platform"] = platform or st.get("platform")
         if (gone := self._station_departures.get(nid)) is not None:
             gone["returned"] = True
-        if nid in self._cleared_sticks and not st.get("assigned"):
-            self.net.push(nid, "control", {"cmd": "release_utility"})   # F671: until a beat shows the Stick has no role
+        if nid in self._cleared and not st.get("assigned"):
+            self._send_clear(nid)   # F671: until a beat shows the station has no role
         return bool(st.get("assigned"))
 
     def on_heartbeat(self, nid: str, body: dict, t_recv: int) -> None:
@@ -243,8 +251,8 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "powerup", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
-        if body.get("station_id") == 0:
-            self._cleared_sticks.discard(nid)   # F671: the release arrived (an unassigned Stick beats id 0; ids start at 1)
+        if nid in self._cleared and (body.get("station_id") == 0 if self._cleared[nid] else body.get("armed") is False):
+            self._forget_clear(nid)   # F671: the clear arrived (an unassigned Stick beats id 0, ids start at 1; F677: a phone beats unarmed)
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             st["report"]["control"] = ownership_clock(st["report"].get("control"))
         self._note_range(nid, st, body, t_recv)
@@ -284,6 +292,7 @@ class StationRegistry:
     def reset_for_session(self) -> None:
         self._station_id_of = {n: a["id"] for n, st in self.stations.items() if (a := st.get("assigned"))}
         self._station_departures = {}
+        self._cleared, self._clear_held = {}, set()   # F677: a FRESH SESSION stops telling the last one's cleared stations
 
     def to_snapshot(self) -> dict:
         return {
@@ -299,7 +308,8 @@ class StationRegistry:
             "range_epoch": self._range_epoch,
             "hill_bytes": sorted(self._hill_bytes),
             "hill_letters": {str(k): v for k, v in self._hill_letters.items()},
-            "cleared_sticks": sorted(self._cleared_sticks),
+            "cleared_sticks": [n for n, stick in self._cleared.items() if stick],
+            "cleared_phones": [n for n, stick in self._cleared.items() if not stick],
         }
 
     def capture_state(self) -> dict:
@@ -308,7 +318,7 @@ class StationRegistry:
             "station_departures": self._station_departures,
             "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
             "hill_bytes": self._hill_bytes, "hill_letters": self._hill_letters,
-            "cleared_sticks": self._cleared_sticks,
+            "cleared": self._cleared, "clear_held": self._clear_held,
         })
 
     def restore_state(self, state: dict) -> None:
@@ -319,7 +329,8 @@ class StationRegistry:
         self._range_epoch = state["range_epoch"]
         self._hill_bytes = state["hill_bytes"]
         self._hill_letters = state.get("hill_letters", {})
-        self._cleared_sticks = state.get("cleared_sticks", set())
+        self._cleared = state.get("cleared", {})
+        self._clear_held = state.get("clear_held", set())
 
     def seed_reports_from_tallies(self, game: int) -> None:
         """Review 2026-11-06 (brx4): the report is the station's last beat and a restart does not keep it, but the tally
@@ -342,8 +353,12 @@ class StationRegistry:
         self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
-        cleared = snap.get("cleared_sticks")
-        self._cleared_sticks = {n for n in cleared if isinstance(n, str)} if isinstance(cleared, list) else set()
+        self._cleared, self._clear_held = {}, set()
+        for key, stick in (("cleared_sticks", True), ("cleared_phones", False)):   # F677: phones too, additive
+            cleared = snap.get(key)
+            for n in cleared if isinstance(cleared, list) else []:
+                if isinstance(n, str):
+                    self._note_clear(n, stick)
         letters = snap.get("hill_letters")
         self._hill_letters = ({int(k): v for k, v in letters.items() if isinstance(k, str) and k.isdigit()
                                and isinstance(v, str) and 0 < len(v) <= 3} if isinstance(letters, dict) else {})
@@ -667,7 +682,7 @@ class StationRegistry:
         if item is not None:
             assignment["item"] = item
         st["assigned"] = assignment
-        self._cleared_sticks.discard(nid)   # F671: a new role replaces the pending release
+        self._forget_clear(nid)   # F671: a new role replaces the pending clear
         self._station_id_of[nid] = sid
         self._station_departures.pop(nid, None)   # bench 2026-10-02: assigned again (RESTORE or anew), so it is back
         if kind == "control":
@@ -827,22 +842,53 @@ class StationRegistry:
             for k in _STATION_LOCK_KEYS:
                 if k != "boot":
                     st.pop(k, None)
-            self.release_stick(nid)
+        self.release(nid)   # F677: a phone station keeps advertising its old role too, until `clear_station`
         self.changes._after_station_change(slots_before, brief_before)   # the survivors' valid_ids shrink
         self.changes._validate()
         self.changes._changed()
         return True
 
-    def release_if_assigned_stick(self, nid: str) -> None:
-        """F671: a Stick removed while assigned must not keep playing its old role either. Call it before the socket closes."""
+    def release_if_assigned(self, nid: str) -> None:
+        """F671/F677: a station removed while assigned must not keep playing its old role either. Call it before the
+        socket closes. In play the clear waits for the match to leave play (`_send_clear`)."""
         st = self.stations.get(nid)
-        if st is not None and st.get("assigned") and is_stick({**st, "node_id": nid}):
-            self.release_stick(nid)
+        if st is not None and st.get("assigned"):
+            self.release(nid)
 
-    def release_stick(self, nid: str) -> None:
-        """F671: tell a cleared Stick it has no role, now and at every hello until a beat shows it has none."""
-        self._cleared_sticks.add(nid)
-        self.net.push(nid, "control", {"cmd": "release_utility"})
+    def release(self, nid: str) -> None:
+        """F671/F677: tell a cleared station it has no role, now and at every hello until a beat shows it has none. A
+        Stick gets `release_utility` (its UNASSIGNED). A phone gets `clear_station`: it stops advertising and stays a
+        station, because `release_utility` sends a phone BACK TO HUD. An older phone ignores the unknown cmd."""
+        self._note_clear(nid, is_stick({**self.record(nid), "node_id": nid}))
+        self._send_clear(nid)
+
+    def _note_clear(self, nid: str, stick: bool) -> None:
+        self._cleared.pop(nid, None)
+        self._cleared[nid] = stick   # the newest last
+        while len(self._cleared) > CLEARED_STATIONS_MAX:   # F677: bounded, the oldest goes first
+            self._forget_clear(next(iter(self._cleared)))
+
+    def _forget_clear(self, nid: str) -> None:
+        self._cleared.pop(nid, None)
+        self._clear_held.discard(nid)
+
+    def _send_clear(self, nid: str) -> None:
+        """F677: never while a match is in play. A Stick kicked mid-match may still be a hill that scores, and a release
+        would drop it, so the clear waits for the match to leave play (`send_held_clears`, from Session.tick)."""
+        if self.play.in_play():
+            self._clear_held.add(nid)
+            return
+        self.net.push(nid, "control", {"cmd": "release_utility" if self._cleared[nid] else "clear_station"})
+
+    def send_held_clears(self) -> None:
+        """F677: the clears `_send_clear` held while a match was in play go once it has left play (the whistle, an abort).
+        A station with no socket then gets its clear at its next hello."""
+        if not self._clear_held or self.play.in_play():
+            return
+        held, self._clear_held = self._clear_held, set()
+        for nid in held:
+            if nid in self._cleared and not self.assignment(nid):
+                self._send_clear(nid)
 
     def release_station(self, nid: str) -> bool:
         """A41 (2026-09-13 field): the operator's cure for a phone stuck in utility mode, whether it

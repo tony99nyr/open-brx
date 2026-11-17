@@ -407,6 +407,7 @@ function connectMc(rawUrl, { wsFactory, trusted = true, pub, secret } = {}) {
     if (m.kind === 'station_config') applyStationConfig(m.body);
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
+    else if (m.kind === 'control' && m.body && m.body.cmd === 'clear_station') clearedByMc();
   });
   candidate.onState(s => { const was = mcState; mcState = s; if (s === 'bound') _wasLinked = true;
     if (s === 'bound' || was === 'bound') { settings.mcLastBoundAt = Date.now(); save(); }   // round 2: the auto-join guard's clock if (s === 'bound' && flushTaken()) savePowerup();
@@ -533,6 +534,16 @@ function stageMcMessage(kind, body) {
 async function stopAdvert() {
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
+}
+/** F677: the operator CLEARED this station on MC (`control{cmd:"clear_station"}`, `stations.py release`). It stops
+ *  advertising its old role and stays a station, unarmed and unlocked, as the Stick's UNASSIGNED does: never BACK TO HUD,
+ *  which is `release_utility`. The next beat says `armed: false`, and that is MC's proof the clear arrived. */
+async function clearedByMc() {
+  log('Mission Control cleared this station: it stops advertising and waits for a new role', 'lk');
+  settings.mcArmed = null; settings.lockUntil = 0;
+  resetPoint('MC cleared the station');
+  await stopAdvert();   // saves and renders
+  if (transport && transport.state === 'bound') transport.status(utilityStatusBody());
 }
 async function restartIfLive() { if (advertising) await startAdvert(); else render(); }
 
@@ -1339,7 +1350,7 @@ function wireExit() {
   await startScan();
   setInterval(tick, STATION_TICK_MS);
   if (DEMO) seedDemo();
-  window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
+  window.brxUtility = { diag: utilityDiag, settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, clearedByMc, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; },
     // test seam (app/test/utility-join-wiring): `startLanSweep(over)` spreads `over` into the sweep options unchecked
     startLanSweep: startUtilityLanSweep, get sweeper() { return _sweeper; },
     // F365 / A67 test seams: the edit model, one on-station edit, the status body a heartbeat sends, the hold's need
