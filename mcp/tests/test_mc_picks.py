@@ -132,3 +132,36 @@ def test_a_restored_domination_setup_with_no_target_gets_first_to_1000():
         s2.restore_snapshot()
         assert s2.config["scoring"].get("hold_target_s") == want, (mode, s2.config["scoring"])
         assert s2.game_pick["match"].get("hold_target_s") == want, (mode, s2.game_pick["match"])
+
+
+def _exclude_smg(s):
+    pol = s.config["loadout_policy"]
+    pol["primary"]["exclude_ids"] = ["smg"]
+    assert s.set_config({"loadout_policy": pol})["ok"]
+    assert s.config["loadout_policy"]["primary"]["exclude_ids"] == ["smg"]
+
+
+def test_a_pick_that_changes_no_loadout_piece_keeps_a_config_exclusion():
+    """F639: the host excludes the SMG on the weapons panel, then picks time, NIGHT or a life piece. The pick must not
+    put the SMG back."""
+    g, s = _pick()
+    assert g.pick({}, {})["ok"]
+    _exclude_smg(s)
+    res = g.pick({}, {"time_limit_s": 600, "night": True})
+    assert res["ok"], res["errors"]
+    assert s.config["time_limit_s"] == 600, "CONTROL: the pick itself applied"
+    assert s.config["loadout_policy"]["primary"]["exclude_ids"] == ["smg"], s.config["loadout_policy"]["primary"]
+    res = g.pick({"life": "builtin:life:standard"}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["loadout_policy"]["primary"]["exclude_ids"] == ["smg"], "a life piece is not a loadout piece"
+
+
+def test_a_pick_that_changes_a_loadout_piece_recomposes_the_policy():
+    """The converse: naming a primary piece rebuilds the policy from the pieces, so the host's exclusion is replaced."""
+    g, s = _pick()
+    assert g.pick({}, {})["ok"]
+    _exclude_smg(s)
+    pid = s.game_pick["pieces"]["primary"]
+    res = g.pick({"primary": pid}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["loadout_policy"]["primary"]["exclude_ids"] == [], s.config["loadout_policy"]["primary"]

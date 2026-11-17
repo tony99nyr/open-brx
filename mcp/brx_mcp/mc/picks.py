@@ -9,6 +9,9 @@ from .pieces import PieceError, PieceStore, check_value
 from .state import MODES, TEAM_DEFS, ModeRow, Session, default_config
 from .types import GameConfig, GamePick as GamePickData, MatchSettings, PieceKind, TeamColour
 
+
+# The piece kinds that make up `loadout_policy` (gamepick.compose).
+LOADOUT_KINDS = frozenset({"primary", "secondary", "perks", "misc_loadouts"})
 log = logging.getLogger("brx.mc.api")
 
 
@@ -127,7 +130,11 @@ class GamePick:
         # F470: a pick that NAMES the mode or the gameplay piece (even the one already picked: "back to STANDARD") resets
         # mode_params to the mode's defaults under the piece's own; a pick of only time, NIGHT or SILENCED keeps a KIT edit
         reset = mode != prev_mode or bool({"mode", "gameplay"} & set(pieces_patch or {}))
-        patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS, reset_mode_params=reset)
+        # F639: the same rule for the loadout policy. Naming a loadout piece (or a mode change, or a kind that fell back)
+        # recomposes it from the pieces. Any other pick keeps the host's exclusions made on the config.
+        reset_loadout = (mode != prev_mode or bool(LOADOUT_KINDS & (set(pieces_patch or {}) | set(fallbacks))))
+        patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS, reset_mode_params=reset,
+                                  reset_loadout=reset_loadout)
         res = self._apply_patch(patch)
         if res["ok"]:
             # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the
