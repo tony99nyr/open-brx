@@ -1016,6 +1016,7 @@ class GunStage:
         self._op_revive_floor_ms = None            # F530 (engine.js `_opReviveFloorMs`): a test override of that floor
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
+        self._play_gun_waiters = 0   # F463 review: writes that hold the play lock while they wait for the gun's clip
         self._play_cancel_event = asyncio.Event()
         # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
         # (engine.js `_armPending`; `at` and `until` are in seconds here)
@@ -2056,13 +2057,24 @@ class GunStage:
             job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
+
+        def release_play() -> None:
+            nonlocal play_lock_held
+            if play_lock_held:
+                play_lock_held = False
+                self._play_lock.release()
+
         if play_indexes:
             play_generation = self._play_generation
-            await self._play_lock.acquire()
-            play_lock_held = True
+            # F463 review (play-queue.js `_jumpAhead`): an interrupt-slot write (a stun's disarm and its clip) never waits
+            # behind a queue-slot cue that waits for the gun, so it does not queue for the lock that cue holds.
+            jumps = not any(is_queue_slot_play(f) for f in frames) and self._play_gun_waiters > 0
+            if not jumps:
+                await self._play_lock.acquire()
+                play_lock_held = True
             play_frame = frames[play_indexes[0]]
             if play_generation != self._play_generation:
-                self._play_lock.release()
+                release_play()
                 return
             now = self.now()
             previous_at = self._last_play_at
@@ -2084,7 +2096,7 @@ class GunStage:
                                 task.cancel()
                         await asyncio.gather(*wait_tasks, return_exceptions=True)
                     if play_generation != self._play_generation:
-                        self._play_lock.release()
+                        release_play()
                         return
             # F419 (play-queue.js `PlayQueue.drain`): a queue-slot cue waits until the last one has played. The gun's queue
             # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
@@ -2092,30 +2104,36 @@ class GunStage:
             # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
             now_ms = self._now_ms()
             free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
-            if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
+            # F463 review: an interrupt-slot write may go while this one waits (`jumps` above), and its clip moves the
+            # gun's tail, so the wait is checked again after each sleep (play-queue.js plans the job again).
+            while is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
                 self._plan_life_send(life, self.now() + free_ms / 1000)   # F497 (engine.js `job.sendAt`)
                 # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
                 sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
                 cancel_task = asyncio.create_task(cancel_event.wait())
                 wait_tasks = (sleep_task, cancel_task)
+                self._play_gun_waiters += 1
                 try:
                     await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
                 finally:
+                    self._play_gun_waiters -= 1
                     for task in wait_tasks:
                         if not task.done():
                             task.cancel()
                     await asyncio.gather(*wait_tasks, return_exceptions=True)
                 if play_generation != self._play_generation:
-                    self._play_lock.release()
+                    release_play()
                     return
+                now_ms = self._now_ms()
+                free_ms = self._gun_audio.free_at(now_ms) - now_ms
             # F478 r1 (play-queue.js `PlayQueue.drain`, F419 review): a queue-slot cue that waited longer than
             # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
             # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             waited_ms = round((self.now() - queued_at) * 1000)
             if is_queue_slot_play(play_frame) and PLAYX not in frames and not life and waited_ms > PLAY_QUEUE_STALE_MS:
                 self._log(f"audio: dropped, it waited {waited_ms} ms for the gun (stale past {PLAY_QUEUE_STALE_MS} ms)", "info", why)
-                self._play_lock.release()
+                release_play()
                 return
             self._last_play_at = now
             frames = self._bind_rows(frames)   # engine.js `_write`: the play queue re-enters after its wait.
@@ -2130,13 +2148,13 @@ class GunStage:
             self._sir_live = take
         if job.should_send is not None and not job.should_send():
             if play_lock_held:
-                self._play_lock.release()
+                release_play()
             return None   # engine.js `shouldSend`: the reason for the write went away while it waited
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
             if play_lock_held:
-                self._play_lock.release()
+                release_play()
             self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
         if model:
@@ -2149,7 +2167,7 @@ class GunStage:
             if play_indexes:
                 self._last_play_sent_at = self.now()
                 self._last_play_at = self._last_play_sent_at
-                self._play_lock.release()
+                release_play()
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
@@ -2173,8 +2191,7 @@ class GunStage:
                     self._last_play_sent_at = self.now()
                     self._last_play_at = self._last_play_sent_at
             finally:
-                if play_lock_held and self._play_lock.locked():
-                    self._play_lock.release()
+                release_play()
 
     def _drop_queued_fillers(self, frames: list[str], why: str) -> list[str]:
         """engine.js `_write` (F347): a write splits into groups at each `$PLAY` after the first. A group whose sound is

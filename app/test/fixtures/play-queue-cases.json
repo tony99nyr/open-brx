@@ -647,6 +647,13 @@
       ]
      },
      {
+      "t": 150,
+      "job": "held2:C",
+      "frames": [
+       "$PLAY,C,4,6,,,,,*"
+      ]
+     },
+     {
       "t": 600,
       "job": "next:D",
       "frames": [
@@ -675,12 +682,9 @@
      {
       "job": "held2:C",
       "queued_t": 20,
-      "planned": 1150,
-      "sent": null,
-      "dropped": {
-       "t": 500,
-       "rule": "cancel"
-      }
+      "planned": 150,
+      "sent": 150,
+      "dropped": null
      },
      {
       "job": "next:D",
@@ -1035,17 +1039,17 @@
       ]
      },
      {
-      "t": 1000,
-      "job": "two:B",
-      "frames": [
-       "$PLAY,,4,6,B,,,,*"
-      ]
-     },
-     {
-      "t": 1150,
+      "t": 150,
       "job": "three:C",
       "frames": [
        "$PLAY,C,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 2000,
+      "job": "two:B",
+      "frames": [
+       "$PLAY,,4,6,B,,,,*"
       ]
      },
      {
@@ -1069,14 +1073,14 @@
       "job": "two:B",
       "queued_t": 10,
       "planned": 1000,
-      "sent": 1000,
+      "sent": 2000,
       "dropped": null
      },
      {
       "job": "three:C",
       "queued_t": 20,
-      "planned": 1150,
-      "sent": 1150,
+      "planned": 150,
+      "sent": 150,
       "dropped": null
      },
      {
