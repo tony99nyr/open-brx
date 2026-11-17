@@ -1183,16 +1183,15 @@ static void mcLoop(uint32_t now) {
   }
 
   // Polish round 2 (HIGH): the ONLY place a queued CLAIM report is ever sent -- never from the BLE
-  // scan callback that enqueued it. Best-effort, like every other send here: drained while MC has
+  // scan callback that enqueued it. Drained while MC has
   // welcomed this socket and the clock is synced (action_flush_allowed, station_ui.h), left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
   // `maybe_build_taken_action` itself, so a report is simply dropped, never built, while it is off.
   if (action_flush_allowed(ws.isConnected(), link.state(), mcClock.synced)) {  // welcomed, clock synced (M3)
-    // O10: peek, send, and discard only when `sendTXT` returned true. A failed send keeps the report
-    // queued for the next pass (the queue is bounded; an overflow is counted into the status
-    // heartbeat). `station_action` has no acknowledgement on the wire (contracts.md section 5), so a
-    // true `sendTXT` is the strongest signal this link has that the frame left the Stick.
-    flush_pending_actions(link, now, mcClock.offset_ms, [&](const std::string& body) {
-      std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
+    // F453: a sent report stays queued until MC's `action_ack` names its envelope id, and a resend keeps that
+    // id (flush_pending_actions, station_ui.h). The queue is bounded; an overflow is counted into the status heartbeat.
+    flush_pending_actions(link, now, mcClock.offset_ms, [&]() { return std::string(mcNextActionId().c_str()); },
+                          [&](const std::string& body, const std::string& id) {
+      std::string env = make_envelope("station_action", body, id.c_str(), mcClock.epoch(now));
       String envArduino(env.c_str());
       return ws.sendTXT(envArduino);
     });
