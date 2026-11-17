@@ -3,7 +3,7 @@ import { LANE_FEED_MS, LANE_HERO_MS, LANE_SETTLE_MS } from '../lanes.js';
 import { TEAM_COLOR, itemColor, esc, MEDAL_LABEL, AIM_REASON, engineNow } from './shared.js';
 import { MEDALS } from '../transport/contract.gen.js';
 const capMark = team => { const k = TEAM_COLOR[team] ? team : null; return `<b class="ltm" role="img" style="--tc:${k ? TEAM_COLOR[k] : 'var(--mut)'}" aria-label="${esc(k ? k.toUpperCase() : 'A TEAM')}">${esc(k ? k[0].toUpperCase() : '?')}</b>`; };
-const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED' };
+const HILL_WORD = { hill_captured: 'HILL CAPTURED', hill_lost: 'HILL LOST', hill_capture_started: 'HILL CAPTURE STARTED', hill_enemy_captured: 'HILL CAPTURED' };
 const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
   time_60: 'clock', time_30: 'clock', time_10: 'clock', bomb_planted: 'danger', bomb_detonated: 'danger', vip_hit: 'danger', vip_down: 'danger', infected: 'danger', lead_lost: 'danger',
   lead_taken: 'info', next_kill_wins: 'info', last_survivor: 'info', survivors_win: 'info', bomb_defused: 'info', extraction_called: 'objective', extraction_open: 'objective', extraction_closing: 'objective', extraction_complete: 'objective', extraction_failed: 'danger', extraction_alert: 'danger', loot_picked: 'info', raid_ending: 'danger', raid_over: 'danger' };
@@ -118,9 +118,9 @@ export function _lanes(st) {
       hill: () => '<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>' };
     // F666 (Tony 2026-11-02): in Domination the row of hills carries the hill news, so the hill card stays out; KOTH keeps it.
     const obj = ['lead', 'hill'].filter(key => O[key] && !(key === 'hill' && st.mode === 'DOMINATION')).map(key => {
-      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started';
+      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started' || o.kind === 'hill_enemy_captured', foe = o.kind === 'hill_enemy_captured' && TEAM_COLOR[o.team];
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (HILL_WORD[o.kind] || 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : foe ? foe : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
     });
     // FEED (an alert's family names its colour and its kicker, as the old banner did)
     const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };

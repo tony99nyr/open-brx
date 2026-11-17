@@ -605,3 +605,48 @@ test('down EXCEPTION: puLost (the DOWN screen`s ITEM LOST line) is drawn only wh
   backUp(h);
   assert.equal(up(h, 'puLost'), false, 'the next life does not carry it');
 });
+
+// ---- F444 (Tony, bench 2026-10-16): an enemy takes a hill we did not hold. A card on the hill lane in THEIR colour, no
+// voice line. A hill we held still says HILL LOST, and a first hearing of an owned point is adopted silently. ----
+test('F444: an enemy captures a neutral station point: an ENEMY CAPTURED card in their colour, said once', () => {
+  const h = koth();
+  point(h, { team: 255, state: 0, value: 0 });                       // a neutral point, adopted silently
+  hold(h, 2000, { team: RED, state: CS.rising, value: 60 });
+  hold(h, 500, { team: RED, state: CS.held, value: 100 });           // RED holds it now
+  assert.equal(badge(h).kind, 'hill_enemy_captured');
+  assert.equal(badge(h).team, 'red', 'tinted in the capturing team`s colour');
+  assert.equal(badge(h).src, 'BLE');
+  const at = badge(h).at;
+  hold(h, 3000, { team: RED, state: CS.held, value: 100 });
+  assert.equal(badge(h).at, at, 'the same hold is one card, not one per advert');
+});
+
+test('F444: no enemy-captured card for our own capture, our own loss, or a point first heard already owned', () => {
+  const h = koth();
+  point(h, { team: RED, state: CS.held, value: 100 });                // first hearing: RED holds it, adopted silently
+  hold(h, 1000, { team: RED, state: CS.held, value: 100 });
+  assert.equal(badge(h), undefined, 'we did not see that capture');
+  const g = koth();
+  g.eng.feedFrame(`$HIR,4,15,0,${BLUE},8,0,0,*`);                     // a grenade hill we hold (adopted silently)
+  g.eng.feedFrame(`$HIR,4,15,0,${RED},50,0,0,*`);                     // RED's capture word takes it straight from us
+  assert.equal(badge(g).kind, 'hill_lost', 'a hill we held says HILL LOST, not the enemy card');
+  const s = koth();
+  point(s, { team: 255, state: 0, value: 0 });
+  hold(s, 1000, { team: BLUE, state: CS.rising, value: 60 });
+  hold(s, 500, { team: BLUE, state: CS.held, value: 100 });
+  assert.equal(badge(s).kind, 'hill_captured', 'our own capture is HILL CAPTURED');
+  // A station point always passes through neutral: HILL LOST on the drain, then RED's capture of the neutral point is news.
+  hold(s, 4000, { team: 255, state: 0, value: 0 });
+  assert.equal(badge(s).kind, 'hill_lost');
+  hold(s, 500, { team: RED, state: CS.held, value: 100 });
+  assert.equal(badge(s).kind, 'hill_enemy_captured', 'then the enemy took the neutral point');
+});
+
+test('F444: the grenade hill (IR): an enemy capture word on a neutral hill shows the card', () => {
+  const h = koth();
+  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*');                          // a neutral beacon
+  h.eng.feedFrame(`$HIR,4,15,0,${RED},50,0,0,*`);                     // RED's capture word
+  assert.equal(badge(h).kind, 'hill_enemy_captured');
+  assert.equal(badge(h).team, 'red');
+  assert.equal(badge(h).src, 'IR');
+});

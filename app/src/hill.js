@@ -173,6 +173,14 @@ export class HillListener {
     if (prevOwner === mine) return 'hill_lost';
     return null;
   }
+  /** F444 (Tony, bench 2026-10-16): an enemy team took the hill and it was not ours (from neutral, or from another
+   *  enemy). A card only, on the hill lane like HILL CAPTURE STARTED: the catalogue has no voice line for it, and "Hill
+   *  Lost" is the holder's own line. A hill we held says HILL LOST instead; a first hearing is adopted silently. */
+  enemyCaptured(prevOwner, owner, src) {
+    const mine = this.host.teamTid;
+    if (mine == null || mine === HILL_REFUSED_TID || owner == null || owner === HILL_REFUSED_TID || owner === mine || prevOwner === mine || prevOwner === owner) return;
+    this.host._laneObj('hill', { kind: 'hill_enemy_captured', team: this.host.TEAM_KEY[owner] || String(owner), tid: owner, src });
+  }
   /** Play one callout NOW. Priority rule: **the later callout wins outright — it preempts, it never
    *  queues.** These are 1.9-3.0 s announcements of a state that has just changed AGAIN, so a queued
    *  "Hill Captured" finishing three seconds after the point was already lost would state something
@@ -252,6 +260,7 @@ export class HillListener {
                   : sameOwner ? (prev ? !!prev.from_neutral : false)
                   : prevOwner === HILL_REFUSED_TID };
     if (announce) {
+      this.enemyCaptured(prevOwner, ownerTeam, 'IR');
       const kind = this.callout(prevOwner, ownerTeam);
       if (kind && this.audioOn(true)) this.say(kind, magnitude === HILL_CAPTURE_MAG
         ? `capture word (mag 50): team ${prevOwner == null ? '?' : prevOwner} -> ${ownerTeam}`
@@ -365,6 +374,7 @@ export class HillListener {
     const ownerChanged = prevOwner != null && prevOwner !== owner;
     const netChange = spokenOwner != null && spokenOwner !== owner;
     const owedChange = audio && this._hillOwnerWhenSilenced != null && this._hillOwnerWhenSilenced !== owner;
+    if (ownerChanged) this.enemyCaptured(prevOwner, owner, 'BLE');
     if ((ownerChanged || owedChange) && netChange) {
       const kind = audio ? this.callout(calloutFrom, owner) : null;
       if (audio && kind) {

@@ -1,0 +1,12 @@
+{ "title": "F444: ENEMY CAPTURED THE HILL card",
+  "note": "King of the Hill. Each frame is the real HUD build in demo mode; the hill card appears about 2.5 s after the frame loads. I am BLUE unless the caption says otherwise.",
+  "frames": [
+    { "id": "E1", "group": "New: an enemy captures a hill nobody held", "stage": "live-hill-enemy-captured", "w": 891, "h": 411, "caption": "Grenade hill (IR): the hill was neutral, RED's capture word arrives. Card: OBJECTIVE, red R mark, HILL CAPTURED, red stripe." },
+    { "id": "E2", "group": "New: an enemy captures a hill nobody held", "stage": "live-hill-enemy-captured-ble", "w": 891, "h": 411, "caption": "Stick control point (BLE): neutral point, then RED holds it. Same card, source BLE." },
+    { "id": "E3", "group": "New: an enemy captures a hill nobody held", "stage": "live-hill-enemy-captured", "query": "&night", "w": 891, "h": 411, "caption": "E1 at night." },
+    { "id": "E4", "group": "New: an enemy captures a hill nobody held", "stage": "live-hill-enemy-captured", "w": 667, "h": 375, "caption": "E1 on the narrow phone." },
+    { "id": "E5", "group": "New: an enemy captures a hill nobody held", "stage": "live-hill-enemy-captured", "query": "&team=red", "w": 891, "h": 411, "caption": "I am RED: the enemy (PURPLE) captures it. Card in purple." },
+    { "id": "C1", "group": "Compare: the hill cards that ship today", "stage": "live-hill-capture-enemy", "w": 891, "h": 411, "caption": "HILL CAPTURE STARTED (the enemy starts to build): the neutral badge with the capturing team's mark." },
+    { "id": "C2", "group": "Compare: the hill cards that ship today", "stage": "live-hill-lost", "w": 891, "h": 411, "caption": "HILL LOST: an enemy takes the hill WE held. This stays as it is; the new card never shows for it." },
+    { "id": "C3", "group": "Compare: the hill cards that ship today", "stage": "live-hill-captured", "w": 891, "h": 411, "caption": "HILL CAPTURED: our own capture, in our colour." }
+  ] }
