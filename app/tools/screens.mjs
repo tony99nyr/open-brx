@@ -4887,6 +4887,10 @@ const UG_STATES = [
   ['control-contested', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: -55 }); await ugCtl(pg, { capturing: 1, progress: 55 }); }],
   ['control-held', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: null }); await ugCtl(pg, { owner: 1, capturing: null, progress: 100, holdMs: { 1: 83000, 0: 41000 } }); }],
   ['control-losing', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: -55 }); await ugCtl(pg, { owner: 1, capturing: null, progress: 70, holdMs: { 1: 83000 } }); }],
+  // F670: MC's END on an armed hill: the owner stays the big word, MATCH OVER under it, the ring holds still (as the Stick)
+  ['control-ended-held', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: null, 31: null }); await ugCtl(pg, { owner: 1, capturing: null, progress: 100, holdMs: { 1: 83000, 0: 41000 } }); await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'control', team: 255, id: 1, threshold: -74, game: 38, valid_ids: [1, 2, 4], ends_in_ms: 0 })); await pg.waitForFunction(() => document.getElementById('cpct').textContent === 'MATCH OVER' && document.documentElement.dataset.cstate === 'ended'); }],
+  ['control-ended-capturing', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: null }); await ugCtl(pg, { capturing: 1, progress: 60 }); await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'control', team: 255, id: 1, threshold: -74, game: 38, valid_ids: [1, 2, 4], ends_in_ms: 0 })); await pg.waitForFunction(() => document.getElementById('cpct').textContent === 'MATCH OVER' && document.getElementById('team').textContent === 'NEUTRAL'); }],
+  ['control-ended-neutral', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: null, 19: null, 23: null, 31: null }); await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'control', team: 255, id: 1, threshold: -74, game: 38, valid_ids: [1, 2, 4], ends_in_ms: 0 })); await pg.waitForFunction(() => document.getElementById('cpct').textContent === 'MATCH OVER' && document.getElementById('team').textContent === 'NEUTRAL'); }],
   ['control-captured-flash', ['control', 255, 1], true, async pg => { await ugFakes(pg, { 7: -55, 19: null, 23: -55, 31: null }); await ugCtl(pg, { capturing: 1, progress: 97 }); await pg.waitForFunction(() => !document.getElementById('cflash').hidden, null, { timeout: 8000 }); await ugW(450); }],
   ['control-players-warnings', ['control', 255, 1], true, async pg => { await pg.evaluate(() => { const f = window.brxUtilityFake[1]; f.alive = true; f.rssi = () => -55; const u = window.brxUtility; window.__ugTwin = setInterval(() => u.presence.observe([u.encodeUuid({ role: 'station', id: 1, kind: 'control', team: 1, state: 1, value: 0, seq: 0, game: u.settings.game, threshold: -74 })], -60, Date.now()), 250); }); await ugFakes(pg, { 7: null, 23: null, 31: null }); await pg.click('#btnPlayers'); }],
   ['drawer', ['respawn', 1, 1], false, async pg => { await pg.evaluate(() => window.brxUtilityGate.open()); }],
@@ -4958,13 +4962,16 @@ const ugRead = pg => pg.evaluate(() => {
   const u0 = window.brxUtility;
   if (!cfgOpen && u0.settings.kind === 'control') {
     const v = u0.point.advert(), p = u0.point, names = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'PURPLE' }, keys = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'purple' };   // F423: tid 3 paints purple, not green
-    const holder = v.team !== 255 && v.value > 0 ? v.team : null, held = (v.state & 1) === 1;
+    const held = (v.state & 1) === 1, ended = u0.hillEnded();   // F670: an ended hill names its owner (or NEUTRAL), as the Stick
+    const holder = ended ? (held ? v.team : null) : v.team !== 255 && v.value > 0 ? v.team : null;
     const word = document.getElementById('team').textContent, pct = document.getElementById('cpct'), flashing = !document.getElementById('cflash').hidden;
     const aura = document.getElementById('aura'), cstate = document.documentElement.dataset.cstate;
-    const want = p.contested ? 'contested' : p.dir > 0 ? 'rising' : p.dir < 0 ? 'falling' : held ? 'held' : 'idle';
+    // F670: an ended hill holds still and says MATCH OVER, whatever its frozen point says
+    const want = ended ? 'ended' : p.contested ? 'contested' : p.dir > 0 ? 'rising' : p.dir < 0 ? 'falling' : held ? 'held' : 'idle';
     if (word !== (holder == null ? 'NEUTRAL' : names[holder])) out.honest.push(`word "${word}" but the ring is ${holder == null ? 'nobody' : names[holder]}'s`);
     if (cstate !== want) out.honest.push(`animation "${cstate}" but the point is ${want}`);
-    if (!flashing && v.value > 0 && !(held && v.value >= 100 && !p.dir) && pct.textContent !== v.value + '%') out.honest.push(`% "${pct.textContent}" but the point is at ${v.value}%`);
+    if (ended && pct.textContent !== 'MATCH OVER') out.honest.push(`% "${pct.textContent}" but the hill's game is over`);
+    if (!ended && !flashing && v.value > 0 && !(held && v.value >= 100 && !p.dir) && pct.textContent !== v.value + '%') out.honest.push(`% "${pct.textContent}" but the point is at ${v.value}%`);
     if (holder != null && !aura.style.getPropertyValue('--hold').includes(keys[holder])) out.honest.push(`ring colour ${aura.style.getPropertyValue('--hold')} for ${names[holder]}`);
     const dir = getComputedStyle(aura.querySelector('.asweep s')).animationDirection;
     if ((cstate === 'falling') !== (dir === 'reverse') && (cstate === 'rising' || cstate === 'falling')) out.honest.push(`sweep runs ${dir} while ${cstate}`);

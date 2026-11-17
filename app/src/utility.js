@@ -167,6 +167,10 @@ const RING_KEY = 'brx.station.hillring';
 const follower = new HillFollower().restore((() => { try { return JSON.parse(localStorage.getItem(RING_KEY) || 'null'); } catch (_) { return null; } })());
 /** F658: the game byte a control point advertises and counts under: the followed game, else MC's. */
 const hillGame = () => follower.game(settings.game);
+/** F670: the hill's game is over (MC's whistle, or the followed game's own end), so it counts nothing more. The Stick shows
+ *  MATCH OVER at the same moments (station_screen.h `control_ended`). */
+const hillEnded = now => settings.kind === 'control' && (follower.follows ? follower.current != null && follower.ended
+  : settings.hillEndsAt != null && now >= settings.hillEndsAt);
 /** A88: the tally payload this hill advertises now (a following control point), else null. */
 // A device whose advertiser refuses the bigger advert ("data too large") drops the tally for good, never the hill.
 let tallyRefused = false;
@@ -863,20 +867,22 @@ function render() {
   // ownership before anything else; every other kind paints its assigned team, as before.
   const t = TEAM_KEY_BY_TID[isControl ? (heldBy == null ? STATION_TEAM_ANY : heldBy) : settings.team] || 'any';
   document.documentElement.dataset.team = t;
-  document.documentElement.dataset.cstate = !isControl ? 'off'
+  const ended = hillEnded(stationNow());
+  document.documentElement.dataset.cstate = !isControl ? 'off' : ended ? 'ended'
     : point.contested ? 'contested' : point.dir > 0 ? 'rising' : point.dir < 0 ? 'falling' : (heldBy != null ? 'held' : 'idle');
   $('kind').textContent = KIND_LABEL[settings.kind] || settings.kind.toUpperCase();
   // control: the word is whose the ring IS (byte 9: the claimant while it builds, the owner while it drains), so the
   // word and the % always agree; NEUTRAL only when nobody has any of it
-  const holderT = isControl && v.team !== STATION_TEAM_ANY && v.value > 0 ? v.team : heldBy;
+  // F670: at the end the word is the owner, or NEUTRAL, as on the Stick: a bar still building at the whistle owns nothing
+  const holderT = isControl && !ended && v.team !== STATION_TEAM_ANY && v.value > 0 ? v.team : heldBy;
   $('team').textContent = isControl ? (holderT == null ? 'NEUTRAL' : (TEAM_NAME_BY_TID[holderT] || `TEAM ${holderT}`))
     : (TEAM_NAME_BY_TID[settings.team] || `TEAM ${settings.team}`);
-  renderControl(isControl, v, heldBy);
+  renderControl(isControl, v, heldBy, ended);
   fitWord();
   if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEY_BY_TID[holderT] || 'any'})` : '');
   renderPowerup();
   fitWord();
-  if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
+  if (_flashAt && (ended || Date.now() - _flashAt > 2600)) { _flashAt = 0; $('cflash').hidden = true; }   // F670: MATCH OVER at once, as on the Stick
   if ($('cpct')) $('cpct').hidden = !$('cflash').hidden;
   const pupEl = $('pup');
   document.documentElement.dataset.onair = advertising ? '1' : '0';   // off the air, every ring is grey and still (H2)
@@ -1172,7 +1178,7 @@ function renderPowerup() {
  *  carries it: the HOLDER's colour fills it to the progress (the claimant while it builds, the owner while it drains, which
  *  is whoever byte 9 names), the RIVAL's colour creeps into the rest, and CSS runs the sweep, the pulse and the standoff off
  *  `data-cstate` on <html>. Words: the owner (in #team, by render()) and the % line. This only feeds numbers. */
-function renderControl(isControl, v, heldBy) {
+function renderControl(isControl, v, heldBy, ended = false) {
   const el = $('control'); el.hidden = !isControl;
   const aura = $('aura'), core = $('core');
   if (!isControl) {
@@ -1193,11 +1199,15 @@ function renderControl(isControl, v, heldBy) {
   // speed is information: more net players, a faster sweep (1.6 s a turn at net 1, floored so a stack does not strobe)
   aura.style.setProperty('--cspd', `${Math.max(0.5, 1.6 / Math.max(1, point.net)).toFixed(2)}s`);
   $('afront').style.transform = `rotate(${(v.value * 3.6).toFixed(1)}deg)`;   // the standoff dots sit where the fill stopped
-  $('cpct').textContent = v.value === 0 || (heldBy != null && v.value >= 100 && !point.dir) ? '' : `${v.value}%`;   // 0% and a held 100% say nothing the ring does not
+  $('cpct').textContent = ended ? 'MATCH OVER'   // F670: the Stick's words; the owner stays the big word
+    : v.value === 0 || (heldBy != null && v.value >= 100 && !point.dir) ? '' : `${v.value}%`;   // 0% and a held 100% say nothing the ring does not
+  $('cpct')?.classList?.toggle('over', ended);
   if (core && core.setAttribute) {
     core.setAttribute('role', 'progressbar'); core.setAttribute('aria-label', 'capture progress');
     core.setAttribute('aria-valuemin', '0'); core.setAttribute('aria-valuemax', '100'); core.setAttribute('aria-valuenow', String(v.value));
-    core.setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
+    const owner = heldBy == null ? 'neutral' : `held by ${TEAM_NAME_BY_TID[heldBy] || `TEAM ${heldBy}`}`;
+    core.setAttribute('aria-valuetext', ended ? `match over, ${owner}`   // F670: what the screen says, not the frozen bar
+      : `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
   }
   $('ctally').textContent = tallyLine();
   // short on purpose: two points on one id read as ONE point to every player phone; team 2 is what a neutral point broadcasts (F82)
@@ -1377,6 +1387,7 @@ function wireExit() {
     connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
+    hillEnded: () => hillEnded(stationNow()),   // F670 test seam: the screen gate checks the ended look against it
     applyNativeInset, controlTick, clampPace, applyStationUpdate,   // F658 test seam: MC's powerup update, as onMessage applies it
     tick, onSighting, scanHit, stationNow, useStationClock,   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
     plugins };   // F648 test seam: a fake beacon plugin (app/test/utility-advert-retry)

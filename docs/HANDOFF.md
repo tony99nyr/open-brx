@@ -63,7 +63,7 @@ lander resolves an index-only FOLLOWUPS conflict) and F627 (CI's Python job spli
 ## Lane: brx-desk-reds, the red MVP desk rows (under brx1)
 **State (2026-11-16):** the seven red rows are closed or on the bench (P5, P9, P16, P17). Batch A: F639 and F665
 closed, F640 (2)(3) on bench P19. Batch B: F674 closed, F671 and F675 on bench P20 and P21; F677 holds the leftovers.
-**Next:** none at the desk; F670 waits for a storyboard (brx1). **Blocked:** none.
+**Next:** nothing; the lane is done. **Blocked:** nothing.
 
 ## Lane: brx-row-triage, the MVP BENCH rows (2026-11-16)
 **State (2026-11-16):** every MVP BENCH row has a verdict (log 2026-11-16). Seven closed; 89 left, each in
