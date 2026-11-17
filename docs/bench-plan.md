@@ -36,7 +36,7 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
    row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
 3. **One gun and both rig boards (about 31 min).** Steps 16 (F449), 17 (F322) and 18 (F264).
 4. **One gun, its phone, MC and the rig emitter (about 133 min).** P8's open SR steps: SR5 part 3, SR13 and the
-   SR23 tap cases (F650, 18 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
+   SR23 tap cases (F650, 18 min). P19 (F640, 10 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
    28 (F545), 29 (F3), 30 (F340), 31 (F293), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
    107 (F641). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
@@ -50,15 +50,14 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
    65 (F383, F440), 66 (F399, F380, F425), 67 (F417), 68 (F450), 69 (F345), 70 (F388), 71 (F504, F391),
    73 (F389), 74 (F386), 75 (F374), 76 (F453, a baseline: the fix is not built), 77 (F353), 78 (F519), 79 (F521),
    80 (F508), 81 (F392), 82 (F398) and 83 (H8). Optional: step 84 (F452 (b)).
-9. **In the next game, and on the Mac (added 2026-11-16 by brx-desk-reds).** P16 (F644, F657) through a whole
-   game. On the Mac: P5 (F643) and P17 (F660); P17 also wants one Windows-native start.
 9. **The field network (about 35 min).** Steps 86 (F311) and 87 (F309).
 10. **Outdoors, 25 m or more in shade (about 370 min).** Steps 88 (F232), 89 (F580, F308 part 3), 90 (F580),
     91 (F606), 92 (F275) and 93 (F231). P11, MN2 and MN3 at night (F649). P12, HE1 to HE5 (F662's numbers).
     P13, ES0 to ES5 (F661).
-11. **The MacBook (about 30 min).** Step 95 (B21) and P5 (F643, only when MC runs on the Mac).
-12. **No bench minutes.** Step 39 (F264, a live stall if one occurs), step 94 (F157, after a field match) and the
-    F226 watch (a phone reload during an ordinary overheat).
+11. **The MacBook (about 35 min).** Step 95 (B21), P5 (F643, only when MC runs on the Mac) and P17 (F660; it also
+    wants one Windows-native start).
+12. **No bench minutes.** P16 (F644, F657) through a whole game. Step 39 (F264, a live stall if one occurs),
+    step 94 (F157, after a field match) and the F226 watch (a phone reload during an ordinary overheat).
 
 The IR rig emitter board runs an old `hardware/esp32-ir-bridge/ir_emit.ino` (`--gap` sends 30 bits): reflash it from main
 before any step that uses the rig emitter.
@@ -83,6 +82,7 @@ before any step that uses the rig emitter.
 | P16 | in the game | – | Watch two surfaces through a whole game (F644, F657). (1) The MC console updates by itself across match end, the recap and PLAY AGAIN, on every open tab, with no reload. Note each reload that was needed and what the tab showed. (2) After a KOTH match, the phone FINAL screen and the history headline the held time, with `KILLS n` under it, and the MC recap leads with hill time. | FOLLOWUPS F644, F657 |
 | P17 | before a game on the Mac, and once on a Windows-native start | 5 | F660: `./start.sh` on the MacBook (and `start.cmd` on Windows, not WSL) prints one `keep-awake:` line that says held. On the Mac, unplug the charger before the start: the line warns about battery. Then leave the laptop idle for 15 min with the lid open: it does not sleep and the console still answers. | FOLLOWUPS F660; `mcp/brx_mcp/mc/keepawake.py` |
 | P18 | before a game, after P1 | 25 | F658's two Stick checks. (1) A Stick powerup, MC-armed for game A, with its item taken in game A: start game B (a new byte) with two phones in range. Pass: the Stick follows B within about 10 s (`powerup.follows` in its status, `STATION_FOLLOWS` at MC), offers the item again on B's clock, and the first B claim lands on one phone only. (2) A Stick respawn station armed for an old game, listed as `respawn` in the new game's `config.stations`: a down player at the Stick respawns, with no re-arm. Control for (2): a game whose `config.stations` does not list it, where the same player does not respawn there. | FOLLOWUPS F658 |
+| P19 | with one gun, its phone and MC | 10 | F640 (2) and (3): RESYNC on a gun power-cycled mid-match. Start a TDM match, fire some rounds from the primary, and take one hit. Power-cycle the gun and wait for the phone to reconnect. Press RESYNC on MC for that player. Pass: the player does not die, the life pool and the shield are kept, each magazine shows the count from before the power-cycle, and MC shows the RESYNC outcome `ok`. Control: the same RESYNC on a gun that did not reboot also shows `ok`. | FOLLOWUPS F640 |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
 
