@@ -251,7 +251,8 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "powerup", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
-        if nid in self._cleared and (body.get("station_id") == 0 if self._cleared[nid] else body.get("armed") is False):
+        stick = self._cleared.get(nid)
+        if stick is not None and (body.get("station_id") == 0 if stick else body.get("armed") is False):
             self._forget_clear(nid)   # F671: the clear arrived (an unassigned Stick beats id 0, ids start at 1; F677: a phone beats unarmed)
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             st["report"]["control"] = ownership_clock(st["report"].get("control"))
