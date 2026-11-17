@@ -789,6 +789,26 @@ test('F640 (2): RESYNC on a rebooted gun puts the head back and keeps the pools,
   assert.equal(r.h.eng.alive, true);
   assert.equal(r.h.eng.hp, 30, 'the pools stay');
   assert.equal(r.results().length, 1, 'MC gets one outcome for the press');
+  assert.equal(r.results()[0].ok, true, 'the press acted: MC must not show it as refused');
+});
+
+test('F640 (2) review: a second all-zero read while the RESYNC reboot check is pending is not a death', async () => {
+  const r = await resynced(h => {
+    h.frame('$HP,0,0,0,*');                          // the RESYNC read: the check starts
+    h.eng._askGun('a cure probe'); h.frame('$HP,0,0,0,*');   // another solicited $LIFE read answers zeros before the $QUERY does
+    h.frame(POWERED.lcd); h.frame(POWERED.query);
+  });
+  assert.equal(r.h.eng.deaths, r.deaths, 'the pending check owns the zero read');
+  assert.ok(reArmedAt30(r.w), 'the check still heals the head');
+});
+
+test('F640 (2) review: RESYNC while the shared $QUERY is busy waits for it, with no death', async () => {
+  const r = await resynced(h => {
+    h.eng._askMagazine('another owner');           // the shared query is busy when the zero read lands
+    h.frame('$HP,0,0,0,*');
+  });
+  assert.equal(r.h.eng.deaths, r.deaths, 'a busy query is no evidence of a death');
+  assert.equal(r.h.eng.alive, true);
 });
 
 test('F640 (3): the reboot heal re-arms the magazine at the count the phone holds, not a full one', async () => {
@@ -802,6 +822,27 @@ test('F640 (3): the reboot heal re-arms the magazine at the count the phone hold
   const w = h.writes.slice(read), heal = w.slice(w.lastIndexOf('$START,*'));
   assert.ok(heal.includes('$SPAWN,,*'), `the heal ran: ${JSON.stringify(heal.slice(0, 10))}`);
   assert.ok(heal.includes('$AMMO,0,20,150,1,*'), `slot 0 goes back at 20/150: ${JSON.stringify(heal.filter(f => f.startsWith('$AMMO')))}`);
+});
+
+test('F640 (3) review: heal pools left by an earlier life are not reused by a later heal', () => {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  // An earlier life's heal whose settle bailed on the life change left its pools behind.
+  h.eng._healPools = { health: 99, armor: 0, shield: 0, life: h.eng._lifeSeq - 1, ammo: [] };
+  h.eng._headHeal('head');
+  assert.equal(h.eng._healPools.health, 30, 'this life\'s pools, not the earlier life\'s 99');
+  assert.equal(h.eng._healPools.life, h.eng._lifeSeq);
+  h.eng._healPools = { health: 99, armor: 0, shield: 0, reboot: true, life: h.eng._lifeSeq - 1, ammo: [] };
+  h.eng._headHeal('head');
+  assert.equal(h.eng._healPools.health, 30, 'a reboot heal of an earlier life is not reused either');
+});
+
+test('F640 (2) review: a link drop during the RESYNC reboot check tells MC the resync did not finish', async () => {
+  const r = await resynced(h => { h.frame('$HP,0,0,0,*'); });
+  assert.equal(r.results().length, 0, 'the check is pending');
+  r.h.eng.onBleDropped();
+  assert.equal(r.results().length, 1);
+  assert.equal(r.results()[0].ok, false);
 });
 
 test('F640 (2) control: RESYNC on a configured gun that is really dead is still a death', async () => {

@@ -165,3 +165,14 @@ def test_a_pick_that_changes_a_loadout_piece_recomposes_the_policy():
     res = g.pick({"primary": pid}, {})
     assert res["ok"], res["errors"]
     assert s.config["loadout_policy"]["primary"]["exclude_ids"] == [], s.config["loadout_policy"]["primary"]
+
+
+def test_a_value_edit_to_a_picked_life_piece_keeps_a_config_exclusion():
+    """F639 review: the PIECES editor recomposes the config when a picked piece's value changes. A LIFE piece is not a
+    loadout piece, so the edit must keep the host's exclusion, as a pick does."""
+    g, s = _pick()
+    row = g._pieces().create("life", "Glass Cannon", "", {"max_hp": 30, "max_armor": 0, "max_shield": 0})
+    assert g.pick({"life": row["piece_id"]}, {})["ok"]
+    _exclude_smg(s)
+    g.edit_piece(row["piece_id"], None, None, {"max_hp": 40, "max_armor": 0, "max_shield": 0})
+    assert s.config["loadout_policy"]["primary"]["exclude_ids"] == ["smg"], s.config["loadout_policy"]["primary"]

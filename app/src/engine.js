@@ -1091,6 +1091,7 @@ export class Engine {
     this._headMarkGen = 0;          // F529 review: only the newest head write may put the mark back when it fails
     this._headRetries = 0;          // F529 review: armed head retries for this start
     this._headHealTries = 0;        // F529 (Tony): live head-heal tries for this start
+    /** @type {any} */
     this._healPools = null;         // F529 (Opus review): the pools a live heal re-arms at
     this._rcPools = null; this._rebootQ = null; this._rcAgain = false;   // F532: the relink reconcile's reboot check
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
@@ -2502,7 +2503,7 @@ export class Engine {
   onBleDropped() {
     this._gun.cancelAll();   // F493 r1: a queued life burst settles unsent here, and `_writeLife` opens its F416 check
     { const c = this._spawnCheck; if (c && !c.downAt) c.downAt = this.now(); }   // F493 r4: its window stops ageing (`_spawnCheckLive`)
-    const pendingResync = this._operatorResyncPending;
+    const pendingResync = this._operatorResyncPending || (this._rebootQ && this._rebootQ.op) || null;   // F640 (2) review: a resync's reboot check ends here too
     // F532 reviews: a drop during the reboot check ends that reconcile too, so the next relink reads the gun afresh
     // (its `_rcPools` stay: the phone has learnt nothing new about the life).
     if (this._rebootQ) { if (this._rebootQ.down) this._rebootDownProven(this._rebootQ); this._rebootQ = null; this.rc.clear(); this._rcAgain = true; }   // F532 down review: the next relink's check decides again
@@ -4512,7 +4513,7 @@ export class Engine {
   /** `selfHit` (F438): the pools held just before our own shot killed us. The revive writes the same burst a timed
    *  respawn does, ending in a `$LIFE` that drains back to those pools, and to MC and the HUD it never happened: no
    *  respawn fact, no REDEPLOYED moment, and the life's ledger and spawn-kill clock carry on. */
-  _revive(resync, stationId = null, operator = false, selfHit = null) {
+  _revive(resync, stationId = null, operator = false, /** @type {any} */ selfHit = null) {
     this.am.dropReload(); this.held = {}; this._buttonUp = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     // F529 (Codex review): the last head write failed, so the gun may hold no head; every respawn writes it first.
@@ -5919,7 +5920,7 @@ export class Engine {
     if (why === OP_RESPAWN_HELD) return;    // F530 reviews: a FORCE RESPAWN held to the F13 floor reports when it fires
     this._operatorResult(cmd, why);
   }
-  _operatorResult(cmd, why, context = null) {
+  _operatorResult(cmd, why, /** @type {any} */ context = null) {
     // pl3 (2026-09-17): MC learns the outcome through the persisted fact path, so an operator press that did
     // nothing is visible on the board and not only in the phone's log. `why` is the refusal the log shows.
     this.emitFact({ type: 'operator_result', cmd, ok: !why, ...(why ? { why } : {}),
@@ -6313,14 +6314,17 @@ export class Engine {
     // gun does. Inside the relink reconcile, for a player the phone knew alive, one `$QUERY` decides which it is.
     // F640 (2): the operator's RESYNC reads the gun with the same `$LIFE`, so a rebooted gun answers it the same way. The
     // pools it saves are the ones the phone holds now (it has no relink); the resync ends here, the check decides the rest.
-    const rs = cmd === 'HP' && solicited && !this.rc.active ? this._operatorResyncPending : null;
-    if (cmd === 'HP' && solicited && this.phase === 'live' && (this.rc.active || rs) && t.slice(1, 4).every(v => (+v || 0) === 0)) {
+    // Review: only THIS resync's probe counts (older traffic before it started is not its answer), a check already pending
+    // owns every all-zero read until it settles (a cure or liveness `$LIFE` must not book the death it is deciding), and a
+    // resync's check may wait out a busy shared `$QUERY` (`_rebootSend` waits on the tick).
+    const rsp = cmd === 'HP' && solicited && !(this.rc && this.rc.active) ? this._operatorResyncPending : null;
+    const rs = rsp && rsp.probe === this._probeSeq && rsp.startedAt != null ? rsp : null;
+    if (cmd === 'HP' && solicited && this.phase === 'live' && (this.rc.active || rs || this._rebootQ) && t.slice(1, 4).every(v => (+v || 0) === 0)) {
       if (rs && !this._rebootQ) this._rcPools = { health: this.hp, armor: this.armor, shield: this.shield };
-      if (this._rebootQ || this._rebootCheck('an all-zero read') !== false) {
+      if (this._rebootQ || this._rebootCheck('an all-zero read', rs) !== false) {
         if (rs) {
           this._operatorResyncPending = null;
           this.log('operator resync: the gun read all zeros, so a reboot check decides (no death unless the gun died)', 'li');
-          this._operatorResult('resync', 'the gun read all zeros: a reboot check follows, and it re-heads the gun if it lost its setup', rs);
         }
         this._changed(); return;
       }
@@ -6340,7 +6344,7 @@ export class Engine {
         // F532 (bench 2026-10-16): a power-cycled gun answers all zeros (a real death `$LCD` carries the slot's magazine and
         // reserve). Inside the relink reconcile that is checked with one `$QUERY`, and is never a death on its own.
         if (this.phase === 'live' && (this.rc.active || this._rebootQ) && t.slice(1, 7).every(v => (+v || 0) === 0) && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) break;   // a pending check owns its own answer
-        if (this._rebootQ) { if (this._rebootQ.down) this._rebootDownProven(this._rebootQ); this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; }   // a death $LCD books below
+        if (this._rebootQ) { const q = this._rebootQ; if (q.down) this._rebootDownProven(q); this.log('reboot check: the gun answered with its magazine, so it is set up and the read was real', 'li'); this._rebootQ = null; if (q.op) this._operatorResult('resync', 'the gun answered dead', q.op); }   // a death $LCD books below
         // C.4b (bench 2026-10-16, HIGH): a `$SPAWN`'s own `$LCD` carries slot 0's refilled magazine and reserve. A live spawn
         // whose echo reads 0/0 is a gun with no `$WEAP` (a head that was cut short): the player would play with no ammo.
         // Once per life, the head goes back and the life is re-armed at its pools (`_headHeal`, no death). Reviews: only the
@@ -6556,8 +6560,8 @@ export class Engine {
           const gone = (+t[3] || 0) === 0 || ((+t[8] || 0) === 0 && !(t[9] || '').trim());
           const q = this._rebootQ; this._rebootQ = null;
           if (q.down) { if (!gone) this._rebootDownProven(q); this.log(`reboot check (down): ${gone ? 'no setup, the respawn writes the head' : 'the gun is still set up'}`, 'li'); }
-          else if (gone) this._rebootHeal(`${q.why}, then a $QUERY with no setup`);
-          else { this.log(`reboot check: the gun is still set up (${q.why} was real)`, 'li'); this._rebootDeath(q); }
+          else if (gone) { this._rebootHeal(`${q.why}, then a $QUERY with no setup`); if (q.op) this._operatorResult('resync', null, q.op); }
+          else { this.log(`reboot check: the gun is still set up (${q.why} was real)`, 'li'); this._rebootDeath(q); if (q.op) this._operatorResult('resync', 'the gun answered dead', q.op); }
           break;
         }
         // ⚠ NOT gated on `this._cure`. The body arrives about 2 s late, which is AFTER QUERY_REPLY_MS has already
@@ -8143,6 +8147,8 @@ export class Engine {
    *  head, the normal respawn). Past that, only a new start resets the count, so a writer that always fails stops here. */
   _headHeal(label) {
     if (this.phase !== 'live' || !this.bleUp || !this.frames || this._gunRecovery) return;   // F272's recovery owns its own bounded retries
+    // Review: pools (and tries) a heal of an EARLIER life left behind (its settle bailed on the life change) are not this life's.
+    if (this._healPools && this._healPools.life != null && this._healPools.life !== this._lifeSeq) { this._healPools = null; this._headHealTries = 0; }
     const n = this._headHealTries = (this._headHealTries || 0) + 1;
     if (n === 3) {
       if (this._healPools?.reboot) {
@@ -8155,10 +8161,11 @@ export class Engine {
     }
     if (n > 3) { this.log(`${label} write failed while live: retries spent (relink or RESYNC the gun)`, 'le'); return; }
     // Opus review: the pools of the FIRST failure: a partly landed head may already have moved the gun's own echo.
-    if (!this._healPools) this._healPools = { health: this.hp, armor: this.armor, shield: this.shield };
+    if (!this._healPools) this._healPools = { health: this.hp, armor: this.armor, shield: this.shield, life: this._lifeSeq };
     // F640 (3): the head write forgets the counts and books the head's spawn rows, so the revive after it would refill the
     // magazine. Save the counts the phone holds before the first write; a spawn-echo heal (`refill`) wants the refill.
-    if (!this._healPools.refill && !this._healPools.ammo) this._healPools.ammo = this.am.liveAmmo();
+    // Shots fired between a failed first try and a later one that lands come back with it: a bounded give-back.
+    if (!this._healPools.refill && !this._healPools.ammo) this._healPools.ammo = /** @type {any} */ (this.am).liveAmmo();
     const pools = this._healPools, life = this._lifeSeq;
     this.log(`${label}: writing the head (heal try ${n})`, 'li');   // F532 re-bench: neutral; a real write failure logs its own line
     // F532 HIGH: the healing head's own $LCD,0 echo is no death. One echo, until shortly after the head is on the wire (Codex:
@@ -8179,11 +8186,13 @@ export class Engine {
    *  2 s print hold is a small price inside the reconcile). A dead gun answers at once with its death `$LCD` (the slot's
    *  magazine and reserve), which books the death as before. Missing replies cannot prove a death, so they heal the head
    *  at the pools saved when the link returned (`case 'QUERY'`, `tick`). */
-  _rebootCheck(why) {
+  /** F640 (2): `op`, an operator RESYNC whose read started this check: it may wait out a busy shared `$QUERY`, and MC hears
+   *  its outcome when the check settles. */
+  _rebootCheck(why, /** @type {any} */ op = null) {
     if (this._rebootQ) return;
-    if (this._magQuery && this.alive) return false;   // F532 down review: a down check waits out a busy query in `_rebootSend`
+    if (this._magQuery && this.alive && !op) return false;   // F532 down review: a down check waits out a busy query in `_rebootSend`
     if (!this._rcPools || (this.alive && this._rcPools.health <= 0)) return false;
-    const q = this._rebootQ = { at: this.now(), firstAt: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1 };
+    const q = this._rebootQ = { at: this.now(), firstAt: this.now(), sentAt: null, why, life: this._lifeSeq, asks: 1, op };
     // F532 down (bench 2026-10-17): a gun power-cycled while its player is DOWN came back with no head, and the respawn armed
     // nothing. Until the answer proves the gun is set up, the head counts as gone, so a respawn that comes first writes it
     // (the F529 path in `_revive`). A down player has no pools to re-arm, so the check never heals or revives.
@@ -8233,10 +8242,12 @@ export class Engine {
   _rebootHeal(why) {
     if (this._rebootQ && this._rebootQ.down) { this.log(`reboot check (down): no answer (${why}); the respawn writes the head`, 'li'); this._rebootQ = null; return; }
     this.log(`gun setup missing or unconfirmed (${why}): writing the head and re-arming at ${this._rcPools ? this._rcPools.health : this.hp} HP, no death`, 'le');
+    const op = this._rebootQ && this._rebootQ.op;
     this.rc.clear(); this._rebootQ = null;
+    if (op) this._operatorResult('resync', null, op);   // F640 (2): the resync re-heads the rebooted gun
     this._headCleared = true;
     this._headHealTries = 0;
-    if (this._rcPools) { this.hp = this._rcPools.health; this.armor = this._rcPools.armor; this.shield = this._rcPools.shield; this._healPools = { ...this._rcPools, reboot: true }; }
+    if (this._rcPools) { this.hp = this._rcPools.health; this.armor = this._rcPools.armor; this.shield = this._rcPools.shield; this._healPools = { ...this._rcPools, reboot: true, life: this._lifeSeq }; }
     this._headHeal('rebooted gun');
   }
   /** F529 HIGH: the gun's head is gone (a teardown `$CLEAR`ed it, or its re-write failed), so write it again. With the link

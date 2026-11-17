@@ -1008,6 +1008,7 @@ class GunStage:
         self._melee_press_at: float | None = None
         self._last_swing: dict | None = None        # {"at": s, "ms": int | None}: the last swing the gun reported
         self.melee_not_ready: str | None = MELEE_NOT_READY_DEFAULT
+        self._melee_cue_pending = False   # a not-ready cue scheduled but not yet written (stage only: its writes are async)
         # F478 (engine.js `_gun`, `_ann`): the phone's model of the gun's audio FIFO and its announcer queue for the pool
         # lines. The F419 queue-slot wait, the pain grunt's PAIN_STALE_MS drop, the low-health line's quiet-gun wait, the
         # heartbeat and the poison tick sound all read it, as on the phone.
@@ -2550,7 +2551,7 @@ class GunStage:
         """engine.js `_audioBusyNow` (F665): a sound playing, waiting on the gun or held on the phone, or the play gap not yet
         run out. The not-ready sound plays at the press or not at all, so it never waits behind any of these."""
         last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
-        return (self._ann.audio_busy(now_ms) or len(self._ann.queue) > 0 or self._play_lock.locked()
+        return (self._melee_cue_pending or self._ann.audio_busy(now_ms) or len(self._ann.queue) > 0 or self._play_lock.locked()
                 or self._gun_audio.outstanding(now_ms) > 0
                 or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000)))
 
@@ -2567,7 +2568,17 @@ class GunStage:
         if self._audio_busy_now(self._now_ms()):
             self._log(f"melee not ready ({left} ms left): the speaker is busy, no sound", "info")
             return
-        self._spawn_task(self.write([f"$PLAY,,4,6,{sid},,,,*"], f"F665: melee not ready ({left} ms left)", gap_ms=0))
+        # Review: the engine claims the speaker as it writes; the stage's write runs later, so hold a claim until it runs,
+        # or a second refused press before then would queue a sound that plays late. (Not `_last_play_sent_at`: the write's
+        # own play gap would then delay this sound.)
+        self._melee_cue_pending = True
+
+        async def cue() -> None:
+            try:
+                await self.write([f"$PLAY,,4,6,{sid},,,,*"], f"F665: melee not ready ({left} ms left)", gap_ms=0)
+            finally:
+                self._melee_cue_pending = False
+        self._spawn_task(cue())
 
     def _acct_live(self, slot: int, now: float | None = None) -> int | None:
         """ammo.js `acctLive`: the magazine a write should restore for `slot`, or None before the gun's
@@ -3831,6 +3842,7 @@ class GunStage:
         self.reloading = None; self.reload_outcome = None; self._gun_other = None   # ammo.js `dropReload`, before the life write.
         self._mag_by_slot = {}   # engine.js `_spawn` `am.forgetShown()`: config echoes carry WEAP clip caps, not spawn mags
         self._last_swing = None  # ammo.js `forgetShown`: a new life has swung nothing
+        self._melee_cue_pending = False   # review: a cue task cancelled before it ran must not mute every later cue
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
         self._hold_accuracy_writes("spawn")   # engine.js `_spawn`: the spawn write owns `$AMMO` until the gun has answered it
         self._accuracy_offset = 0; self._native_acc_until = 0; self._native_acc_why = None   # `$SPAWN` clears every `$TMP`

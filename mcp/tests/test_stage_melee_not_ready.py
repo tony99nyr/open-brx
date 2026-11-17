@@ -80,3 +80,16 @@ def test_off_a_busy_speaker_and_a_down_player_get_no_sound():
         await _press(st)
         assert _tx(st).count(NOT_READY) == 0, "a down player gets no sound"
     asyncio.run(run())
+
+
+def test_two_refused_presses_before_the_write_runs_play_one_sound():
+    """Review: the second press finds the speaker claimed by the first, so it plays nothing, never a late sound."""
+    async def run():
+        st, clock = await _live()
+        await _swing(st, clock); clock.t += 0.05
+        st._on_rx("$BUT,8,1,*"); st._on_rx("$BUT,8,0,*")
+        st._on_rx("$BUT,8,1,*"); st._on_rx("$BUT,8,0,*")
+        await settle(st)
+        await _quiet(st, clock)
+        assert _tx(st).count(NOT_READY) == 1, _tx(st)
+    asyncio.run(run())

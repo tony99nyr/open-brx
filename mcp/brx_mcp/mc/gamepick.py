@@ -336,6 +336,9 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
 
 
 # ---------- composing the GameConfig patch (§3) ----------
+# F639: the piece kinds `compose` builds `loadout_policy` from. A pick or edit that touches none of them keeps the policy.
+LOADOUT_KINDS: frozenset[str] = frozenset({"primary", "secondary", "perks", "misc_loadouts"})
+
 def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_row: Mapping[str, Any],
            team_defs: Mapping[str, Team], reset_mode_params: bool = True, reset_loadout: bool = True) -> dict:
     """Pure: the `GameConfig` patch for `Session.set_config` (fed through the SAME phase gating, RECAP
