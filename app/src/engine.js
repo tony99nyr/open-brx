@@ -4809,6 +4809,7 @@ export class Engine {
   _stunRestore(why) {
     const st = this.stunned; if (!st) return;
     this.stunned = null;
+    if (why === 'expired') this._stopStunClip();
     if (why === 'expired' && this.rc.active) {
       // r1 S3: the window is still holding the gun disarmed, and shots inside it are ignored. A restore now would re-arm the
       // gun inside the window; the window's end re-arms with the live counts and serves both, so they are written once.
@@ -4830,6 +4831,23 @@ export class Engine {
     }
     this.log(`stun over (${why})`, 'li');
     this._changed();
+  }
+  /** F678 (brx1's call, 2026-11-16): the stun clip X17 (7.9 s) can outlast the stun, and a "Shields charging" line
+   *  queued behind it then waits past its status TTL and is dropped. So an expiry stops X17 with one `$PLAYX,0,*` while
+   *  it still plays. X17 rides the interrupt slot (token 1), so on the gun it starts when it is sent and cuts the clip
+   *  playing then; the model queues it behind that clip instead (it over-counts on purpose). So "X17 still plays" is:
+   *  X17 is the model's NEWEST clip and less than its length has passed since it was sent. A clip added after it (a hit
+   *  sound) may have cut it, and then nothing is stopped: a clip that is not X17 is never stopped. Once X17 stops the
+   *  gun holds nothing, so the model is cleared. The stop goes straight to the link (no `$PLAY`, so the play queue
+   *  never holds it). stage.py `_stop_stun_clip` mirrors it. */
+  _stopStunClip() {
+    if (!this.bleUp) return;
+    const now = this.now(), g = this._gun;
+    if (!g.outstanding(now)) return;   // prunes the clips that ended
+    const last = g.clips[g.clips.length - 1];
+    if (last.id !== clipId(STUN_PLAY) || last.at + last.ms <= now) return;
+    this._write([PLAYX], 'stun over: stop the stun clip X17');
+    g.clear();
   }
   // ---------- S16: damage over time, on the node (spec/node.md §3.17) ----------
   /** The tick numbers for an IR protocol, from the bundle's game-wide `dot` table (MC keys it by the protocol the

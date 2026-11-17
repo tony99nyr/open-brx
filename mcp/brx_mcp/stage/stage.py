@@ -6767,6 +6767,8 @@ class GunStage:
         if not st:
             return
         self.stunned = None
+        if why == "expired":
+            self._stop_stun_clip()
         if why == "expired" and self.alive and self.connected:
             rows = self._acct_wrote_rows([f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in st["ammo"].items()])   # bug 3a
             self._spawn_task(self._write_ammo(rows, "stun over: restore live ammo", gap_ms=60))
@@ -6774,6 +6776,24 @@ class GunStage:
             self._moment = ("stun_over", self.now())
             self._event_now("stun_over")
         self._log(f"stun over ({why})", "info")
+
+    def _stop_stun_clip(self) -> None:
+        """engine.js `_stopStunClip` (F678): an expiry stops the stun clip X17 with one `$PLAYX,0,*` while it still plays,
+        so a "Shields charging" line queued behind it is said inside its status TTL. X17 rides the interrupt slot, so it
+        plays from when it was sent: it still plays when it is the model's NEWEST clip and less than its length has
+        passed since then. A clip added after it may have cut it, and then nothing is stopped. The stop carries no `$PLAY`,
+        so the play lock never holds it, and the model is cleared at once (the gun holds nothing behind X17)."""
+        if not self.connected:
+            return
+        now = self._now_ms()
+        g = self._gun_audio
+        if not g.outstanding(now):   # prunes the clips that ended
+            return
+        last = g.clips[-1]
+        if last["id"] != _cue_id(STUN_PLAY) or last["at"] + last["ms"] <= now:
+            return
+        self._spawn_task(self.write([PLAYX], "stun over: stop the stun clip X17", gap_ms=0, model=False))
+        g.clear()
 
     # ---------- S42/F259: node-driven recoil, the `$TMP` t4 accuracy writer (engine.js `_recoil*`) ----------
     # A port, method for method, of engine.js's writer. Every weapon ships t21 == t22 == 100 (the native walk is
