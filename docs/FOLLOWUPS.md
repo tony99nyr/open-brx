@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 113.** Desk 4 · bench 103 · decision 6.
+**MVP open: 112.** Desk 3 · bench 103 · decision 6.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🟡 **F670** · **F676** · **F679**
+**MVP DESK (3),** a keyboard is enough:
+- 🟡 **F676** · **F679**
 - 🟢 **F680**
 
 **MVP BENCH (103),** needs a gun, a Stick, phones or a field (the order is the bench plan):
