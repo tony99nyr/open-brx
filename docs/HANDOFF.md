@@ -66,6 +66,11 @@ lander resolves an index-only FOLLOWUPS conflict) and F627 (CI's Python job spli
 by F661). F643, F644, F648, F657 and F660 moved to MVP BENCH: `bench-plan.md` P5, P9, P16 and P17.
 **Next:** nothing at the desk; the bench steps above. **Blocked:** none.
 
+## Lane: brx-row-triage, the MVP BENCH rows (2026-11-16)
+**State (2026-11-16):** every MVP BENCH row has a verdict (log 2026-11-16). Seven closed; 89 left, each in
+`bench-plan.md` *Start here* in rig order.
+**Next:** none; brx1 routes F453's desk fix and F444's card. **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row

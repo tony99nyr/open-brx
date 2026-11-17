@@ -17,26 +17,46 @@ Build everything from current main: the F645 and F650 fixes are merged, so one A
 About 3 h 48 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 23 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Start here (bench 2026-11-14/15 done).** Done on 2026-11-08: P4 parts 1 and 2, MN1 (partial), SR1-SR5 parts 1-2,
-SR9-SR12, SR14 and SR15. Done on 2026-11-14/15 (phones on 0.4.41, 0.4.43 and 0.4.44; results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md),
-2026-11-14/15): SR6, SR7, SR8, SR16 (B), SR17 (a) to (e), SR18, SR19 (a) to (d), SR20, SR21, the SR23 hold case,
-the strip hill H1 to H6, PU (a Stick powerup with the free vent), and P2 parts 1, 3 and 4.
+**Start here (rewritten 2026-11-16 by the bench row triage).** Done on 2026-11-08: P4 parts 1 and 2, MN1 (partial),
+SR1-SR5 parts 1-2, SR9-SR12, SR14 and SR15. Done on 2026-11-14/15 (phones on 0.4.41, 0.4.43 and 0.4.44; results:
+[`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-14/15): SR6, SR7, SR8, SR16 (B), SR17 (a) to (e),
+SR18, SR19 (a) to (d), SR20, SR21, the SR23 hold case, the strip hill H1 to H6, PU, and P2 parts 1, 3 and 4.
 
-Not run yet:
-- SR23's tap cases (pulls at 0.5, 1.0, 1.4 and 1.8 s after the respawn, the USP-S hold, the early ALT).
-- SR22: it needs a Stick powerup with the Rockets.
-- H7, the Stick's no-link amber blink: it needs a Stick with no role (F673; F671 blocks the unassign).
-- P2 part 2 (mDNS, which needs MC off WSL) and part 5 (a reboot rejoins through the last good MC).
-- SR5 part 3 and SR13, as before.
+The triage of 2026-11-16 read every MVP BENCH row against main. It closed seven rows: F548 and F542 as superseded,
+and F379, F538, F567, F397 and F562 as duplicates (the archive has the evidence). NEXT steps 1, 19, 23, 47 and 72 now test
+nothing open. The list below holds every open MVP BENCH row, in rig order, so the rig changes as few times as possible.
+A "step" is a NEXT step and a "P" or "SR" is a step of this file; each one cites the row or sheet that holds its
+procedure. The minutes come from those steps. The total is about 27 h, so it takes several sittings.
 
-Next sitting, in this order:
-1. P3: build the APK from main and install it on every phone. The phones on 0.4.44 lack `acb16124b`'s phone hill
-   END change. Reflash the Stick from main, or from `brx1-stick-idle-8` (`286bbd269`) once it lands (idle at 8 %
-   and the scoring band).
-2. Re-bench on the new build: SR23's tap cases, SR22 with a Stick powerup, SR5 part 3, SR13, and the owned-idle
-   level on the strip.
-3. P2 parts 2 and 5, then H7 on an unassigned Stick (F673).
-4. P4 parts 3 and 4, then KOTH on a phone hill (P9), then the Sticks: P1, P6, P7, P15.
+1. **Build and flash (about 70 min).** P3, the APK from main on every phone (the 0.4.44 phones lack `acb16124b`'s
+   phone hill END change). P1 (step 63), every Stick from main. F449, the IR rig emitter board (step 16), before any
+   step that uses the rig emitter.
+2. **One gun on the laptop MCP (about 205 min).** Step 4 (F668 rule (h)), 5 (F277), 6 (F592 part 2), 7 (B26),
+   8 (S10), 9 (F128), 12 to 15 (F272, F269, F270, F274: the screamers sheet, 130 min). F637 on one gun (10 min, its
+   row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
+3. **One gun and both rig boards (about 31 min).** Steps 16 (F449), 17 (F322) and 18 (F264).
+4. **One gun, its phone, MC and the rig emitter (about 133 min).** P8's open SR steps: SR5 part 3, SR13 and the
+   SR23 tap cases (F650, 18 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
+   28 (F545), 29 (F3), 30 (F340), 31 (F293), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
+5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
+   107 (F641). Steps 101 to 106 (F638, F575, 85 min) use the same rig; their rows are desk and decision rows.
+6. **Two guns, both phones, MC and a phone station (about 135 min).** Steps 36 (F395, F21), 38 (F438), 40 (F298,
+   S57), 41 (F461), 42 (F459), 43 (F460), 44 (F436), 45 (F447), 46 (F442, F396), 48 (F463), 49 (F536), 50 (F296)
+   and 51 (F592 part 1). F444 waits for its enemy-captured card (desk) before its bench.
+7. **Hills and stations in a 12 m hall (about 105 min).** Steps 54 (F525), 55 (F526), 56 and 57 (F440, F383),
+   58 (F452 (c)), 59 (F345), 60 (F443, F365) and 61 (F448). Step 62 (F464) only with a labelled dense-advert APK.
+8. **The Sticks (about 400 min).** SR22 with a Stick Rockets powerup (F650, 5 min). P2 parts 2 and 5 (F642, which
+   holds F397's check). H7 (F673), after F671 lands. P6 (F658), P7 (F666) and P15 (A88). Steps 64 (F434),
+   65 (F383, F440), 66 (F399, F380, F425), 67 (F417), 68 (F450), 69 (F345), 70 (F388), 71 (F504, F391),
+   73 (F389), 74 (F386), 75 (F374), 76 (F453, a baseline: the fix is not built), 77 (F353), 78 (F519), 79 (F521),
+   80 (F508), 81 (F392), 82 (F398) and 83 (H8). Optional: step 84 (F452 (b)).
+9. **The field network (about 35 min).** Steps 86 (F311) and 87 (F309).
+10. **Outdoors, 25 m or more in shade (about 370 min).** Steps 88 (F232), 89 (F580, F308 part 3), 90 (F580),
+    91 (F606), 92 (F275) and 93 (F231). P11, MN2 and MN3 at night (F649). P12, HE1 to HE5 (F662's numbers).
+    P13, ES0 to ES5 (F661).
+11. **The MacBook (about 30 min).** Step 95 (B21) and P5 (F643, only when MC runs on the Mac).
+12. **No bench minutes.** Step 39 (F264, a live stall if one occurs), step 94 (F157, after a field match) and the
+    F226 watch (a phone reload during an ordinary overheat).
 
 The IR rig emitter board runs an old `hardware/esp32-ir-bridge/ir_emit.ino` (`--gap` sends 30 bits): reflash it from main
 before any step that uses the rig emitter.
@@ -350,9 +370,8 @@ test the last three. Step 33 (F618) runs from the laptop MCP, not a phone: it ne
 code). Before a result counts, check the step's commit against the installed APK's build.json `git` with
 `git merge-base --is-ancestor`.
 
-**Start here (about 2 h 20 min).** Steps 1, 2, 3 and 7 (Group A), step 18 on the rig (Group B), then steps 19, 20, 21
-and 23 (Group C). This cut covers the red rows F548, F226, B26, F264, F533 and F542. Every other step stays in the
-list below.
+**Start here.** The top of this file holds the order (*Start here*, rewritten 2026-11-16). Steps 1, 19, 23, 47 and 72
+are closed.
 
 **Before every group.** Install the newest release APK on every phone, and log its `versionName` and the `git` in its
 build.json: a step on an older APK is not a result. `$VOL,65` on every gun, and MC with `--bench-volume 65` (the
@@ -366,17 +385,14 @@ Sitting C. Tactix-XXXX marks a gun no sheet pins.
 
 Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm from the 0422 Sitting A recipe.
 
-1. **F548**, the SMG frame with its terminator (5 min). Control: an Assault Rifle frame from the same compile echoes
-   `$ALCD`. A/B/A: the AR frame, the SMG frame with `,*` appended, the AR frame. Closes: the SMG echoes
-   `$ALCD,54,100,0,108,0,*` (step 19 then checks the MC push). Reopens: no echo; send it with t42 dropped and report
-   to brx3. (1017 P1.1)
+1. F548: closed 2026-11-16 as superseded (the SMG is hidden; the Energy Shotgun replaces it). Nothing to run.
 2. A large reserve counts down (10 min; no open row). Control: the shipped Energy Rifle frame with
    `$AMMO,0,300,384,1,*` echoes 384. A/B/A: shipped, then t17 1200 with t40 600, then t17 2400 with t40 1200, then
    shipped. Closes: each echo reads the reserve sent and falls by the rounds loaded; then raise `RESERVE_PROVEN_MAX`
    in compile.py. Reopens: a 600 echo after `$AMMO` alone means `$AMMO` clamps to t17. (0426 P2.2, 1017 P1.0)
 3. **F226** and F575's heat read: done 2026-11-01 (log). The lockout delays the reload, it does not refuse it; the
    heat table is in F575.
-4. **F562**, is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
+4. **F668** rule (h), which holds F562's question: is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
    A/B/A: the AMR held for 10 s, taps at 250 ms, taps at 400 ms, held again. Closes: 250 ms taps give no more rounds
    than 400 ms taps. Reopens: they give more, so the player-paced TTK (Balance rules row 14) goes back to brx2. (1017
    P3.2)
@@ -449,8 +465,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
 Tactix-9498 with the green Pixel 5. The rig emitter is the shooter wherever a step needs a hit or a kill (0422 Sitting
 A).
 
-19. **F548**, the SMG through MC (5 min). Control: an AR primary kit acks first try. A/B/A: AR kit, SMG kit, AR kit.
-   Closes: the SMG push acks first try with a real `$ALCD` echo, and the SMG fires and reloads. (1017 L1)
+19. F548: closed 2026-11-16 as superseded. Nothing to run.
 20. **F533**, **F416** and the tap half of **F541**, a lost spawn write at go-live (20 min). F541's relink half passed
    on 2026-10-17 (5 of 5 back inside 20 s); only the tap is open. In one start that hits the slow timeout ladder, tap
    TO RECONNECT mid-relink. Closes F541: the log shows the restart line. Open for F533: no start yet hit the repair
@@ -461,16 +476,8 @@ A).
    P1.1, 0422 C.4b) **→ 2026-11-01:** 1 of 5 relink runs done (healed; log). Run the other 4 and the 3 far-phone runs.
 21. **F532**: done 2026-11-01, PASS (log; F532 closed, its other items are F640).
 22. **F530**: done 2026-11-01, PASS 6 of 6 (log; F530 closed).
-23. **F542**, the lever after a swap reloads the slot that fired last (30 min). The AR in slot 0 and the USP in slot 1,
-   a full capture, an APK with `ae5998c0b` and its review fixes. Control: on a settled life, fire the AR, then the lever:
-   a normal AR reload. A/B, six times each: (A) fire the AR, ALT, three USP shots, ALT back, the lever with no shot: expect
-   `$ALCD,…,1` rising (the USP reloads), the HUD stays on the AR, the ammo block says PULL THE TRIGGER, THEN RELOAD, and
-   no GUN WAS ON; (B) the same, but one AR shot after the ALT back, then the lever: expect a normal AR reload
-   (`$ALCD,…,0` rising). Then the empty-weapon case: the AR empty, ALT, one USP shot, ALT back, the lever (the USP
-   reloads), one DRY trigger pull, the lever again: expect the second lever to reload the AR (`$ALCD,…,0` rising).
-   Unproven: whether a dry pull clears the gun's last-fired latch; log the slot of the second lever's `$ALCD`. Also: a
-   shot on the other slot snaps the HUD back with GUN WAS ON. Closes: A and B as expected. Reopens: a HUD weapon that
-   does not fire. (0426 P1.2, 1017 P1.2, P1.3 and L2)
+23. F542: closed 2026-11-16 as superseded by F650 (the lever reloads the weapon in hand). The open swap and reload
+   checks are F650's SR5 part 3 and SR22 (*Start here*).
 24. The Sniper's 2.2 s bolt (10 min; no open row). Control: the AMR fires its magazine with no lever between shots.
    A/B/A: AMR; the Sniper three times, then with Quick Hands and with Extended Mags; AMR. Pass: one lever pull a shot,
    a press during the bolt fires nothing, the HUD shows BOLT, and the bolt stays 2.2 s with a magazine of 1. (0426
@@ -602,9 +609,7 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 46. **F442** and **F396**, the Rockets pip and timer (5 min). Control: a primary dims, then shines green once when the
    next round is due. A/B/A: the primary, Rockets, the primary. Closes: the Rockets gauge does the same, and the timer
    does not jump after a respawn with Rockets held. (0422 C.25)
-47. **F379**, the ALT pointer after a Rocket (5 min). Control: an ALT with no pickup lands where the phone expects.
-   A/B/A: ALT with no pickup; ALT onto the secondary, Rockets, empty, ALT; ALT with no pickup. Closes: the next
-   `$ALCD` slot matches the phone's target, with no stale switch-back re-send. (0422 C.26)
+47. F379: closed 2026-11-16 as a duplicate of F650; SR22 runs its A/B.
 48. **F463**, clip timing and the hill sounds (15 min). Control: the four hill sounds on `standard`. A/B/A: standard,
    the silenced preset, standard. Closes: each line in the 87-id table starts when the one before ends (the heavy
    takes, X17 and VSF at the 2.5 s default are the baseline, not a fail), and all four hill sounds play under
@@ -683,9 +688,7 @@ The procedure is 0422 Sitting B; run it with the m5stick-bench skill.
 71. **F504** and **F391**, the saved state (10 min). Control: the first boot is unassigned. Closes F504: a reboot
    keeps config, hill and lock; released and rebooted, it is unassigned and unlocked. F391: the lock comes back as it
    was, not cut to 120 s (B.3's 120 s line predates the F391 build); log `lock_s`. (0422 B.3)
-72. **F397**, the typed MC address (5 min). Control: a Stick restart with MC up rejoins. Closes: after an MC restart
-   (no match ARMED or LIVE), a Stick restart rejoins with no re-type; then drop the re-type lines from this file.
-   (0422 B.6)
+72. F397: closed 2026-11-16 as a duplicate of F642; P2 part 5 runs its check.
 73. **F389**, LINK OFF and MUSTER (10 min). Control: LINK HELD keeps the socket. Closes: MUSTER with a lobby push,
    then LINK OFF, each drops the socket (MC shows it offline). The mDNS half needs a native Windows MC: log it as not
    run otherwise. (0422 B.7)
