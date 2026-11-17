@@ -825,6 +825,31 @@ def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
     assert not s.clear_station("nobody")
 
 
+def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
+    """Bench 2026-11-15: a DELETE sent the Stick nothing, so it stayed MC-ARMED in its old hill role until a reboot.
+    The Stick's UNASSIGNED message is `control{release_utility}` (§5g.7). A phone station is not sent it: to a
+    phone it means BACK TO HUD."""
+    s = _sess()
+    s.net.simulate_utility_hello("stick-0123456789ab", platform="esp32")
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("stick-0123456789ab", {"kind": "control", "team": "any"})
+    s.set_station("util-1", {"kind": "respawn", "team": "any"})
+    s.net.pushed.clear()
+    assert s.clear_station("stick-0123456789ab")
+    assert _pushed(s, "control", "stick-0123456789ab") == [{"cmd": "release_utility"}]
+    assert s.clear_station("util-1")
+    assert _pushed(s, "control", "util-1") == [], "CONTROL: a phone station keeps its utility role"
+    # a Stick out of Wi-Fi at the clear gets it on its next hello, once
+    s.set_station("stick-0123456789ab", {"kind": "control", "team": "any"})
+    s.net.simulate_disconnect("stick-0123456789ab")
+    s.net.pushed.clear()
+    s.clear_station("stick-0123456789ab")
+    s.net.simulate_utility_hello("stick-0123456789ab", platform="esp32")
+    assert len(_pushed(s, "control", "stick-0123456789ab")) == 2, "one lost at the clear, one at the hello"
+    s.net.simulate_utility_hello("stick-0123456789ab", platform="esp32")
+    assert len(_pushed(s, "control", "stick-0123456789ab")) == 2, "a delivered release is not sent again"
+
+
 # --------------------------------------------------------------------------- review 2026-09-11
 def test_an_assignment_made_after_the_lobby_push_reaches_the_players_allow_list():
     """Players already holding `config.stations` must learn a re-id / a late station / a cleared one, or

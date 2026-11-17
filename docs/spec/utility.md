@@ -1040,7 +1040,7 @@ in the operator's voice.** Nothing here asks for that to change.
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED
   (advert off, screen says NOT ARMED BY MISSION CONTROL), which is the nearest true equivalent: stop being an
-  item on the field. It also lifts any A58 match lock, so MC must clear its own lock state for that station.
+  item on the field. It also lifts any A58 match lock, so MC must clear its own lock state for that station. **F671 (2026-11-16):** MC's CLEAR of a Stick's assignment (`DELETE /api/stations/{node_id}`) sends the same message, so a cleared Stick drops its role at once, or at its next hello when it was out of Wi-Fi. A cleared phone station is sent nothing: to a phone the message means BACK TO HUD.
 
 ### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
 

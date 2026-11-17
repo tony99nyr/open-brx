@@ -231,6 +231,8 @@ class StationRegistry:
         st["platform"] = platform or st.get("platform")
         if (gone := self._station_departures.get(nid)) is not None:
             gone["returned"] = True
+        if st.get("unassign_pending") and not st.get("assigned"):
+            self.send_unassign(nid)            # F671: a Stick cleared while out of Wi-Fi drops its role now
         return bool(st.get("assigned"))
 
     def on_heartbeat(self, nid: str, body: dict, t_recv: int) -> None:
@@ -807,10 +809,25 @@ class StationRegistry:
         slots_before, brief_before = self.powerup_slots(), self.changes._brief_key()
         st["assigned"] = None
         st["armed"] = None
+        st["arm_pending"] = False
+        if is_stick({**st, "node_id": nid}):
+            # F671: a Stick keeps its saved role until MC says otherwise. `release_utility` is its UNASSIGNED
+            # (§5g.7, every Stick since H8), and it lifts the A58 lock, so MC's lock state for it goes too.
+            for k in _STATION_LOCK_KEYS:
+                if k != "boot":
+                    st.pop(k, None)
+            self.send_unassign(nid)
         self.changes._after_station_change(slots_before, brief_before)   # the survivors' valid_ids shrink
         self.changes._validate()
         self.changes._changed()
         return True
+
+    def send_unassign(self, nid: str) -> None:
+        """F671: tell a cleared Stick it has no role. A Stick out of Wi-Fi gets it on its next hello (`unassign_pending`)."""
+        st = self.stations.get(nid)
+        if st is None:
+            return
+        st["unassign_pending"] = self.net.push(nid, "control", {"cmd": "release_utility"}) is False
 
     def release_station(self, nid: str) -> bool:
         """A41 (2026-09-13 field): the operator's cure for a phone stuck in utility mode, whether it

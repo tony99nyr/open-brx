@@ -3373,6 +3373,25 @@ static void test_mc_arming_a_new_game_ends_a_missed_end() {
   CHECK(!b.link.hill_ended() && b.link.hill_game() == 42 && b.link.hill().capturing == 1);
 }
 
+// F671 (bench 2026-11-15, H7 set-up): MC's DELETE of a station now sends the Stick control{release_utility}. An owned,
+// following hill drops its role: no hill on the strip or the screen, and a live phone on the point captures nothing.
+static void test_f671_a_release_drops_an_owned_following_hill() {
+  FollowHillBench b;
+  b.link.wifi_configured(); b.link.wifi_up(); b.link.mc_address_known(); b.link.ws_open_hello_sent();
+  b.link.apply_welcome({true, "sess", "wk-1"});
+  b.link.apply_station_config(b.link.assignment(), b.t);
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.hill().owner == 0 && strip_role(b.state()) == StripRole::HILL_OWNED);
+  bool ok = false;
+  CHECK(parse_control_cmd(json::parse(R"({"cmd":"release_utility"})", &ok)) == "release_utility" && ok);
+  b.link.apply_release();  // StationController::on_release's link step (test_controller.cpp covers the NVS steps)
+  CHECK(!b.link.assignment().present && !b.link.follower().follows);
+  b.run(5000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  const StickState st = b.state();
+  CHECK(!st.control_present && strip_role(st) == StripRole::OFF);  // linked, no role: the strip is dark
+  CHECK(b.link.hill().owner != 0);
+}
+
 // A game the hill follows but MC did not arm it with is not MC's to end: MC arming another game leaves it live.
 static void test_mc_arming_leaves_a_game_it_did_not_arm() {
   FollowHillBench b;  // MC armed game 41
@@ -3475,6 +3494,7 @@ int main(int argc, char** argv) {
   test_h6_a_following_hill_ends_with_its_game();
   test_mc_end_for_the_followed_game_ends_a_following_hill();
   test_mc_arming_a_new_game_ends_a_missed_end();
+  test_f671_a_release_drops_an_owned_following_hill();
   test_mc_arming_leaves_a_game_it_did_not_arm();
   test_mc_arming_before_the_whistle_leaves_the_live_game();
   test_a_countdown_start_restarts_an_ended_followed_game();
