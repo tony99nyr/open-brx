@@ -2071,6 +2071,12 @@ class GunStage:
         """An interrupt-slot write takes the play lock, or, as soon as a jump opens while it waits (`_jump_is_open`), the
         jump lock instead, so it never waits out a passable cue's sleep (play-queue.js `_replanWaiting`). Returns the lock
         it holds and whether it jumped. Jumping writes queue on their own lock, so two keep the PLAY gap between them."""
+        if not self._play_lock.locked():   # uncontended: take it in this step, as a plain acquire does (no extra loop turn)
+            await self._play_lock.acquire()
+            return self._play_lock, False
+        if self._jump_is_open():
+            await self._play_jump_lock.acquire()
+            return self._play_jump_lock, True
         acq = asyncio.ensure_future(self._play_lock.acquire())
 
         def give_back(f: asyncio.Future) -> None:   # a lock granted to an abandoned acquire goes back, whatever cancels us
