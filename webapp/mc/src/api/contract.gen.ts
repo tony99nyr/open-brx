@@ -1902,6 +1902,8 @@ export interface StationConfig {
   net_cap?: number;
   /** A68: match end from receipt (0 = the match is over) */
   ends_in_ms?: number;
+  /** F674: with ends_in_ms 0, how long ago MC's whistle was (an older station ignores it) */
+  end_age_ms?: number;
   /** A68: go-live from receipt (negative once live) */
   starts_in_ms?: number;
   /** A68: a timed match's length */

@@ -166,6 +166,8 @@ class SnapshotCodec:
                     "range_epoch": station["range_epoch"],
                     "hill_bytes": station["hill_bytes"],   # F535: a hill MC armed may still advertise these bytes
                     "hill_letters": station["hill_letters"],   # review 2026-11-06: Domination's letters frozen at START
+                    # F671: cleared Sticks not yet shown to have dropped their role. Additive: absent = none.
+                    **({"cleared_sticks": station["cleared_sticks"]} if station["cleared_sticks"] else {}),
                     "join_secret": self.host.join_secret,
                     # Bench 2026-11-01: the LOAD announcement (which game the host loaded). Without it a restart read NOT
                     # LOADED on GAMES and the heartbeat retry never ran. Only the host's decision is kept, never who was
