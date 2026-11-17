@@ -3,6 +3,7 @@
 // mcp/tests/test_sticks3_core.py does exactly that when g++ exists.
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "station_ui.h"
 #include "check.h"
@@ -27,7 +28,7 @@ static void test_station_action_body_is_pinned() {
   CHECK_EQ(build_station_action_taken_body(9, 5, 1700000000000LL, 250, 42),
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000,\"game\":42}"));
   StationLink link;
-  PendingTakenReport rep{9, 5, 0, 1000, 42};
+  PendingTakenReport rep = taken_report(9, 5, 0, 1000, 42);
   CHECK(maybe_build_taken_action(link, rep, 1400).find(",\"game\":42}") != std::string::npos);
 }
 
@@ -40,7 +41,7 @@ static void test_actions_on_by_default_and_off_builds_nothing() {
   a.kind = "powerup";
   a.id = 9;
   link.apply_station_config(a);
-  PendingTakenReport rep{9, 5, 0, 1000};
+  PendingTakenReport rep = taken_report(9, 5, 0, 1000);
   CHECK(link.actions_enabled());
   link.set_actions_enabled(false);
   CHECK(maybe_build_reset_action(link, 1000).empty());
@@ -61,7 +62,7 @@ static void test_actions_gate_with_no_assignment_builds_nothing_even_when_enable
   CHECK(maybe_build_reset_action(link, 1000).empty());  // no assignment: RESET has no id to name
   // A queued CLAIM report already carries its own station_id (captured at award time), so it can
   // still be built even with no CURRENT assignment (e.g. the station was since reassigned).
-  PendingTakenReport rep{9, 5, 0, 1000};
+  PendingTakenReport rep = taken_report(9, 5, 0, 1000);
   CHECK_EQ(maybe_build_taken_action(link, rep, 1400),
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":400,\"t\":1000}"));
 }
@@ -70,10 +71,73 @@ static void test_actions_gate_with_no_assignment_builds_nothing_even_when_enable
 static void test_taken_age_is_computed_at_send_time_and_wrap_safe() {
   StationLink link;
   link.set_actions_enabled(true);
-  PendingTakenReport rep{9, 5, 0, 1000};
+  PendingTakenReport rep = taken_report(9, 5, 0, 1000);
   CHECK(maybe_build_taken_action(link, rep, 6000).find("\"age_ms\":5000") != std::string::npos);
-  PendingTakenReport late{9, 5, 0, (int64_t)0xFFFFFF00u};   // awarded 256 ms before the counter wrapped
+  PendingTakenReport late = taken_report(9, 5, 0, (int64_t)0xFFFFFF00u);   // awarded 256 ms before the counter wrapped
   CHECK(maybe_build_taken_action(link, late, 100).find("\"age_ms\":356") != std::string::npos);
+}
+
+// F453: a sent claim stays queued until MC's action_ack names its envelope id. A socket that died after the send
+// gets the same report again, under the same id, after ACTION_RESEND_MS; an MC that never acks costs a counted drop.
+static StationLink armed_powerup_link() {
+  StationLink link;
+  link.set_actions_enabled(true);
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 9;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 9;
+  u.available = true;
+  link.apply_station_update(u, 500);
+  return link;
+}
+
+static void test_a_sent_claim_is_resent_under_its_id_until_mc_acks_it() {
+  StationLink link = armed_powerup_link();
+  CHECK(link.award_claim(ClaimWinner{true, 5}, 1000));
+  int n = 0;
+  auto next_id = [&] { return std::string("id-") + std::to_string(++n); };
+  std::vector<std::string> ids;
+  auto send = [&](const std::string&, const std::string& id) { ids.push_back(id); return true; };
+  CHECK_EQ(flush_pending_actions(link, 1100, 0, next_id, send), (size_t)1);
+  CHECK_EQ(flush_pending_actions(link, 1100 + ACTION_RESEND_MS - 1, 0, next_id, send), (size_t)0);   // in flight
+  CHECK_EQ(link.pending_action_count(), (size_t)1);   // the socket died after the send: the claim is still here
+  CHECK(!link.ack_pending_action("id-other"));        // an ack for another report changes nothing
+  CHECK_EQ(flush_pending_actions(link, 1100 + ACTION_RESEND_MS, 0, next_id, send), (size_t)1);   // resent
+  CHECK_EQ(ids.size(), (size_t)2);
+  CHECK_EQ(ids[0], std::string("id-1"));
+  CHECK_EQ(ids[1], std::string("id-1"));            // the same id, so MC handles it once
+  CHECK(link.ack_pending_action("id-1"));
+  CHECK_EQ(link.pending_action_count(), (size_t)0);
+  CHECK_EQ(link.pending_actions_dropped(), (uint32_t)0);
+}
+
+static void test_an_unacked_claim_is_dropped_and_counted_after_the_last_send() {
+  StationLink link = armed_powerup_link();
+  CHECK(link.award_claim(ClaimWinner{true, 5}, 1000));
+  int sends = 0;
+  auto next_id = [] { return std::string("id-1"); };
+  auto send = [&](const std::string&, const std::string&) { sends++; return true; };
+  uint32_t t = 1100;
+  for (int i = 0; i < ACTION_MAX_SENDS; i++, t += ACTION_RESEND_MS) flush_pending_actions(link, t, 0, next_id, send);
+  CHECK_EQ(sends, (int)ACTION_MAX_SENDS);
+  CHECK_EQ(link.pending_action_count(), (size_t)1);
+  CHECK_EQ(flush_pending_actions(link, t, 0, next_id, send), (size_t)0);
+  CHECK_EQ(link.pending_action_count(), (size_t)0);
+  CHECK_EQ(link.pending_actions_dropped(), (uint32_t)1);
+}
+
+// A newer winner for the same spawn replaces the queued report: the old id's ack must not clear the new report.
+static void test_a_replaced_claim_needs_its_own_ack() {
+  PendingActionQueue q;
+  q.push(9, 5, 1000, 1000);
+  q.mark_front_sent("id-1", 1100);
+  q.push(9, 6, 1000, 1200);
+  CHECK(!q.ack("id-1"));
+  CHECK_EQ(q.size(), (size_t)1);
 }
 
 // O10: a report leaves the queue only after the send returned true. A failed send keeps it (and the ones
@@ -92,17 +156,19 @@ static void test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted
   u.available = true;
   link.apply_station_update(u, 500);
   CHECK(link.award_claim(ClaimWinner{true, 5}, 1000));
+  auto id = [] { return std::string("id-1"); };
   int tries = 0;
-  CHECK_EQ(flush_pending_actions(link, 1400, 0, [&](const std::string&) { tries++; return false; }), (size_t)0);
+  CHECK_EQ(flush_pending_actions(link, 1400, 0, id, [&](const std::string&, const std::string&) { tries++; return false; }), (size_t)0);
   CHECK_EQ(tries, 1);                          // the first failure stops the pass
   CHECK_EQ(link.pending_action_count(), (size_t)1);   // still queued
   std::string seen;
-  CHECK_EQ(flush_pending_actions(link, 1400, 0, [&](const std::string& b) { seen = b; return true; }), (size_t)1);
+  CHECK_EQ(flush_pending_actions(link, 1400, 0, id, [&](const std::string& b, const std::string&) { seen = b; return true; }), (size_t)1);
   CHECK(seen.find("\"player_num\":5") != std::string::npos);
+  CHECK(link.ack_pending_action("id-1"));      // F453: only MC's ack takes it off the queue
   CHECK_EQ(link.pending_action_count(), (size_t)0);
   link.set_actions_enabled(false);             // ACTIONS off: discarded without a send, not kept forever
   link.award_claim(ClaimWinner{true, 6}, 2000);
-  CHECK_EQ(flush_pending_actions(link, 2400, 0, [&](const std::string&) { return false; }), (size_t)0);
+  CHECK_EQ(flush_pending_actions(link, 2400, 0, id, [&](const std::string&, const std::string&) { return false; }), (size_t)0);
   CHECK_EQ(link.pending_action_count(), (size_t)0);
 
   PendingActionQueue q;
@@ -410,6 +476,9 @@ int main() {
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();
   test_a_failed_send_keeps_the_claim_queued_and_an_overflow_is_counted();
+  test_a_sent_claim_is_resent_under_its_id_until_mc_acks_it();
+  test_an_unacked_claim_is_dropped_and_counted_after_the_last_send();
+  test_a_replaced_claim_needs_its_own_ack();
   test_the_dropped_claim_count_restarts_on_a_new_game_not_on_a_repush();
   test_short_press_pages_through_every_page_and_wraps();
   test_one_long_press_arms_a_second_confirms();

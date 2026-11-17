@@ -334,7 +334,7 @@ test('cross-lane r2 C1: a stunned self-hit revive held in the play queue past th
   const n = h.mark();
   h.frame(SELF).frame('$HP,0,0,0,*');
   assert.ok(!h.writes.slice(n).includes('$SPAWN,,*'), 'setup: the revive burst waits in the play queue');
-  h.adv(3000);
+  h.adv(7000);                          // F463: X17 is 7.9 s on the gun, so the burst waits past t0 + 7.9 s
   const out = h.writes.slice(n), sp = out.indexOf('$SPAWN,,*'), restore = out.indexOf('$AMMO,0,30,192,1,*');
   assert.equal(h.eng.stunned, null, 'setup: the stun expired');
   assert.ok(sp > restore && restore >= 0, `setup: the restore went out before the queued burst: ${out.join(' ')}`);
@@ -346,11 +346,11 @@ test('cross-lane r2 C1: a stunned self-hit revive held in the play queue past th
 
 test('cross-lane r2 C1: an F416 re-send built while stunned, but held in the play queue past the expiry, goes out armed', async () => {
   const QPLAY = '$PLAY,,4,6,VAN,,,,*';
-  const h = harness({ config: { stun: { duration_s: 6 } }, frames: { revive: [...golden.revive, QPLAY], respawn_profile: { ...golden.respawn_profile, revive: [...golden.respawn_profile.revive, QPLAY] } }, timers: true });
+  const h = harness({ config: { stun: { duration_s: 10 } }, frames: { revive: [...golden.revive, QPLAY], respawn_profile: { ...golden.respawn_profile, revive: [...golden.respawn_profile.revive, QPLAY] } }, timers: true });
   h.adv(3000);
   h.frame('$ALCD,30,100,0,192,0,*');
-  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP at t0: stunned until t0 + 6 s
-  h.adv(3000);                          // the EMP's clip has ended, so the revive goes out at once
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP at t0: stunned until t0 + 10 s
+  h.adv(8000);                          // the EMP's 7.9 s clip (F463) has ended, so the revive goes out at once
   h.failing.add('revive');
   h.frame(SELF).frame('$HP,0,0,0,*');
   await new Promise(r => setImmediate(r));
@@ -358,13 +358,13 @@ test('cross-lane r2 C1: an F416 re-send built while stunned, but held in the pla
   const c = h.eng._spawnCheck;
   assert.ok(c && h.eng.stunned, 'setup: the revive was lost inside the stun');
   h.adv(1000);
-  h.eng._write(['$PLAY,,4,6,X17,,,,*'], 'test: a clip on the gun');   // t0 + 4 s: the gun is busy past the expiry
-  h.adv(1500);
+  h.eng._write(['$PLAY,,4,6,X17,,,,*'], 'test: a clip on the gun');   // t0 + 9 s: the gun is busy past the expiry
+  h.adv(500);
   assert.ok(h.eng.stunned, 'setup: still stunned when the re-send is built');
   const n = h.mark();
   h.eng._spawnRetry(c, 'test: the gun reads 0');
   assert.ok(!h.writes.slice(n).includes('$SPAWN,,*'), 'setup: the re-send waits in the play queue');
-  h.adv(3000);
+  h.adv(8000);
   assert.equal(h.eng.stunned, null, 'setup: the stun expired');
   const out = h.writes.slice(n), sp = out.indexOf('$SPAWN,,*');
   assert.ok(sp > out.indexOf('$AMMO,0,30,192,1,*') && sp > 0, `setup: the restore went out first: ${out.join(' ')}`);

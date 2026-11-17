@@ -310,6 +310,41 @@ def test_status_path_and_node_messages():
     _run(go())
 
 
+def test_station_action_is_acked_by_id_and_a_resend_is_handled_once():
+    """F453: MC answers every station_action with `action_ack {id}`. A Stick resends a report until that ack
+    arrives, so a resend whose first copy did arrive is acked again but not handed to the session twice."""
+    if not HAVE_WS:
+        return _skip("station_action ack")
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="u1", node_type="utility")
+            await node.start()
+            await node.wait_connected()
+            env = E.make_envelope("station_action", {"id": 5, "action": "taken", "player_num": 3})
+            node._send(env)
+            node._send(env)
+            acks = lambda: [m["body"]["id"] for m in node.received if m["kind"] == "action_ack"]
+            assert await _until(lambda: len(acks()) == 2)
+            assert acks() == [env["id"], env["id"]]
+            assert [k for _, k, _ in h.msgs if k == "station_action"] == ["station_action"]
+            other = E.make_envelope("station_action", {"id": 5, "action": "reset"})
+            node._send(other)
+            assert await _until(lambda: len(acks()) == 3)
+            assert [k for _, k, _ in h.msgs].count("station_action") == 2
+            # Codex review: a handler that raises acks nothing, so the station keeps the report and sends it again.
+            def boom(*_a):
+                raise RuntimeError("handler failed")
+            h.net.on_node_message(boom)
+            failed = E.make_envelope("station_action", {"id": 5, "action": "taken", "player_num": 4})
+            node._send(failed)
+            node._send(other)                       # a later frame proves the failed one was read
+            assert await _until(lambda: len(acks()) == 4)
+            assert failed["id"] not in acks()
+            await node.close()
+    _run(go())
+
+
 def test_stale_and_return():
     if not HAVE_WS:
         return _skip("stale")

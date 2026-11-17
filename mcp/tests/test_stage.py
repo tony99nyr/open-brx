@@ -2388,11 +2388,11 @@ def test_an_older_bundle_without_the_hill_keys_falls_back_to_the_literal_frames(
 
 
 def test_a_hill_override_outside_clip_ms_is_timed_like_the_phone():
-    """A8 r1 (M3): engine.js times a frame by the generated CLIP_MS, else 2.5 s. X17 is in the catalogue (7.9 s) but
-    not in CLIP_MS, so both sides time it as 2.5 s; an id the catalogue lacks is 2.5 s too."""
+    """A8 r1 (M3): engine.js times a frame by the generated CLIP_MS, else 2.5 s. F463: every on-gun id has a row, so X17
+    times as 7.883 s on both sides; an id the catalogue lacks is 2.5 s."""
     st, _, _ = mk_hill(tid=1)
     st.bundle["cues"]["hill_captured"] = "$PLAY,X17,4,6,,,,,*"
-    assert st._hill_cue("hill_captured")[1] == 2.5
+    assert st._hill_cue("hill_captured")[1] == 7.883
     st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,ZZZ9,,,,*"
     assert st._hill_cue("hill_captured")[1] == 2.5
     st.bundle["cues"]["hill_captured"] = "$PLAY,,4,6,VB0P,,,,*"

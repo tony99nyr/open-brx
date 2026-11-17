@@ -8,14 +8,9 @@ Source of truth: `mcp/brx_mcp/data/sound_catalog.json`, read off the gun (2026-0
 re-exports the output as `CLIP_MS`, which times the phone's model of the gun's audio FIFO; an id with no row runs on the
 2.5 s default (`ANNOUNCE_DEFAULT_CLIP_MS`). It replaced a hand-kept table of 87 rows.
 
-Which ids get a row (`ids()`): every on-gun id that `mcp/brx_mcp/mc/golden_bundle.json` ships in a `$PLAY`, `$SIR` or
-`$PSET` frame, plus `EXTRAS` (ids the node plays that the golden bundle does not ship), minus `DEFERRED`. That set is
-exactly the 87 ids of the hand table, so the generated table changes no timing the phone had. A new cue that MC starts
-to ship joins the table at the next regeneration (the staleness test fails until then).
-
-Every on-gun id is the goal. It changes timing, so it waits for a bench (`docs/FOLLOWUPS.md`, F463): the 7.9 s
-stun clip X17 and the victory sting VSF would stop running on the 2.5 s default, and so would every line of a voice
-family other than the golden bundle's.
+Which ids get a row: every on-gun id in the catalogue with a length (F463 step 1, 2026-11-16). Until then the table held
+only the golden bundle's ids plus a few extras, so the 7.9 s stun clip X17, the victory sting VSF and every line of a
+voice family other than the golden bundle's ran on the 2.5 s default.
 
 Whole-file generation, stdlib only, the same `render()` / `main()` shape as `gen_contract.py`.
 Staleness gate: `mcp/tests/test_generated_fresh.py` (scripts/generated.json).
@@ -29,7 +24,6 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json"
-GOLDEN = REPO / "mcp" / "brx_mcp" / "mc" / "golden_bundle.json"
 JS_OUT = REPO / "app" / "src" / "clipms.gen.js"
 PER_LINE = 10
 STALE = 3   # the --check exit contract (scripts/generated.json): 0 fresh, 3 stale, anything else an error
@@ -41,61 +35,12 @@ def _key(sid: str) -> str:
     return sid if _IDENT.fullmatch(sid) else "'" + sid.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
-# The frames whose sound ids the phone times: a cue or pool (PLAY), a hit row (SIR), a voice or effect slot (PSET).
-# Command words, not frame prefixes: `test_bench_common` reads a pasted frame prefix in mcp/tools as a hand copy.
-FRAME_COMMANDS = ("PLAY", "SIR", "PSET")
-# Ids the golden bundle does not ship that the hand table timed, kept so no timing changes. A host profile or an older
-# bundle can still play them.
-EXTRAS = {
-    "VB8": "engine.js ENEMY_DOWN_CUE, the S57 'Target down.' callout",
-    "VA1S": "sounds.EXTRACTION_ALERT, 'enemy chopper detected.'",
-    "V124": "the other killtacular read (presentation.py)",
-    "H22": "'Hit on Shield' (community_sound_labels.csv), a material hit take",
-    "A10": "the hum an older $PSET slot shipped (hitaudio.py, F347)",
-    # F665 bench switch (engine.js `setMeleeNotReady`): the melee not-ready candidates. On the 2.5 s default a 0.2 s beep
-    # would hold the next voice line, and the next refused press, for 2.5 s. Only that switch plays them.
-    "N92": "F665 melee not-ready candidate, a 0.2 s low buzz",
-    "U55": "F665 melee not-ready candidate, a 0.3 s falling beep",
-    "N98": "F665 melee not-ready candidate, a 0.1 s dull click",
-    "VX0W": "F665 melee not-ready fallback, 'Error!'",
-}
-# On-gun ids the golden bundle ships that the hand table did not time. A row changes timing, so each waits for the bench.
-DEFERRED = {
-    "VSF": "the victory sting's first slot (`$PLAY,VSF,4,6,JAY`): 1.86 s, timed as the 2.5 s default today",
-    "H21": "a $PSET material slot the engine does not time today",
-}
-
-
-def _golden_ids(on_gun: set[str]) -> set[str]:
-    found: set[str] = set()
-
-    def walk(v) -> None:
-        if isinstance(v, str):
-            if v.startswith("$") and v[1:].split(",", 1)[0] in FRAME_COMMANDS:
-                found.update(t for t in v.split(",")[1:] if t in on_gun)
-        elif isinstance(v, dict):
-            for x in v.values():
-                walk(x)
-        elif isinstance(v, list):
-            for x in v:
-                walk(x)
-
-    walk(json.loads(GOLDEN.read_text(encoding="utf-8")))
-    return found
-
-
 def rows() -> dict[str, int]:
-    """id -> length in ms for the ids above. `int(x + 0.5)` is JS `Math.round` for x > 0."""
+    """id -> length in ms for every on-gun id. `int(x + 0.5)` is JS `Math.round` for x > 0."""
     data = json.loads(CATALOG.read_text(encoding="utf-8"))
     length = {s["id"]: s["duration_s"] for s in data["sounds"]
               if s.get("on_gun") and isinstance(s.get("duration_s"), (int, float)) and s["duration_s"] > 0}
-    missing = sorted(set(EXTRAS) - set(length))
-    if missing:
-        raise SystemExit(f"EXTRAS names ids that are not on the gun: {missing}")
-    # F650: the phone plays a weapon's `$WEAP` reload parts (the D series) for its own reload, so the play queue times them.
-    reload_parts = {sid for sid in length if re.fullmatch(r"D\d+", sid)}
-    ids = (_golden_ids(set(length)) | set(EXTRAS) | reload_parts) - set(DEFERRED)
-    return {sid: int(length[sid] * 1000 + 0.5) for sid in sorted(ids)}
+    return {sid: int(length[sid] * 1000 + 0.5) for sid in sorted(length)}
 
 
 def render() -> str:

@@ -640,6 +640,7 @@ export const LED_DARK_INDICES = Object.freeze([9, 10]);
 // ---- kind vocabularies ----
 export const MC_KINDS = new Set([
   'ack',
+  'action_ack',
   'alert',
   'apply',
   'assign',
@@ -775,6 +776,7 @@ export const REQUIRED = {
   time_res: ['t_node', 'server_t'],
   pull_log: [],
   ack: ['seq_hi'],
+  action_ack: ['id'],
   apply: ['frames'],
   loadout_ack: ['slot', 'ok'],
   score: ['player_id'],

@@ -163,14 +163,45 @@ test('ARCH-3 cancel: every unsent job settles true; the next cue keeps the gap b
   h.to(PLAY_GAP_MS); assert.deepEqual(h.sent.map(s => s.why), ['sent', 'next']);
 });
 
+test('F463 review: an interrupt-slot write (a stun) never waits behind a queue-slot cue that waits for the gun', () => {
+  const h = queueHarness();
+  h.q.add(7883, 'the first stun clip', 0, 'X17');
+  h.q.enqueue([queued('D27')], 'reload sound');              // waits for X17 to end
+  assert.deepEqual(h.sent, [], 'setup: the reload sound waits for the gun');
+  h.to(2000);
+  h.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'second stun');
+  assert.deepEqual(h.sent.map(s => [s.why, s.t]), [['second stun', 2000]], 'the disarm goes at once');
+  h.to(20000);
+  assert.deepEqual(h.sent.map(s => s.why), ['second stun'], 'the reload sound, planned again behind both clips, goes stale');
+  assert.ok(h.logs.some(l => /reload sound dropped: it waited/.test(l)), h.logs.join(' | '));
+  // Review r1: a revive burst waiting for the gun carries gun rows. A stun never passes it, so its armed rows cannot
+  // land after the disarm.
+  const r = queueHarness();
+  r.q.add(3000, 'the death scream', 0, 'S');
+  r.q.enqueue(['$AMMO,0,30,192,1,*', '$SPAWN,,*', queued('A')], 'revive', { options: { lifeBurst: true } });
+  r.to(500);
+  r.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun');
+  assert.deepEqual(r.sent, [], 'the stun waits behind the revive');
+  r.to(20000);
+  assert.deepEqual(r.sent.map(s => s.why), ['revive', 'stun']);
+  // Codex review: a write that holds a queue-slot cue does not jump, so its own interrupt-slot group keeps its place.
+  const g = queueHarness();
+  g.q.enqueue([queued('A'), '$PLAY,B,4,6,,,,,*'], 'one write');
+  g.to(20000);
+  assert.deepEqual(g.sent.map(s => s.group[0]), [queued('A'), '$PLAY,B,4,6,,,,,*'], 'A, then B');
+});
+
 test('ARCH-3 sendAt: the plan for every queued job is the time it is sent, and sendAt changes nothing', () => {
   const h = queueHarness();
   h.q.add(500, 'hit', 0, 'X');
   h.q.enqueue([queued('A')], 'a'); h.q.enqueue(['$PLAY,B,4,6,,,,,*'], 'b');
   h.q.enqueue([PLAYX, queued('C')], 'c'); h.q.enqueue([queued('A')], 'd', { options: { lifeBurst: true } });
-  const jobs = [h.q.waiting, ...h.q.queue], before = JSON.stringify(h.q.clips);
+  // F463 review: the interrupt-slot `b` does not wait behind `a` (which waits for the hit): it is sent at once.
+  assert.deepEqual(h.sent.map(s => s.why), ['b']);
+  const jobs = [h.q.waiting, ...h.q.queue].filter(Boolean), before = JSON.stringify(h.q.clips);
   const plans = jobs.map(j => h.q.sendAt(j));
   assert.equal(JSON.stringify(h.q.clips), before, 'PURE');
   h.to(20000);
-  assert.deepEqual(plans, h.sent.map(s => s.t), `planned ${plans}, sent ${h.sent.map(s => s.t)}`);
+  const later = h.sent.slice(1).map(s => s.t);
+  assert.deepEqual(plans, later, `planned ${plans}, sent ${later}`);
 });

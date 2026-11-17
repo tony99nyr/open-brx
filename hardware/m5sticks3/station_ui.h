@@ -90,28 +90,28 @@ inline std::string maybe_build_taken_action(const StationLink& link, const Pendi
   return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms + epoch_offset_ms, age, rep.game);
 }
 
-// O10: drain the queued CLAIM reports through `send(body) -> bool` (the glue passes `ws.sendTXT`). A report
-// leaves the queue only after `send` returned true; the first failure stops the pass and keeps the
-// report (and every one behind it) queued for the next one. A report that `maybe_build_taken_action`
-// builds as empty (ACTIONS off) is discarded: deliberately nothing to send. `station_action` has no
-// acknowledgement on the wire, so a true `send` is the strongest signal the link has. KNOWN GAP (review
-// 2026-10-04): a true `sendTXT` only means the frame was handed to the socket; if the socket dies before MC
-// reads it, the claim is lost with no count. The only acknowledgement in the wire today is `ack{seq_hi}`, and it
-// covers persisted facts (`event` / `event_batch`, per-node `seq`) only: `station_action` is live-only and carries
-// no `seq`, and MC never replies to it. Closing the gap needs a wire change (a seq'd fact or an action ack), so
-// it is filed, not invented here. Returns the number of reports sent.
-template <typename SendFn>
-inline size_t flush_pending_actions(StationLink& link, uint32_t now_ms, int64_t epoch_offset_ms, SendFn send) {
-  size_t sent = 0;
+// O10 + F453: drain the queued CLAIM reports through `send(body, id) -> bool` (the glue wraps `ws.sendTXT`). One
+// report is in flight at a time, oldest first. `next_id()` gives the envelope id for a report's first send; a
+// resend keeps that id. The report stays queued until MC's `action_ack` names its id (`link.ack_pending_action`),
+// so a socket that dies after the send no longer loses the claim: the next welcomed socket sends it again after
+// ACTION_RESEND_MS. A failed send keeps the report for the next pass. A report sent ACTION_MAX_SENDS times with
+// no ack is discarded and counted as dropped. A report that `maybe_build_taken_action` builds as empty (ACTIONS
+// off) is discarded: deliberately nothing to send. Returns the number of sends in this pass (0 or 1).
+template <typename IdFn, typename SendFn>
+inline size_t flush_pending_actions(StationLink& link, uint32_t now_ms, int64_t epoch_offset_ms, IdFn next_id,
+                                    SendFn send) {
   PendingTakenReport rep;
   while (link.peek_pending_action(rep)) {
     std::string body = maybe_build_taken_action(link, rep, now_ms, epoch_offset_ms);
     if (body.empty()) { link.discard_pending_action(); continue; }
-    if (!send(body)) break;
-    link.discard_pending_action();
-    sent++;
+    if (rep.sends > 0 && now_ms - rep.sent_ms < ACTION_RESEND_MS) return 0;   // in flight: wait for the ack
+    if (rep.sends >= ACTION_MAX_SENDS) { link.give_up_pending_action(); continue; }
+    std::string id = rep.env_id.empty() ? std::string(next_id()) : rep.env_id;
+    if (!send(body, id)) return 0;
+    link.mark_pending_action_sent(id, now_ms);
+    return 1;
   }
-  return sent;
+  return 0;
 }
 
 // The stats pages a short press cycles through ("view stats, local only"): station kind, who took

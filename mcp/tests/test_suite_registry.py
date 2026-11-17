@@ -29,6 +29,7 @@ NOT_GATES = {
     "app/tools/stage.mjs": "the interactive stage harness (`npm run ui:stage`): a person drives it, nothing asserts",
     "app/tools/bench-gun-fixture.mjs": "turns a bench frame ring into a gun-model fixture by hand; app/test/gun-model-replay.test.mjs is the gate",
     "app/tools/shots.mjs": "writes screenshots of the demo HUD for review; asserts nothing",
+    "app/tools/storyboard.mjs": "writes a storyboard page of live demo frames for Tony's review (ui-storyboard); asserts nothing",
     "app/tools/alert-gallery.mjs": "writes the HUD alert lanes gallery for review (outside the repo); asserts nothing",
     "app/tools/win-home.mjs": "a helper the review galleries import for their default out-dir; not a script",
     "app/tools/medal-gallery.mjs": "writes the medal icon style gallery for review (outside the repo); asserts nothing",

@@ -118,9 +118,9 @@ export function _lanes(st) {
       hill: () => '<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>' };
     // F666 (Tony 2026-11-02): in Domination the row of hills carries the hill news, so the hill card stays out; KOTH keeps it.
     const obj = ['lead', 'hill'].filter(key => O[key] && !(key === 'hill' && st.mode === 'DOMINATION')).map(key => {
-      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started';
+      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started' || o.kind === 'hill_enemy_captured', foe = o.kind === 'hill_enemy_captured' && TEAM_COLOR[o.team];
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (HILL_WORD[o.kind] || 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : foe ? foe : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
     });
     // FEED (an alert's family names its colour and its kicker, as the old banner did)
     const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };

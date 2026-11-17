@@ -609,7 +609,22 @@ static void test_the_boot_restore_records_the_lock_game() {
   CHECK(same(fx.take(), {"pause discard", "save_range", "write_config", "wake", armed_line("control", 255, 9, 3, 120)}));
 }
 
+// F453: MC's action_ack reaches the claim queue through the controller.
+static void test_an_action_ack_clears_the_sent_claim() {
+  StationController c;
+  StationLink link;
+  FakeStation fx;
+  link.set_actions_enabled(true);
+  c.on_message(link, "station_config", body(R"({"kind":"powerup","team":0,"id":9})"), 0, fx);
+  c.on_message(link, "station_update", body(R"({"id":9,"available":true})"), 500, fx);
+  CHECK(link.award_claim(ClaimWinner{true, 5}, 1000));
+  link.mark_pending_action_sent("abc", 1100);
+  c.on_message(link, "action_ack", body(R"({"id":"abc"})"), 1200, fx);
+  CHECK(!link.has_pending_actions());
+}
+
 int main() {
+  test_an_action_ack_clears_the_sent_claim();
   test_a_welcome_from_a_new_session_erases_the_old_match();
   test_an_offline_restart_comes_back_with_the_lock_as_it_was();
   test_a_welcome_from_the_same_session_keeps_everything();

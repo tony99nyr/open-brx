@@ -340,8 +340,10 @@ test('S29: a stand-down mid-refill re-earns the delay, and never announces the r
   assert.equal(h.count(CHARGING), 1, 'one refill is one piece of news, however many stand-downs interrupt it');
   h.run(DELAY + 3000);
   assert.equal(h.eng.shield, MAX_SHIELD, 'the refill after the new quiet window ran');
-  // F349's cadence (a grant a second): the rest of this pool is three grants, 3 s, so C4 lets it speak
-  assert.equal(h.count(CHARGING), 2, 'and the refill after the new quiet window is its own news');
+  // F463: the stun's clip X17 holds the gun for 7.9 s from the stand-down. This refill starts 6.5 s after it, so its line
+  // would wait 1.4 s plus the gap, past the 1.5 s status TTL, and is dropped unsaid. Without the clip (2.5 s timing
+  // before F463) C4 let it speak: the rest of this pool is three grants, 3 s.
+  assert.equal(h.count(CHARGING), 1, 'the refill after the new quiet window is not said over the stun clip');
 });
 
 test('S29: a gun that never answers stops the heartbeat too, not just the grants', () => {

@@ -618,9 +618,8 @@ ANNOUNCE_DEFAULT_CLIP_S = ANNOUNCE_DEFAULT_CLIP_MS / 1000   # types.py ANNOUNCE_
 
 def clip_s(sound_id: str | None) -> float:
     """A sound's real length in seconds, off the sound catalogue, else the announcer's 2.5 s default. engine.js `CLIP_MS`
-    is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) but for a subset of ids: an id outside it runs on
-    the 2.5 s default on the phone and on its catalogue length here (F463 closes that gap). The hill cues already time
-    like the phone (`_clip_ms_s`)."""
+    is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) for every on-gun id (F463), so both time a clip
+    the same. The hill cues time like the phone (`_clip_ms_s`)."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
@@ -1023,6 +1022,11 @@ class GunStage:
         self._op_revive_floor_ms = None            # F530 (engine.js `_opReviveFloorMs`): a test override of that floor
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
+        self._play_jump_lock = asyncio.Lock()   # F463 review: interrupt-slot writes that go ahead of a waiting cue
+        self._play_lock_blockers = 0   # F463 review: writes waiting for the play lock that a jumping write may not pass
+        self._play_sends = 0   # F463 review: every play write sent (a waiting write re-checks its waits after one)
+        self._play_jump_open = asyncio.Event()   # F463 review: set while `_jump_is_open`
+        self._play_gun_waiters = 0   # F463 review: queue-slot writes that hold the play lock while they wait (the gap or the gun's clip)
         self._play_cancel_event = asyncio.Event()
         # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
         # (engine.js `_armPending`; `at` and `until` are in seconds here)
@@ -2057,72 +2061,150 @@ class GunStage:
             return delivered
         return await self._deliver(job)
 
+    def _jump_is_open(self) -> bool:
+        """F463 review: a sound-only queue-slot cue is waiting for the gun (or the gap) and no write with gun rows waits
+        for the play lock: an interrupt-slot write may go ahead (play-queue.js `_jumpIndex`)."""
+        return self._play_gun_waiters > 0 and self._play_lock_blockers == 0
+
+    def _note_play_waiters(self, delta: int, blockers: int = 0) -> None:
+        self._play_gun_waiters += delta
+        self._play_lock_blockers += blockers
+        if self._jump_is_open():
+            self._play_jump_open.set()
+        else:
+            self._play_jump_open.clear()
+
+    async def _acquire_play_or_jump(self) -> tuple[asyncio.Lock, bool]:
+        """An interrupt-slot write takes the play lock, or, as soon as a jump opens while it waits (`_jump_is_open`), the
+        jump lock instead, so it never waits out a passable cue's sleep (play-queue.js `_replanWaiting`). Returns the lock
+        it holds and whether it jumped. Jumping writes queue on their own lock, so two keep the PLAY gap between them."""
+        if not self._play_lock.locked():   # uncontended: take it in this step, as a plain acquire does (no extra loop turn)
+            await self._play_lock.acquire()
+            return self._play_lock, False
+        if self._jump_is_open():
+            await self._play_jump_lock.acquire()
+            return self._play_jump_lock, True
+        acq = asyncio.ensure_future(self._play_lock.acquire())
+
+        def give_back(f: asyncio.Future) -> None:   # a lock granted to an abandoned acquire goes back, whatever cancels us
+            if not f.cancelled() and f.exception() is None:
+                self._play_lock.release()
+
+        try:
+            while not self._jump_is_open():
+                opener = asyncio.ensure_future(self._play_jump_open.wait())
+                try:
+                    await asyncio.wait({acq, opener}, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    opener.cancel()
+                if acq.done():
+                    return self._play_lock, False
+        except BaseException:
+            acq.cancel()
+            acq.add_done_callback(give_back)
+            raise
+        acq.cancel()
+        acq.add_done_callback(give_back)   # granted in the same step the jump opened: give it back
+        await self._play_jump_lock.acquire()
+        return self._play_jump_lock, True
+
     async def _deliver(self, job: "_WriteJob") -> bool | None:
         """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send."""
         frames, why, gap_ms, take, on_start, queued_at, model, life = (
             job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
+        held: asyncio.Lock | None = None
+
+        def release_play() -> None:
+            nonlocal play_lock_held, held
+            if play_lock_held and held is not None:
+                play_lock_held = False
+                held.release()
+                held = None
+
         if play_indexes:
             play_generation = self._play_generation
-            await self._play_lock.acquire()
+            # F463 review (play-queue.js `_jumpIndex`): an interrupt-slot write (a stun's disarm and its clip) never waits
+            # behind a sound-only queue-slot cue that waits for the gun (`_passable`), so it does not queue for the play
+            # lock that cue holds. It may not pass a write that waits for the lock and carries gun rows or a life burst.
+            # Jumping writes queue on their own lock, so two of them keep the PLAY gap between them.
+            passable = (is_queue_slot_play(frames[play_indexes[0]]) and PLAYX not in frames and not life
+                        and all(f == PLAYX or f.startswith("$PLAY,") for f in frames))
+            may_jump = not any(is_queue_slot_play(f) for f in frames)   # job.mustHear has no stage write path here
+            if not may_jump and not passable:
+                self._note_play_waiters(0, blockers=1)
+            try:
+                if may_jump:
+                    held, _jumped = await self._acquire_play_or_jump()
+                else:
+                    held = self._play_lock
+                    await held.acquire()
+            finally:
+                if not may_jump and not passable:
+                    self._note_play_waiters(0, blockers=-1)
             play_lock_held = True
             play_frame = frames[play_indexes[0]]
             if play_generation != self._play_generation:
-                self._play_lock.release()
+                release_play()
                 return
             now = self.now()
-            previous_at = self._last_play_at
-            previous_sent_at = self._last_play_sent_at
-            if previous_at is not None:
-                elapsed_s = now - (previous_sent_at if previous_sent_at is not None else previous_at)
-                if round(elapsed_s * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
-                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_S
-                    self._plan_life_send(life, planned_at)   # F497 (engine.js `job.sendAt`)
-                    cancel_event = self._play_cancel_event
-                    sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
-                    cancel_task = asyncio.create_task(cancel_event.wait())
-                    wait_tasks = (sleep_task, cancel_task)
-                    try:
-                        await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
-                    finally:
-                        for task in wait_tasks:
-                            if not task.done():
-                                task.cancel()
-                        await asyncio.gather(*wait_tasks, return_exceptions=True)
-                    if play_generation != self._play_generation:
-                        self._play_lock.release()
-                        return
-            # F419 (play-queue.js `PlayQueue.drain`): a queue-slot cue waits until the last one has played. The gun's queue
-            # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
-            # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
-            # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
-            now_ms = self._now_ms()
-            free_ms = self._gun_audio.free_at(now_ms) - now_ms   # whole ms, as the model keeps them
-            if is_queue_slot_play(play_frame) and PLAYX not in frames and free_ms > 0:
-                self._plan_life_send(life, self.now() + free_ms / 1000)   # F497 (engine.js `job.sendAt`)
-                # Cancellable exactly like the gap wait above: a death or a teardown must not wait out a 3 s clip.
+            # F463 review: a queue-slot cue that waits (the PLAY gap or the gun's clip) lets an interrupt-slot write go
+            # ahead of it (`_acquire_play_or_jump`, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
+            # both waits are checked again after each sleep (play-queue.js plans the job again).
+            waits_gun = is_queue_slot_play(play_frame) and PLAYX not in frames
+            yields = passable   # a write that may go ahead of this one is counted while it waits
+            while True:
+                previous_at = self._last_play_at
+                previous_sent_at = self._last_play_sent_at
+                wait_s = 0.0
+                if previous_at is not None:
+                    last = previous_sent_at if previous_sent_at is not None else previous_at
+                    if round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000):   # whole ms, as engine.js compares them
+                        wait_s = last + PLAY_GAP_S - self.now()
+                # F419 (play-queue.js `PlayQueue.drain`): a queue-slot cue waits until the last one has played. The gun's queue
+                # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
+                # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
+                # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
+                if waits_gun:
+                    now_ms = self._now_ms()
+                    wait_s = max(wait_s, (self._gun_audio.free_at(now_ms) - now_ms) / 1000)   # whole ms, as the model keeps them
+                if wait_s <= 0:
+                    break
+                self._plan_life_send(life, self.now() + wait_s)   # F497 (engine.js `job.sendAt`)
+                # Cancellable: a death or a teardown must not wait out a 3 s clip.
                 cancel_event = self._play_cancel_event
-                sleep_task = asyncio.ensure_future(self.sleep(free_ms / 1000))
+                sleep_task = asyncio.ensure_future(self.sleep(max(0, wait_s)))
                 cancel_task = asyncio.create_task(cancel_event.wait())
                 wait_tasks = (sleep_task, cancel_task)
+                if yields:
+                    self._note_play_waiters(1)
+                seen = self._play_sends
                 try:
                     await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
                 finally:
+                    if yields:
+                        self._note_play_waiters(-1)
                     for task in wait_tasks:
                         if not task.done():
                             task.cancel()
                     await asyncio.gather(*wait_tasks, return_exceptions=True)
                 if play_generation != self._play_generation:
-                    self._play_lock.release()
+                    release_play()
                     return
+                if self._play_jump_lock.locked() and held is not self._play_jump_lock:
+                    async with self._play_jump_lock:   # a write that went ahead is still on the link: wait for it
+                        pass
+                    continue
+                if self._play_sends == seen:
+                    break   # nothing was sent while it slept: the waits it planned are served
             # F478 r1 (play-queue.js `PlayQueue.drain`, F419 review): a queue-slot cue that waited longer than
             # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
             # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
             waited_ms = round((self.now() - queued_at) * 1000)
             if is_queue_slot_play(play_frame) and PLAYX not in frames and not life and waited_ms > PLAY_QUEUE_STALE_MS:
                 self._log(f"audio: dropped, it waited {waited_ms} ms for the gun (stale past {PLAY_QUEUE_STALE_MS} ms)", "info", why)
-                self._play_lock.release()
+                release_play()
                 return
             self._last_play_at = now
             frames = self._bind_rows(frames)   # engine.js `_write`: the play queue re-enters after its wait.
@@ -2137,13 +2219,13 @@ class GunStage:
             self._sir_live = take
         if job.should_send is not None and not job.should_send():
             if play_lock_held:
-                self._play_lock.release()
+                release_play()
             return None   # engine.js `shouldSend`: the reason for the write went away while it waited
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
             if play_lock_held:
-                self._play_lock.release()
+                release_play()
             self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
         if model:
@@ -2156,7 +2238,8 @@ class GunStage:
             if play_indexes:
                 self._last_play_sent_at = self.now()
                 self._last_play_at = self._last_play_sent_at
-                self._play_lock.release()
+                self._play_sends += 1
+                release_play()
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
@@ -2179,9 +2262,9 @@ class GunStage:
                 if play_indexes:
                     self._last_play_sent_at = self.now()
                     self._last_play_at = self._last_play_sent_at
+                    self._play_sends += 1
             finally:
-                if play_lock_held and self._play_lock.locked():
-                    self._play_lock.release()
+                release_play()
 
     def _drop_queued_fillers(self, frames: list[str], why: str) -> list[str]:
         """engine.js `_write` (F347): a write splits into groups at each `$PLAY` after the first. A group whose sound is
@@ -2192,7 +2275,7 @@ class GunStage:
         if not idx:
             return frames
         last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
-        busy = self._play_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
+        busy = self._play_lock.locked() or self._play_jump_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
         bounds = [0, *idx[1:], len(frames)]
         drop: set[int] = set()
         for g in range(len(bounds) - 1):
@@ -4717,7 +4800,7 @@ class GunStage:
             return
         # F439 (brx1 bench 2026-10-02, UNPROVEN): no beat while the low-health line waits in its hold, while a play write
         # waits or is in flight, while dead, or before the scream ends, so a beat never plays after the death scream.
-        if not self.alive or now_ms < self._scream_until_ms or self._pending_hurt_write or self._play_lock.locked():
+        if not self.alive or now_ms < self._scream_until_ms or self._pending_hurt_write or self._play_lock.locked() or self._play_jump_lock.locked():
             return
         self._shield_loop_at = now
         self._spawn_task(self.write([fr], "shield down heartbeat", gap_ms=0))

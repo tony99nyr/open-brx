@@ -703,7 +703,7 @@ export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
 // ---- kind vocabularies ----
 export declare const MC_KINDS: ReadonlySet<McKind>;
-export type McKind = 'ack' | 'alert' | 'apply' | 'assign' | 'config' | 'control' | 'feedback' | 'join' | 'loadout_ack' | 'pull_log' | 'result' | 'score' | 'start' | 'station_config' | 'station_update' | 'time_res' | 'tutorial' | 'welcome';
+export type McKind = 'ack' | 'action_ack' | 'alert' | 'apply' | 'assign' | 'config' | 'control' | 'feedback' | 'join' | 'loadout_ack' | 'pull_log' | 'result' | 'score' | 'start' | 'station_config' | 'station_update' | 'time_res' | 'tutorial' | 'welcome';
 export declare const NODE_KINDS: ReadonlySet<NodeKind>;
 export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'station_action' | 'status' | 'time_req';
 export declare const CONTROL_CMDS: ReadonlySet<ControlCmd>;

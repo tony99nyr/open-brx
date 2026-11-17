@@ -552,7 +552,7 @@ export type FeedTagValue = 'TEAM KILL' | 'TEAM CREDIT' | 'AFTER WHISTLE' | 'SYNC
 export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
 // ---- kind vocabularies ----
-export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'station_update', 'time_res', 'tutorial', 'welcome'] as const;
+export const MC_KINDS = ['ack', 'action_ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'station_update', 'time_res', 'tutorial', 'welcome'] as const;
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'station_action', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
@@ -2795,6 +2795,7 @@ export const REQUIRED: Record<string, readonly string[]> = {
   time_res: ['t_node', 'server_t'],
   pull_log: [],
   ack: ['seq_hi'],
+  action_ack: ['id'],
   apply: ['frames'],
   loadout_ack: ['slot', 'ok'],
   score: ['player_id'],

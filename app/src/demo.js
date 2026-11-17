@@ -886,6 +886,10 @@ export function startDemo({ engine, log }) {
       // only: on yellow (tid 2, the neutral sentinel) the engine refuses to decide ownership (F82) and stays silent. ----
       'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
       'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
+      // F444 (Tony, bench 2026-10-16): an enemy takes a hill nobody held. IR: the grenade's capture word; BLE: a station
+      // point seen neutral, then owned by the enemy (a station capture always passes through neutral).
+      'live-hill-enemy-captured':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],
+      'live-hill-enemy-captured-ble': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.point(255, 0, 0)], [2400, () => ev.point(team.tid === 0 ? 3 : 0, 1, 100)]],
       'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
       // Tony, 2026-10-02: HILL CAPTURE STARTED, on a phone control point (hill.js `begins`), tinted in the
       // CAPTURING team's colour and shown to everyone. The first advert is adopted silently, so each stage shows the point

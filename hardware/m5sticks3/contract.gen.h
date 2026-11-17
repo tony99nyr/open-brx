@@ -397,8 +397,8 @@ constexpr const char* PANIC_SEQUENCE[] = {"$CLEAR,*", "$SP,99,*"};
 constexpr size_t PANIC_SEQUENCE_COUNT = 2;
 
 // ---- kind vocabularies (STATION_KINDS in source order: advert byte 8 = index + 1) ----
-constexpr const char* MC_KINDS[] = {"ack", "alert", "apply", "assign", "config", "control", "feedback", "join", "loadout_ack", "pull_log", "result", "score", "start", "station_config", "station_update", "time_res", "tutorial", "welcome"};
-constexpr size_t MC_KINDS_COUNT = 18;
+constexpr const char* MC_KINDS[] = {"ack", "action_ack", "alert", "apply", "assign", "config", "control", "feedback", "join", "loadout_ack", "pull_log", "result", "score", "start", "station_config", "station_update", "time_res", "tutorial", "welcome"};
+constexpr size_t MC_KINDS_COUNT = 19;
 constexpr const char* NODE_KINDS[] = {"ack_config", "bind", "event", "event_batch", "hello", "loadout_browse", "loadout_request", "log_data", "log_offer", "ready", "station_action", "status", "time_req"};
 constexpr size_t NODE_KINDS_COUNT = 13;
 constexpr const char* CONTROL_CMDS[] = {"abort_start", "clock_resync", "end", "panic", "recall", "release_utility", "relink", "respawn", "resync"};
