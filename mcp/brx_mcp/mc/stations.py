@@ -259,10 +259,7 @@ class StationRegistry:
     def forget(self, nid: str) -> dict | None:
         # F364: only a removed node releases its reserved id. CLEAR keeps the reservation.
         self._station_id_of.pop(nid, None)
-        st = self.stations.pop(nid, None)
-        if st is not None and st.get("assigned") and is_stick({**st, "node_id": nid}):
-            self.release_stick(nid)   # F671: a removed Stick must not keep playing its old role either
-        return st
+        return self.stations.pop(nid, None)
 
     def back_to_hud(self, nid: str, successor: str | None = None) -> None:
         self.record_departure(nid, "back_to_hud", successor=successor)
@@ -835,6 +832,12 @@ class StationRegistry:
         self.changes._validate()
         self.changes._changed()
         return True
+
+    def release_if_assigned_stick(self, nid: str) -> None:
+        """F671: a Stick removed while assigned must not keep playing its old role either. Call it before the socket closes."""
+        st = self.stations.get(nid)
+        if st is not None and st.get("assigned") and is_stick({**st, "node_id": nid}):
+            self.release_stick(nid)
 
     def release_stick(self, nid: str) -> None:
         """F671: tell a cleared Stick it has no role, now and at every hello until a beat shows it has none."""
