@@ -147,6 +147,9 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 [data-aura="control"] .cline{min-height:12cqw}   /* the % line keeps its place, so the word above never jumps */
 .cpct{font-family:var(--fd);font-weight:700;font-size:max(20px,11cqw);line-height:1;letter-spacing:.06em;color:var(--num);font-variant-numeric:tabular-nums}
 .cpct:empty,.cpct[hidden]{display:none}
+.cpct.over{white-space:nowrap;color:var(--mut)}   /* F670: MATCH OVER, the Stick's words, under the owner */
+[data-cstate="ended"] .aura i,[data-cstate="ended"] .aura i s{animation:none!important}   /* the game is over: the ring holds still */
+[data-cstate="ended"] .aura .asweep{opacity:0}
 .cflash{display:block}
 .cflash[hidden]{display:none}
 .cflash span{display:block;white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:7.5cqw;letter-spacing:.06em;color:var(--fc,var(--num));text-shadow:0 0 18px color-mix(in srgb,var(--fc,var(--num)) 60%,transparent)}

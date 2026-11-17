@@ -193,3 +193,32 @@ test('MC arming another game leaves a game MC did not arm, and a live game befor
   assert.equal(airGame(), 94);
   assert.ok(api.point.ownMs[RED] > own, 'the live game 94 still banks');
 });
+
+test('F670: the phone hill shows MATCH OVER when its followed game ends, as the Stick does, and drops it for the next game', async () => {
+  const cpct = document.getElementById('cpct'), html = document.documentElement;
+  await api.applyStationConfig({ ...hill, id: 11, game: 90 });   // a new id: a fresh follower
+  stand(3000, [{ id: 3, team: RED, game: 91, live: true, scope: 1 << 11 }]);
+  api.render();
+  assert.notEqual(cpct.textContent, 'MATCH OVER', 'CONTROL: a live followed game is not over');
+  assert.notEqual(html.dataset.cstate, 'ended');
+  stand(1000, [{ id: 3, team: RED, game: 91, live: false, scope: 1 << 11 }]);   // red's whistle
+  api.render();
+  assert.equal(cpct.textContent, 'MATCH OVER');
+  assert.equal(html.dataset.cstate, 'ended', 'the ring holds still');
+  stand(3000, [{ id: 4, team: BLUE, game: 92, live: true, scope: 1 << 11 }]);   // the next game takes the hill
+  api.render();
+  assert.notEqual(cpct.textContent, 'MATCH OVER', 'a new live game clears it');
+});
+
+test('F670: a hill MC armed (not following) shows MATCH OVER at MC\'s END', async () => {
+  const cpct = document.getElementById('cpct');
+  await api.applyStationConfig({ ...hill, id: 12, game: 95, starts_in_ms: 0, ends_in_ms: 60_000 });
+  api.render();
+  assert.notEqual(cpct.textContent, 'MATCH OVER', 'CONTROL: before the whistle');
+  await api.applyStationConfig({ ...hill, id: 12, game: 95, ends_in_ms: 0 });
+  api.render();
+  assert.equal(cpct.textContent, 'MATCH OVER');
+  await api.applyStationConfig({ ...hill, id: 12, game: 96, starts_in_ms: 3000, ends_in_ms: 60_000 });
+  api.render();
+  assert.notEqual(cpct.textContent, 'MATCH OVER', 'the next START clears it');
+});
