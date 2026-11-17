@@ -1015,6 +1015,8 @@ class GunStage:
         self._op_revive_floor_ms = None            # F530 (engine.js `_opReviveFloorMs`): a test override of that floor
         self._play_generation = 0
         self._play_lock = asyncio.Lock()
+        self._play_jump_lock = asyncio.Lock()   # F463 review: interrupt-slot writes that go ahead of a waiting cue
+        self._play_lock_blockers = 0   # F463 review: writes waiting for the play lock that a jumping write may not pass
         self._play_jumps = 0   # F463 review: interrupt-slot writes sent while a queue-slot write waited
         self._play_gun_waiters = 0   # F463 review: queue-slot writes that hold the play lock while they wait (the gap or the gun's clip)
         self._play_cancel_event = asyncio.Event()
@@ -2058,21 +2060,34 @@ class GunStage:
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
         jumps = False
+        held: asyncio.Lock | None = None
 
         def release_play() -> None:
-            nonlocal play_lock_held
-            if play_lock_held:
+            nonlocal play_lock_held, held
+            if play_lock_held and held is not None:
                 play_lock_held = False
-                self._play_lock.release()
+                held.release()
+                held = None
 
         if play_indexes:
             play_generation = self._play_generation
             # F463 review (play-queue.js `_jumpIndex`): an interrupt-slot write (a stun's disarm and its clip) never waits
-            # behind a queue-slot cue that waits for the gun, so it does not queue for the lock that cue holds.
-            jumps = not any(is_queue_slot_play(f) for f in frames) and self._play_gun_waiters > 0
-            if not jumps:
-                await self._play_lock.acquire()
-                play_lock_held = True
+            # behind a sound-only queue-slot cue that waits for the gun (`_passable`), so it does not queue for the play
+            # lock that cue holds. It may not pass a write that waits for the lock and carries gun rows or a life burst.
+            # Jumping writes queue on their own lock, so two of them keep the PLAY gap between them.
+            jumps = (not any(is_queue_slot_play(f) for f in frames) and self._play_gun_waiters > 0
+                     and self._play_lock_blockers == 0)
+            passable = (is_queue_slot_play(frames[play_indexes[0]]) and PLAYX not in frames and not life
+                        and all(f == PLAYX or f.startswith("$PLAY,") for f in frames))
+            held = self._play_jump_lock if jumps else self._play_lock
+            if not jumps and not passable:
+                self._play_lock_blockers += 1
+            try:
+                await held.acquire()
+            finally:
+                if not jumps and not passable:
+                    self._play_lock_blockers -= 1
+            play_lock_held = True
             play_frame = frames[play_indexes[0]]
             if play_generation != self._play_generation:
                 release_play()
@@ -2081,7 +2096,8 @@ class GunStage:
             # F463 review: a queue-slot cue that waits (the PLAY gap or the gun's clip) lets an interrupt-slot write go
             # ahead of it (`jumps` above, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
             # both waits are checked again after each sleep (play-queue.js plans the job again).
-            yields = is_queue_slot_play(play_frame) and PLAYX not in frames
+            waits_gun = is_queue_slot_play(play_frame) and PLAYX not in frames
+            yields = passable   # a write that may go ahead of this one is counted while it waits
             while True:
                 previous_at = self._last_play_at
                 previous_sent_at = self._last_play_sent_at
@@ -2094,7 +2110,7 @@ class GunStage:
                 # slot dropped and reordered cues 300 ms apart on the bench (heard 1, 4, 3); the interrupt slot does not wait.
                 # A write that carries its own `$PLAYX` (the hill callout's preempt) stops the clip itself: it never waits.
                 # F478: "the last one" is the gun audio model's tail (engine.js `_gun.freeAt`): hit sounds and the scream count.
-                if yields:
+                if waits_gun:
                     now_ms = self._now_ms()
                     wait_s = max(wait_s, (self._gun_audio.free_at(now_ms) - now_ms) / 1000)   # whole ms, as the model keeps them
                 if wait_s <= 0:
@@ -2199,7 +2215,7 @@ class GunStage:
         if not idx:
             return frames
         last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
-        busy = self._play_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
+        busy = self._play_lock.locked() or self._play_jump_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
         bounds = [0, *idx[1:], len(frames)]
         drop: set[int] = set()
         for g in range(len(bounds) - 1):
@@ -4653,7 +4669,7 @@ class GunStage:
             return
         # F439 (brx1 bench 2026-10-02, UNPROVEN): no beat while the low-health line waits in its hold, while a play write
         # waits or is in flight, while dead, or before the scream ends, so a beat never plays after the death scream.
-        if not self.alive or now_ms < self._scream_until_ms or self._pending_hurt_write or self._play_lock.locked():
+        if not self.alive or now_ms < self._scream_until_ms or self._pending_hurt_write or self._play_lock.locked() or self._play_jump_lock.locked():
             return
         self._shield_loop_at = now
         self._spawn_task(self.write([fr], "shield down heartbeat", gap_ms=0))

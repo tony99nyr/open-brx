@@ -171,6 +171,19 @@ test('F463 review: an interrupt-slot write (a stun) never waits behind a queue-s
   h.to(2000);
   h.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'second stun');
   assert.deepEqual(h.sent.map(s => [s.why, s.t]), [['second stun', 2000]], 'the disarm goes at once');
+  h.to(20000);
+  assert.deepEqual(h.sent.map(s => s.why), ['second stun'], 'the reload sound, planned again behind both clips, goes stale');
+  assert.ok(h.logs.some(l => /reload sound dropped: it waited/.test(l)), h.logs.join(' | '));
+  // Review r1: a revive burst waiting for the gun carries gun rows. A stun never passes it, so its armed rows cannot
+  // land after the disarm.
+  const r = queueHarness();
+  r.q.add(3000, 'the death scream', 0, 'S');
+  r.q.enqueue(['$AMMO,0,30,192,1,*', '$SPAWN,,*', queued('A')], 'revive', { options: { lifeBurst: true } });
+  r.to(500);
+  r.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun');
+  assert.deepEqual(r.sent, [], 'the stun waits behind the revive');
+  r.to(20000);
+  assert.deepEqual(r.sent.map(s => s.why), ['revive', 'stun']);
   // Codex review: a write that holds a queue-slot cue does not jump, so its own interrupt-slot group keeps its place.
   const g = queueHarness();
   g.q.enqueue([queued('A'), '$PLAY,B,4,6,,,,,*'], 'one write');

@@ -178,7 +178,7 @@ export class HillListener {
    *  Lost" is the holder's own line. A hill we held says HILL LOST instead; a first hearing is adopted silently. */
   enemyCaptured(prevOwner, owner, src) {
     const mine = this.host.teamTid;
-    if (mine == null || mine === HILL_REFUSED_TID || owner == null || owner === HILL_REFUSED_TID || owner === mine || prevOwner === mine || prevOwner === owner) return;
+    if (mine == null || mine === HILL_REFUSED_TID || prevOwner == null || owner == null || owner === HILL_REFUSED_TID || owner === mine || prevOwner === mine || prevOwner === owner) return;
     this.host._laneObj('hill', { kind: 'hill_enemy_captured', team: this.host.TEAM_KEY[owner] || String(owner), tid: owner, src });
   }
   /** Play one callout NOW. Priority rule: **the later callout wins outright — it preempts, it never
