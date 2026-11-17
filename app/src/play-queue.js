@@ -150,12 +150,15 @@ export class PlayQueue extends GunAudio {
     });
     const pending = groups.filter(group => group.length);
     if (mustHear) this.dropWaiting(why);   // F419: the cues still on the PHONE are what the old FIFO's stops cut
+    // F463 review: the whole write jumps or none of it does, so its groups keep their order.
+    const jumps = !mustHear && !frames.some(isQueueSlotPlay);
+    let at = jumps ? this._jumpIndex() : this.queue.length;
     const writes = pending.map((group, i) => new Promise(resolve => {
       const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now };
       this.pending.add(job);
-      if (this._jumps(job)) this._jumpAhead(job);
-      else this.queue.push(job);
+      this.queue.splice(at++, 0, job);
     }));
+    if (jumps) this._replanWaiting(at);
     this.drain();
     return Promise.all(writes).then(results => results.every(ok => ok !== false));
   }
@@ -178,24 +181,21 @@ export class PlayQueue extends GunAudio {
   _waitsForGun(job) {
     return !job.mustHear && !job.group.includes(PLAYX) && job.group.some(isQueueSlotPlay);
   }
-  /** A write whose sounds are all on the interrupt slot (token 1: a stun's disarm and its clip), not must-hear. PURE. */
-  _jumps(job) {
-    return !job.mustHear && !job.group.some(isQueueSlotPlay);
+  /** F463 review (brx1, 2026-11-16): a write whose sounds are all on the interrupt slot and is not must-hear (a stun's
+   *  disarm and its clip) never waits for the gun, so it never waits BEHIND a job that does either. It goes ahead of
+   *  every queued job that waits for the gun, after the ones that do not (`_jumpIndex`), and a job planned for later
+   *  only because the gun is busy goes back to the queue behind it (`_replanWaiting`). Before, a stun queued behind a
+   *  reload sound that waited out the last stun's clip, and the second stun reached the gun late. */
+  _jumpIndex() {
+    const ix = this.queue.findIndex(j => this._waitsForGun(j));
+    return ix < 0 ? this.queue.length : ix;
   }
-  /** F463 review (brx1, 2026-11-16): an interrupt-slot write (`_jumps`) never waits for the gun, so it never waits
-   *  BEHIND a job that does either. It goes ahead of every queued job that waits for the gun, after the ones that do not,
-   *  and a job planned for later only because the gun is busy goes back to the queue behind it. Before, a stun queued
-   *  behind a reload sound that waited out the last stun's 7.9 s clip, and the second stun reached the gun late. */
-  _jumpAhead(job) {
-    let ix = this.queue.findIndex(j => this._waitsForGun(j));
-    if (ix < 0) ix = this.queue.length;
-    this.queue.splice(ix, 0, job);
+  _replanWaiting(at) {
     const w = this.waiting;
-    if (w && !this.inFlight && this._waitsForGun(w)) {
-      w.plan++;   // its timer is void
-      this.waiting = null; this.busy = false;
-      this.queue.splice(ix + 1, 0, w);
-    }
+    if (!w || this.inFlight || !this._waitsForGun(w)) return;
+    w.plan++;   // its timer is void
+    this.waiting = null; this.busy = false;
+    this.queue.splice(at, 0, w);
   }
   /** THE stale rule (F419 review): a job that waited for the gun is dropped, not played late, once it is sent more than
    *  `staleMs` after it was queued. F493 r1: a spawn/revive burst is never stale. Dropped, the gun never gets its
@@ -212,7 +212,7 @@ export class PlayQueue extends GunAudio {
     const now = this._now();
     const { waits, at } = this._step(job, { t: now, next: this.nextAt, last: this.lastAt, model: this });
     const send = () => {
-      if (job.plan !== plan) return;   // `_jumpAhead` put it back in the queue: a later drain plans it again
+      if (job.plan !== plan) return;   // `_replanWaiting` put it back in the queue: a later drain plans it again
       if (this.waiting === job) this.waiting = null;
       if (job.cancelled || generation !== this.gen) return;
       this.nextAt = 0;

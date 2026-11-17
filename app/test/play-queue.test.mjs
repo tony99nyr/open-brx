@@ -171,6 +171,11 @@ test('F463 review: an interrupt-slot write (a stun) never waits behind a queue-s
   h.to(2000);
   h.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'second stun');
   assert.deepEqual(h.sent.map(s => [s.why, s.t]), [['second stun', 2000]], 'the disarm goes at once');
+  // Codex review: a write that holds a queue-slot cue does not jump, so its own interrupt-slot group keeps its place.
+  const g = queueHarness();
+  g.q.enqueue([queued('A'), '$PLAY,B,4,6,,,,,*'], 'one write');
+  g.to(20000);
+  assert.deepEqual(g.sent.map(s => s.group[0]), [queued('A'), '$PLAY,B,4,6,,,,,*'], 'A, then B');
 });
 
 test('ARCH-3 sendAt: the plan for every queued job is the time it is sent, and sendAt changes nothing', () => {

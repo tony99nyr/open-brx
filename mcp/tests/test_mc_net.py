@@ -332,6 +332,15 @@ def test_station_action_is_acked_by_id_and_a_resend_is_handled_once():
             node._send(other)
             assert await _until(lambda: len(acks()) == 3)
             assert [k for _, k, _ in h.msgs].count("station_action") == 2
+            # Codex review: a handler that raises acks nothing, so the station keeps the report and sends it again.
+            def boom(*_a):
+                raise RuntimeError("handler failed")
+            h.net.on_node_message(boom)
+            failed = E.make_envelope("station_action", {"id": 5, "action": "taken", "player_num": 4})
+            node._send(failed)
+            node._send(other)                       # a later frame proves the failed one was read
+            assert await _until(lambda: len(acks()) == 4)
+            assert failed["id"] not in acks()
             await node.close()
     _run(go())
 
