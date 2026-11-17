@@ -174,11 +174,22 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       strip_cap(px, n, budget_ma);
       if (role == StripRole::HILL_OWNED_IDLE) {
         strip_dim(px, n, STRIP_OWNED_IDLE_PCT, 100);
-        // A long strip on the Grove cap scales to black at 8 %: light the colour's brightest channel at 1 (cross-review 2026-11-15)
+        // A long strip on the Grove cap scales a channel to 0 at 8 %, so red and yellow, and blue and purple, read the
+        // same (F675). Floor at 1 every channel that is at least a quarter of the colour's brightest, and keep the
+        // brightest one ahead: red (1,0,0), blue (0,0,1), yellow (2,1,0), purple (1,0,2). At most 3 per LED, far
+        // under the cap at 144 LEDs (432 of 1989).
         const Rgb c = team_rgb(s.control_owner);
-        for (size_t i = 0; i < n; i++)
-          if (!px[i].r && !px[i].g && !px[i].b)
-            px[i] = c.r >= c.g && c.r >= c.b ? Rgb{1, 0, 0} : c.g >= c.b ? Rgb{0, 1, 0} : Rgb{0, 0, 1};
+        const uint32_t top = c.r > c.g ? (c.r > c.b ? c.r : c.b) : (c.g > c.b ? c.g : c.b);
+        auto floor1 = [top](uint8_t want, uint8_t& got) { if (want && 4u * want >= top && !got) got = 1; };
+        for (size_t i = 0; i < n; i++) {
+          Rgb& p = px[i];
+          floor1(c.r, p.r);
+          floor1(c.g, p.g);
+          floor1(c.b, p.b);
+          uint8_t& lead = c.r == top ? p.r : c.g == top ? p.g : p.b;
+          const uint8_t other = &lead == &p.r ? (p.g > p.b ? p.g : p.b) : &lead == &p.g ? (p.r > p.b ? p.r : p.b) : (p.r > p.g ? p.r : p.g);
+          if (lead <= other) lead = other + 1;
+        }
       } else if (const int head = strip_cascade_head(now_ms, n); head >= 0) {
         for (size_t i = 0; i < n; i++) px[i] = strip_scale(px[i], strip_cascade_pct(head, i), 100);
       } else {
