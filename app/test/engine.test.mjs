@@ -1448,8 +1448,8 @@ test('A8 r1 hill: an older bundle with no hill keys plays the literal fallbacks'
 test('A8 r1 hill: a hill frame outside CLIP_MS is timed at the 2.5 s default, as on the stage', () => {
   const h = harness({ mode: 'koth' }).kit().config_();
   h.eng.frames = { ...h.eng.frames, cues: { ...h.eng.frames.cues } };   // never mutate the shared golden bundle
-  h.eng.frames.cues.hill_captured = '$PLAY,X17,4,6,,,,,*';     // in the catalogue (7.9 s), not in CLIP_MS
-  assert.equal(h.eng.hl.cue('hill_captured').ms, 2500);
+  h.eng.frames.cues.hill_captured = '$PLAY,X17,4,6,,,,,*';     // F463: every on-gun id has a row, so X17 times as 7.9 s
+  assert.equal(h.eng.hl.cue('hill_captured').ms, 7883);
   h.eng.frames.cues.hill_captured = '$PLAY,,4,6,ZZZ9,,,,*';    // not in the catalogue at all
   assert.equal(h.eng.hl.cue('hill_captured').ms, 2500);
   h.eng.frames.cues.hill_captured = HILL_LOST_F;

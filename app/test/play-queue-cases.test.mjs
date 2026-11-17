@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCase } from './fixtures/gen-play-queue-cases.mjs';
+import { isQueueSlotPlay } from '../src/play-queue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'play-queue-cases.json'), 'utf8'));
@@ -16,10 +17,11 @@ for (const c of FIXTURE.cases) {
     const { expect, ...input } = c;
     assert.deepEqual(runCase(input, FIXTURE.clip_ms), expect, 'a fresh run differs from the file: the behaviour changed (or regenerate it on purpose)');
     // `sendAt` agrees with the send: a job's first plan is when it went, unless something after it was queued changed
-    // the queue ahead of it (a must-hear write, a hit sound, a cancel), or the case names a known gap.
+    // the queue ahead of it (a must-hear write, a hit sound, a cancel, or an interrupt-slot write that jumps ahead of a
+    // job waiting for the gun, F463 review), or the case names a known gap.
     for (const j of expect.jobs) {
       if (j.planned == null || j.sent == null || c.plan_differs) continue;
-      const moved = c.events.some(e => e.t > j.queued_t && e.t < j.sent && (e.must_hear || e.hit || e.cancel));
+      const moved = c.events.some(e => e.t > j.queued_t && e.t < j.sent && (e.must_hear || e.hit || e.cancel || (e.write && !e.write.some(isQueueSlotPlay))));
       if (!moved) assert.equal(j.planned, j.sent, `${j.job}: planned for ${j.planned}, sent at ${j.sent}`);
     }
   });

@@ -616,9 +616,8 @@ ANNOUNCE_DEFAULT_CLIP_S = ANNOUNCE_DEFAULT_CLIP_MS / 1000   # types.py ANNOUNCE_
 
 def clip_s(sound_id: str | None) -> float:
     """A sound's real length in seconds, off the sound catalogue, else the announcer's 2.5 s default. engine.js `CLIP_MS`
-    is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) but for a subset of ids: an id outside it runs on
-    the 2.5 s default on the phone and on its catalogue length here (F463 closes that gap). The hill cues already time
-    like the phone (`_clip_ms_s`)."""
+    is generated from the same `duration_s` (`mcp/tools/gen_clip_ms.py`) for every on-gun id (F463), so both time a clip
+    the same. The hill cues time like the phone (`_clip_ms_s`)."""
     e = _snd._catalog().get(sound_id or "")
     d = e.get("duration_s") if e else None
     return float(d) if isinstance(d, (int, float)) and d > 0 else ANNOUNCE_DEFAULT_CLIP_S
