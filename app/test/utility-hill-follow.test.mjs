@@ -222,3 +222,16 @@ test('F670: a hill MC armed (not following) shows MATCH OVER at MC\'s END', asyn
   api.render();
   assert.notEqual(cpct.textContent, 'MATCH OVER', 'the next START clears it');
 });
+
+test('F670 review: a capture just before MC\'s END does not hide MATCH OVER behind its flash', async () => {
+  const cpct = document.getElementById('cpct'), cflash = document.getElementById('cflash');
+  await api.applyStationConfig({ ...hill, id: 13, game: 97, starts_in_ms: 0, ends_in_ms: 600_000 });
+  stand(30_000, [{ id: 5, team: RED, game: 97, scope: 1 << 13 }]);
+  assert.equal(api.point.owner, RED, 'CONTROL: red captured the hill');
+  assert.equal(cflash.hidden, false, 'CONTROL: the CAPTURED flash is showing');
+  await api.applyStationConfig({ ...hill, id: 13, game: 97, ends_in_ms: 0 });
+  api.render();
+  assert.equal(cflash.hidden, true, 'the flash goes at the whistle');
+  assert.equal(cpct.hidden, false);
+  assert.equal(cpct.textContent, 'MATCH OVER');
+});

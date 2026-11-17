@@ -851,7 +851,7 @@ function render() {
   if ($('team').style) $('team').style.setProperty('--wordc', isControl && holderT != null ? `var(--team-${TEAM_KEY_BY_TID[holderT] || 'any'})` : '');
   renderPowerup();
   fitWord();
-  if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
+  if (_flashAt && (ended || Date.now() - _flashAt > 2600)) { _flashAt = 0; $('cflash').hidden = true; }   // F670: MATCH OVER at once, as on the Stick
   if ($('cpct')) $('cpct').hidden = !$('cflash').hidden;
   const pupEl = $('pup');
   document.documentElement.dataset.onair = advertising ? '1' : '0';   // off the air, every ring is grey and still (H2)
@@ -1174,7 +1174,9 @@ function renderControl(isControl, v, heldBy, ended = false) {
   if (core && core.setAttribute) {
     core.setAttribute('role', 'progressbar'); core.setAttribute('aria-label', 'capture progress');
     core.setAttribute('aria-valuemin', '0'); core.setAttribute('aria-valuemax', '100'); core.setAttribute('aria-valuenow', String(v.value));
-    core.setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
+    const owner = heldBy == null ? 'neutral' : `held by ${TEAM_NAME_BY_TID[heldBy] || `TEAM ${heldBy}`}`;
+    core.setAttribute('aria-valuetext', ended ? `match over, ${owner}`   // F670: what the screen says, not the frozen bar
+      : `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}${point.contested ? ', contested' : ''}`);
   }
   $('ctally').textContent = tallyLine();
   // short on purpose: two points on one id read as ONE point to every player phone; team 2 is what a neutral point broadcasts (F82)
