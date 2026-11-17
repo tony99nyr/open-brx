@@ -4542,7 +4542,7 @@ export class Engine {
     // live counts, in the same write (`pu.reconcileRearm`'s reason: a separate restore lets the full magazine echo first).
     // Pickup slots are left to the held heavy below: a slot the node holds nothing in keeps compile's empty row.
     const puSlots = new Set(((this.config && this.config.powerups) || []).map(p => +p.slot));
-    const keepAmmo = selfHit && !selfHit.refill ? Object.fromEntries(Object.entries(this.am.liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;
+    const keepAmmo = selfHit && !selfHit.refill ? Object.fromEntries(Object.entries(selfHit.ammo || this.am.liveAmmo()).filter(([sl]) => !puSlots.has(+sl))) : null;   // F640 (3): a head heal hands in the counts it saved
     const revive = keepAmmo ? revive0.map(f => { const t = f.startsWith('$AMMO,') ? f.split(',') : null; const k = t && keepAmmo[+t[1]]; return k ? `$AMMO,${t[1]},${k[0]},${k[1]},${t.slice(4).join(',')}` : f; }) : revive0;
     // F438 r4: a self-hit revive keeps a held heavy (the node still tracks it), its charges in its own `$AMMO` row (`burstWithHeld`, as the reconcile re-arm), never the zero.
     const keep = selfHit ? this.pu.held : null;
@@ -6308,8 +6308,21 @@ export class Engine {
     }
     // F532 (bench 2026-10-16): `$PHONE` wakes a power-cycled gun, and the reconcile's read then answers `$HP,0,0,0`, as a dead
     // gun does. Inside the relink reconcile, for a player the phone knew alive, one `$QUERY` decides which it is.
-    if (cmd === 'HP' && solicited && this.phase === 'live' && this.rc.active && t.slice(1, 4).every(v => (+v || 0) === 0)
-      && (this._rebootQ || this._rebootCheck('an all-zero read') !== false)) { this._changed(); return; }
+    // F640 (2): the operator's RESYNC reads the gun with the same `$LIFE`, so a rebooted gun answers it the same way. The
+    // pools it saves are the ones the phone holds now (it has no relink); the resync ends here, the check decides the rest.
+    const rs = cmd === 'HP' && solicited && !this.rc.active ? this._operatorResyncPending : null;
+    if (cmd === 'HP' && solicited && this.phase === 'live' && (this.rc.active || rs) && t.slice(1, 4).every(v => (+v || 0) === 0)) {
+      if (rs && !this._rebootQ) this._rcPools = { health: this.hp, armor: this.armor, shield: this.shield };
+      if (this._rebootQ || this._rebootCheck('an all-zero read') !== false) {
+        if (rs) {
+          this._operatorResyncPending = null;
+          this.log('operator resync: the gun read all zeros, so a reboot check decides (no death unless the gun died)', 'li');
+          this._operatorResult('resync', 'the gun read all zeros: a reboot check follows, and it re-heads the gun if it lost its setup', rs);
+        }
+        this._changed(); return;
+      }
+      if (rs) this._rcPools = null;
+    }
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
@@ -8140,6 +8153,9 @@ export class Engine {
     if (n > 3) { this.log(`${label} write failed while live: retries spent (relink or RESYNC the gun)`, 'le'); return; }
     // Opus review: the pools of the FIRST failure: a partly landed head may already have moved the gun's own echo.
     if (!this._healPools) this._healPools = { health: this.hp, armor: this.armor, shield: this.shield };
+    // F640 (3): the head write forgets the counts and books the head's spawn rows, so the revive after it would refill the
+    // magazine. Save the counts the phone holds before the first write; a spawn-echo heal (`refill`) wants the refill.
+    if (!this._healPools.refill && !this._healPools.ammo) this._healPools.ammo = this.am.liveAmmo();
     const pools = this._healPools, life = this._lifeSeq;
     this.log(`${label}: writing the head (heal try ${n})`, 'li');   // F532 re-bench: neutral; a real write failure logs its own line
     // F532 HIGH: the healing head's own $LCD,0 echo is no death. One echo, until shortly after the head is on the wire (Codex:

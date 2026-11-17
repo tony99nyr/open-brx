@@ -770,6 +770,46 @@ test('F532 (bench A.12, confirmed): `$PHONE` wakes a power-cycled gun and the re
   assert.equal(r.h.eng.deaths, r.deaths, 'no death: it was the reboot, not a kill');
 });
 
+// F640 (2): the operator's RESYNC on a gun that rebooted (no setup). Its `$LIFE` read answers `$HP,0,0,0`, as in a relink.
+async function resynced(answer) {
+  const h = match({ stun: undefined });
+  h.frame('$HP,30,70,0,*');
+  const deaths = h.eng.deaths, nf = h.facts.length, read = h.writes.length;
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'resync', player_id: 'p1', match_id: 'm1' } });
+  answer(h);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  return { h, deaths, read, results: () => h.facts.slice(nf).filter(f => f.type === 'operator_result'), get w() { return h.writes.slice(read); } };
+}
+
+test('F640 (2): RESYNC on a rebooted gun puts the head back and keeps the pools, with no death', async () => {
+  const r = await resynced(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query); });
+  assert.ok(r.w.includes('$QUERY,*'), 'the all-zero read is checked with one $QUERY');
+  assert.ok(reArmedAt30(r.w), `the head goes back, then the life at 30 HP: ${JSON.stringify(r.w.slice(0, 8))}`);
+  assert.equal(r.h.eng.deaths, r.deaths, 'no death');
+  assert.equal(r.h.eng.alive, true);
+  assert.equal(r.h.eng.hp, 30, 'the pools stay');
+  assert.equal(r.results().length, 1, 'MC gets one outcome for the press');
+});
+
+test('F640 (3): the reboot heal re-arms the magazine at the count the phone holds, not a full one', async () => {
+  const h = match({ stun: undefined });
+  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: 20 in the mag, 150 in reserve
+  h.frame('$HP,30,70,0,*');
+  h.eng.onBleDropped(); h.relink();
+  const read = h.writes.length;
+  h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); h.frame(POWERED.query);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  const w = h.writes.slice(read), heal = w.slice(w.lastIndexOf('$START,*'));
+  assert.ok(heal.includes('$SPAWN,,*'), `the heal ran: ${JSON.stringify(heal.slice(0, 10))}`);
+  assert.ok(heal.includes('$AMMO,0,20,150,1,*'), `slot 0 goes back at 20/150: ${JSON.stringify(heal.filter(f => f.startsWith('$AMMO')))}`);
+});
+
+test('F640 (2) control: RESYNC on a configured gun that is really dead is still a death', async () => {
+  const r = await resynced(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); h.frame(CONFIGURED.query); });
+  assert.ok(!r.w.includes('$START,*'), 'no head for a configured gun');
+  assert.equal(r.h.eng.deaths, r.deaths + 1, 'its death $LCD books the death');
+});
+
 test('F532 control: a configured gun that died while the link was down answers $HP,0,0,0 and is still a death', async () => {
   const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(CONFIGURED.lcd); h.frame(CONFIGURED.query); });
   assert.ok(!r.w.includes('$START,*'), 'no head');
