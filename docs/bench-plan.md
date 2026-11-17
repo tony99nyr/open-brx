@@ -39,17 +39,19 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
    SR23 tap cases (F650, 18 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
    28 (F545), 29 (F3), 30 (F340), 31 (F293), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
-   107 (F641). Steps 101 to 106 (F638, F575, 85 min) use the same rig; their rows are desk and decision rows.
+   107 (F641). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
 6. **Two guns, both phones, MC and a phone station (about 135 min).** Steps 36 (F395, F21), 38 (F438), 40 (F298,
    S57), 41 (F461), 42 (F459), 43 (F460), 44 (F436), 45 (F447), 46 (F442, F396), 48 (F463), 49 (F536), 50 (F296)
    and 51 (F592 part 1). F444 waits for its enemy-captured card (desk) before its bench.
 7. **Hills and stations in a 12 m hall (about 105 min).** Steps 54 (F525), 55 (F526), 56 and 57 (F440, F383),
    58 (F452 (c)), 59 (F345), 60 (F443, F365) and 61 (F448). Step 62 (F464) only with a labelled dense-advert APK.
 8. **The Sticks (about 400 min).** SR22 with a Stick Rockets powerup (F650, 5 min). P2 parts 2 and 5 (F642, which
-   holds F397's check). H7 (F673), after F671 lands. P6 (F658), P7 (F666) and P15 (A88). Steps 64 (F434),
+   holds F397's check). P18 (F658's powerup and respawn Sticks). H7 (F673), after F671 lands. P6 (F658), P7 (F666) and P15 (A88). Steps 64 (F434),
    65 (F383, F440), 66 (F399, F380, F425), 67 (F417), 68 (F450), 69 (F345), 70 (F388), 71 (F504, F391),
    73 (F389), 74 (F386), 75 (F374), 76 (F453, a baseline: the fix is not built), 77 (F353), 78 (F519), 79 (F521),
    80 (F508), 81 (F392), 82 (F398) and 83 (H8). Optional: step 84 (F452 (b)).
+9. **In the next game, and on the Mac (added 2026-11-16 by brx-desk-reds).** P16 (F644, F657) through a whole
+   game. On the Mac: P5 (F643) and P17 (F660); P17 also wants one Windows-native start.
 9. **The field network (about 35 min).** Steps 86 (F311) and 87 (F309).
 10. **Outdoors, 25 m or more in shade (about 370 min).** Steps 88 (F232), 89 (F580, F308 part 3), 90 (F580),
     91 (F606), 92 (F275) and 93 (F231). P11, MN2 and MN3 at night (F649). P12, HE1 to HE5 (F662's numbers).
@@ -80,6 +82,7 @@ before any step that uses the rig emitter.
 | P14 | in the game | – | The Charge Rifle play-test (F646, option A): include it in one TDM preset, and after that match ask the players how it felt. Note who carried it and their kills. | [`balance-decisions.md`](balance-decisions.md), 2026-11-02 |
 | P16 | in the game | – | Watch two surfaces through a whole game (F644, F657). (1) The MC console updates by itself across match end, the recap and PLAY AGAIN, on every open tab, with no reload. Note each reload that was needed and what the tab showed. (2) After a KOTH match, the phone FINAL screen and the history headline the held time, with `KILLS n` under it, and the MC recap leads with hill time. | FOLLOWUPS F644, F657 |
 | P17 | before a game on the Mac, and once on a Windows-native start | 5 | F660: `./start.sh` on the MacBook (and `start.cmd` on Windows, not WSL) prints one `keep-awake:` line that says held. On the Mac, unplug the charger before the start: the line warns about battery. Then leave the laptop idle for 15 min with the lid open: it does not sleep and the console still answers. | FOLLOWUPS F660; `mcp/brx_mcp/mc/keepawake.py` |
+| P18 | before a game, after P1 | 25 | F658's two Stick checks. (1) A Stick powerup, MC-armed for game A, with its item taken in game A: start game B (a new byte) with two phones in range. Pass: the Stick follows B within about 10 s (`powerup.follows` in its status, `STATION_FOLLOWS` at MC), offers the item again on B's clock, and the first B claim lands on one phone only. (2) A Stick respawn station armed for an old game, listed as `respawn` in the new game's `config.stations`: a down player at the Stick respawns, with no re-arm. Control for (2): a game whose `config.stations` does not list it, where the same player does not respawn there. | FOLLOWUPS F658 |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
 
@@ -529,7 +532,7 @@ A).
    constant 2, duplicates land within 600 ms, and fn 34 answers whether dead players hear callouts. Restore fn 28,
    then power-cycle both. (runbook Block 7 steps 1-10)
 
-101. **F638**, the SMG headset backlog (25 min). The rig receiver at the target's headset. Control: a
+101. **F638**, the SMG headset backlog (25 min). **Closed 2026-11-16 (superseded by F661; ES4 holds the check).** The rig receiver at the target's headset. Control: a
    single-emitter weapon stops its words at release. A/B/A: that weapon, the SMG held for 3 s, that weapon; then the
    Shotgun (also two words). Read: the time and count of headset words after release. Then the SMG with t1 = 0 and t12
    empty (barrel only: expect no words after release) and the SMG at t14 = 250 (expect no tail), the two fix candidates.
