@@ -38,6 +38,9 @@ TABLE = [
     # emulator 2026-11-09 (bench SR23): the gun's own wait after `$SPAWN`
     ("GUN_SPAWN_WAIT_S", "gunmodel.js", "SPAWN_WAIT_MS", 1000),
     ("GUN_SPAWN_AIR_S", "engine.js", "GUN_SPAWN_AIR_MS", 1000),
+    # F665: the melee not-ready cue
+    ("MELEE_PRESS_S", "ammo.js", "MELEE_PRESS_MS", 1000),
+    ("MELEE_NOT_READY_DEFAULT", "engine.js", "MELEE_NOT_READY_DEFAULT", 1),
     ("SWAP_HELD_MAX_S", "engine.js", "SWAP_HELD_MAX_MS", 1000),
     ("BUTTON_BOUNCE_S", "engine.js", "BUTTON_BOUNCE_MS", 1000),
     ("ENERGY_REFILL_LAG_S", "ammo.js", "ENERGY_REFILL_LAG_MS", 1000),

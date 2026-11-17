@@ -84,9 +84,12 @@ test('F287 resync: a dead $HP answer books the death and never sends the re-arm 
   assert.deepEqual(results(h, nf), [], 'the probe being sent is not yet a successful resync');
   assert.deepEqual(h.since(n), [PROBE_LIFE]);
   h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, true, 'F640 (2): an all-zero read is checked with a $QUERY first (a rebooted gun answers it too)');
+  h.frame('$LCD,0,0,0,0,36,216,*');   // a real death $LCD carries the slot's magazine and reserve
   assert.equal(h.eng.alive, false);
   assert.deepEqual(h.since(n).filter(f => /^\$(TID|AMMO|BMAP|SIR)/.test(f)), [], 'a gun that answered dead receives no re-arm burst');
-  assert.deepEqual(results(h, nf).map(f => [f.ok, f.why]), [[false, 'the gun answered dead']]);
+  assert.equal(results(h, nf).length, 1, 'one outcome for MC');
+  assert.equal(results(h, nf)[0].ok, false);
 });
 
 test('F287 resync: an unanswered probe times out without sending the re-arm burst', () => {

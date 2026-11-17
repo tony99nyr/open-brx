@@ -336,8 +336,11 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
 
 
 # ---------- composing the GameConfig patch (§3) ----------
+# F639: the piece kinds `compose` builds `loadout_policy` from. A pick or edit that touches none of them keeps the policy.
+LOADOUT_KINDS: frozenset[str] = frozenset({"primary", "secondary", "perks", "misc_loadouts"})
+
 def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_row: Mapping[str, Any],
-           team_defs: Mapping[str, Team], reset_mode_params: bool = True) -> dict:
+           team_defs: Mapping[str, Team], reset_mode_params: bool = True, reset_loadout: bool = True) -> dict:
     """Pure: the `GameConfig` patch for `Session.set_config` (fed through the SAME phase gating, RECAP
     roll-forward and re-announce `PUT /api/config` already has). `mode_row` is the picked mode's own
     `state.MODES` row — used for the "respawn.type == 'none' keeps its own respawn" rule and the mode's
@@ -367,8 +370,11 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     # "open" makes `policy.merge` reset to the open rules BEFORE it lays the three slot pieces on top, so no rule
     # of the previous game leaks into a piece that leaves a key out, and the read-back preset name is derived
     # ("open" for the builtins), not a blanket "custom".
-    patch["loadout_policy"] = {"preset": "open", "hud_select": bool(misc.get("hud_select", True)),
-                               "primary": primary, "secondary": secondary, "perk": perk}
+    # F639: a pick that changes no loadout piece (`reset_loadout` false: only time, NIGHT, SILENCED, or a life or spawn
+    # piece) leaves the policy out, so `set_config` keeps the host's own exclusions, as `mode_params` keeps a KIT edit.
+    if reset_loadout:
+        patch["loadout_policy"] = {"preset": "open", "hud_select": bool(misc.get("hud_select", True)),
+                                   "primary": primary, "secondary": secondary, "perk": perk}
     # Cross-lane review #3 (F470): a pick that CHANGES the mode or the gameplay piece (`reset_mode_params`, the caller's
     # call; a favourite load always does) replaces the mode's parameters with its full defaults under the piece's own,
     # so a KIT edit does not survive picking STANDARD. Any other pick (time, NIGHT, SILENCED) merges the piece's own

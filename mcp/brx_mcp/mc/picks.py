@@ -127,7 +127,11 @@ class GamePick:
         # F470: a pick that NAMES the mode or the gameplay piece (even the one already picked: "back to STANDARD") resets
         # mode_params to the mode's defaults under the piece's own; a pick of only time, NIGHT or SILENCED keeps a KIT edit
         reset = mode != prev_mode or bool({"mode", "gameplay"} & set(pieces_patch or {}))
-        patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS, reset_mode_params=reset)
+        # F639: the same rule for the loadout policy. Naming a loadout piece (or a mode change, or a kind that fell back)
+        # recomposes it from the pieces. Any other pick keeps the host's exclusions made on the config.
+        reset_loadout = mode != prev_mode or not _gamepick.LOADOUT_KINDS.isdisjoint(set(pieces_patch or {}) | set(fallbacks))
+        patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS, reset_mode_params=reset,
+                                  reset_loadout=reset_loadout)
         res = self._apply_patch(patch)
         if res["ok"]:
             # games-presets.md §4: "a pick with ok: false changes nothing" -- neither the config nor the
@@ -197,7 +201,10 @@ class GamePick:
             resolved, fallbacks = _gamepick.resolve_pieces_mixed(self._pieces(), s.game_pick["pieces"], {piece["kind"]})
             resolved[piece["kind"]] = {**piece, "value": checked}
             patch = _gamepick.compose(resolved, s.game_pick["match"], self._mode_row(resolved["mode"]["value"]["mode"]), TEAM_DEFS,
-                                      reset_mode_params=piece["kind"] in ("mode", "gameplay"))   # F470
+                                      reset_mode_params=piece["kind"] in ("mode", "gameplay"),   # F470
+                                      # F639 review: a value edit to a picked LIFE or SPAWN piece keeps the host's exclusions
+                                      reset_loadout=piece["kind"] == "mode" or piece["kind"] in _gamepick.LOADOUT_KINDS
+                                      or "mode" in fallbacks or not _gamepick.LOADOUT_KINDS.isdisjoint(fallbacks))
             precheck = s._compose_precheck(patch)
             if not precheck["ok"]:
                 raise PickPrecheckError(precheck["errors"])

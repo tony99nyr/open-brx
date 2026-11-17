@@ -323,6 +323,8 @@ ALT_UNBOUND = "$BMAP,1,98,,,,,*"
 ALT_RELOAD = "$BMAP,1,97,,,,,*"    # engine.js ALT_RELOAD: Easy Reload keeps ALT on the gun's reload (fn 97)
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
+MELEE_PRESS_S = 0.3                         # ammo.js MELEE_PRESS_MS: a swing's slot-4 `$ALCD` follows its press within this
+MELEE_NOT_READY_DEFAULT = "N92"             # engine.js MELEE_NOT_READY_DEFAULT (F665, Tony kept it at bench MN1)
 PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (types.py PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
 # F264 (PROBE_LIFE, types.py): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
@@ -1002,6 +1004,11 @@ class GunStage:
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_play_at: float | None = None
         self._last_play_sent_at: float | None = None
+        # F665 (engine.js `_meleePressAt`, `_meleeNotReady`; ammo.js `lastSwing`): the melee not-ready sound. N92 unless turned off.
+        self._melee_press_at: float | None = None
+        self._last_swing: dict | None = None        # {"at": s, "ms": int | None}: the last swing the gun reported
+        self.melee_not_ready: str | None = MELEE_NOT_READY_DEFAULT
+        self._melee_cue_pending = False   # a not-ready cue scheduled but not yet written (stage only: its writes are async)
         # F478 (engine.js `_gun`, `_ann`): the phone's model of the gun's audio FIFO and its announcer queue for the pool
         # lines. The F419 queue-slot wait, the pain grunt's PAIN_STALE_MS drop, the low-health line's quiet-gun wait, the
         # heartbeat and the poison tick sound all read it, as on the phone.
@@ -2504,6 +2511,75 @@ class GunStage:
                 return ms / 1000.0 if ms and ms > 0 else None
         return None
 
+    def set_melee_not_ready(self, v: str | None) -> str | None:
+        """engine.js `setMeleeNotReady` (F665): the not-ready sound id, upper-cased, or None (off) for an empty or odd value."""
+        i = str(v or "").strip().upper()
+        self.melee_not_ready = i if re.fullmatch(r"[A-Z][A-Z0-9]{1,4}", i) else None
+        self._log(f"melee not-ready sound: {self.melee_not_ready or 'off'} (F665)", "info")
+        return self.melee_not_ready
+
+    def _melee_buttons(self) -> list[int]:
+        """engine.js `_meleeButtons`: the buttons the head binds to melee (`$BMAP,<button>,4,...`). PURE."""
+        return [int(f.split(",")[1]) for f in self.bundle.get("head") or []
+                if isinstance(f, str) and re.match(r"^\$BMAP,\d+,4,", f)]
+
+    def melee_cooldown(self, now: float | None = None) -> dict | None:
+        """engine.js `meleeCooldown`: None off a live life, or with no melee line or button. Else `left_s` is how long the
+        gun still refuses the next swing. The cooldown runs on through DOWN. PURE."""
+        if not self.spawned:
+            return None
+        ms = self._fire_interval_s(4)
+        if ms is None or not self._melee_buttons():
+            return None
+        s = self._last_swing
+        if not s:
+            return {"at": None, "ms": ms, "left_s": 0.0}
+        now = self.now() if now is None else now
+        sms = s["ms"] if s["ms"] is not None else ms
+        return {"at": s["at"], "ms": sms, "left_s": max(0.0, s["at"] + sms - now)}
+
+    def _melee_swing(self, slot: int, lcd: bool) -> None:
+        """ammo.js `_meleeSwing`: a slot-4 `$ALCD` within MELEE_PRESS_S of a melee-bound press is a swing, timed from this frame."""
+        if slot != 4 or lcd or not (self.spawned and self.alive):
+            return
+        now = self.now()
+        if self._melee_press_at is None or now - self._melee_press_at > MELEE_PRESS_S:
+            return
+        self._last_swing = {"at": now, "ms": self._fire_interval_s(4)}
+
+    def _audio_busy_now(self, now_ms: int) -> bool:
+        """engine.js `_audioBusyNow` (F665): a sound playing, waiting on the gun or held on the phone, or the play gap not yet
+        run out. The not-ready sound plays at the press or not at all, so it never waits behind any of these."""
+        last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
+        return (self._melee_cue_pending or self._ann.audio_busy(now_ms) or len(self._ann.queue) > 0 or self._play_lock.locked()
+                or self._gun_audio.outstanding(now_ms) > 0
+                or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000)))
+
+    def _melee_not_ready_cue(self) -> None:
+        """engine.js `_meleeNotReadyCue` (F665): a melee press inside the cooldown plays the not-ready sound once, now, while
+        live and alive. A busy speaker drops it: a late sound is worse than none."""
+        sid = self.melee_not_ready
+        if not sid or not (self.spawned and self.alive):
+            return
+        cd = self.melee_cooldown()
+        if not cd or not cd["left_s"] > 0:
+            return
+        left = round(cd["left_s"] * 1000)
+        if self._audio_busy_now(self._now_ms()):
+            self._log(f"melee not ready ({left} ms left): the speaker is busy, no sound", "info")
+            return
+        # Review: the engine claims the speaker as it writes; the stage's write runs later, so hold a claim until it runs,
+        # or a second refused press before then would queue a sound that plays late. (Not `_last_play_sent_at`: the write's
+        # own play gap would then delay this sound.)
+        self._melee_cue_pending = True
+
+        async def cue() -> None:
+            try:
+                await self.write([f"$PLAY,,4,6,{sid},,,,*"], f"F665: melee not ready ({left} ms left)", gap_ms=0)
+            finally:
+                self._melee_cue_pending = False
+        self._spawn_task(cue())
+
     def _acct_live(self, slot: int, now: float | None = None) -> int | None:
         """ammo.js `acctLive`: the magazine a write should restore for `slot`, or None before the gun's
         first `$ALCD` of the life. A press the gun never answered expires after TRIGGER_NO_FIRE_S, the same
@@ -3765,6 +3841,8 @@ class GunStage:
         self._forget_counts(); self.active_slot = 0; self.switching = None; self._bind_due = None
         self.reloading = None; self.reload_outcome = None; self._gun_other = None   # ammo.js `dropReload`, before the life write.
         self._mag_by_slot = {}   # engine.js `_spawn` `am.forgetShown()`: config echoes carry WEAP clip caps, not spawn mags
+        self._last_swing = None  # ammo.js `forgetShown`: a new life has swung nothing
+        self._melee_cue_pending = False   # review: a cue task cancelled before it ran must not mute every later cue
         self._acct_wrote_rows(rp["spawn"] if rp else self.bundle["spawn"])
         self._hold_accuracy_writes("spawn")   # engine.js `_spawn`: the spawn write owns `$AMMO` until the gun has answered it
         self._accuracy_offset = 0; self._native_acc_until = 0; self._native_acc_why = None   # `$SPAWN` clears every `$TMP`
@@ -5985,6 +6063,7 @@ class GunStage:
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
         # locked reading can sit unrefreshed (see HEAT_STALE_S / `_heat_blocks_fire`).
+        self._melee_swing(slot, lcd)   # F665 (ammo.js `onAmmo`): before the stun return, because a stunned player can still swing
         if heat is not None:
             self.heat_by_slot[slot] = heat
             self._heat_at[slot] = self.now()
@@ -6204,6 +6283,8 @@ class GunStage:
         if state == 1:
             self.held.setdefault(bid, now)
             self.last_button = {"id": bid, "state": 1, "at": now, "held_s": None}
+            if bid in self._melee_buttons():
+                self._melee_press_at = now; self._melee_not_ready_cue()   # F665 (engine.js `_onButton`)
             if bid == 1:
                 self._alt_pressed()
             elif bid == 2:
