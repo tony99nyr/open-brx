@@ -2072,10 +2072,13 @@ class GunStage:
         jump lock instead, so it never waits out a passable cue's sleep (play-queue.js `_replanWaiting`). Returns the lock
         it holds and whether it jumped. Jumping writes queue on their own lock, so two keep the PLAY gap between them."""
         acq = asyncio.ensure_future(self._play_lock.acquire())
+
+        def give_back(f: asyncio.Future) -> None:   # a lock granted to an abandoned acquire goes back, whatever cancels us
+            if not f.cancelled() and f.exception() is None:
+                self._play_lock.release()
+
         try:
-            while True:
-                if self._jump_is_open():
-                    break
+            while not self._jump_is_open():
                 opener = asyncio.ensure_future(self._play_jump_open.wait())
                 try:
                     await asyncio.wait({acq, opener}, return_when=asyncio.FIRST_COMPLETED)
@@ -2085,13 +2088,10 @@ class GunStage:
                     return self._play_lock, False
         except BaseException:
             acq.cancel()
-            if acq.done() and not acq.cancelled():
-                self._play_lock.release()
+            acq.add_done_callback(give_back)
             raise
         acq.cancel()
-        await asyncio.gather(acq, return_exceptions=True)
-        if acq.done() and not acq.cancelled() and acq.exception() is None:
-            self._play_lock.release()   # it got the lock in the same step the jump opened: give it back
+        acq.add_done_callback(give_back)   # granted in the same step the jump opened: give it back
         await self._play_jump_lock.acquire()
         return self._play_jump_lock, True
 

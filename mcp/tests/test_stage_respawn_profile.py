@@ -537,7 +537,7 @@ def test_f645_the_heads_gset_goes_again_at_t_minus_3_or_in_front_of_a_late_spawn
 
 def test_f463_an_interrupt_slot_stun_goes_ahead_of_a_cue_waiting_for_the_gun():
     """F463 review (play-queue.js `_jumpIndex`): a sound-only queue-slot cue waiting out the gun's clip does not hold back
-    a stun's disarm and its interrupt-slot clip; a write with gun rows is never passed."""
+    a stun's disarm and its interrupt-slot clip."""
     async def run():
         st, mgr, clock, gate = _mk_gated()
         await _live(st)
