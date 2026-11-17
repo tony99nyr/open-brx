@@ -3392,6 +3392,33 @@ static void test_f671_a_release_drops_an_owned_following_hill() {
   CHECK(b.link.hill().owner != 0);
 }
 
+// F674 (2): a late END with no deadline the Stick knows (an untimed match, or a Stick that rebooted and lost MC's START)
+// ended the game at receipt, so the recap delay counted as possession. MC now sends `end_age_ms`, how long ago its whistle
+// was, and the hill ends at that time.
+static void test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms() {
+  bool ok = false;
+  StationAssignment parsed = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"game":41,"valid_ids":[9],"ends_in_ms":0,"end_age_ms":30000})", &ok));
+  CHECK(ok && parsed.ends_in_ms == 0 && parsed.end_age_ms == 30000);
+  StationAssignment bare = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"game":41,"valid_ids":[9],"ends_in_ms":0,"end_age_ms":-5})", &ok));
+  CHECK(bare.end_age_ms == -1);  // a negative age is not a time: the END is at receipt, as before
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
+  b.run(5000, {});  // red walks out of earshot, still live: the Stick misses END
+  const uint32_t whistle = b.t;
+  const uint32_t own_at_whistle = b.link.hill().own_ms[0];
+  b.run(30000, {});
+  CHECK(!b.link.hill_ended() && b.link.hill().own_ms[0] > own_at_whistle + 20000);
+  StationAssignment end = b.link.assignment(); end.ends_in_ms = 0; end.end_age_ms = b.t - whistle;
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == whistle);
+  CHECK(b.link.hill().own_ms[0] == own_at_whistle);  // the recap delay is not possession
+  CHECK(b.link.hill_ended());
+}
+
 // A game the hill follows but MC did not arm it with is not MC's to end: MC arming another game leaves it live.
 static void test_mc_arming_leaves_a_game_it_did_not_arm() {
   FollowHillBench b;  // MC armed game 41
@@ -3495,6 +3522,7 @@ int main(int argc, char** argv) {
   test_mc_end_for_the_followed_game_ends_a_following_hill();
   test_mc_arming_a_new_game_ends_a_missed_end();
   test_f671_a_release_drops_an_owned_following_hill();
+  test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms();
   test_mc_arming_leaves_a_game_it_did_not_arm();
   test_mc_arming_before_the_whistle_leaves_the_live_game();
   test_a_countdown_start_restarts_an_ended_followed_game();

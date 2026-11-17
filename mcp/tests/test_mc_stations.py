@@ -352,6 +352,30 @@ def test_recall_and_panic_freeze_a_connected_hill():
         assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 0, cmd
 
 
+def test_f674_a_late_end_names_how_long_ago_mcs_whistle_was():
+    """F674: a Stick that gets MC's END late (a reconnect in the recap, after a reboot) ended the hill at receipt. MC's
+    END now carries `end_age_ms`, how long ago its whistle was, so the Stick ends the game there. Nothing before the end."""
+    s = _sess("koth", station_source="phone")
+    s.net.simulate_utility_hello("stick-1", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    assert "end_age_ms" not in _pushed(s, "station_config", "stick-1")[-1], "CONTROL: a START names no end"
+    s.phase = "live"
+    t = [s.now_ms()]
+    s.now_ms = lambda: t[0]
+    s.control("end")
+    assert s.phase == "recap", s.phase
+    end_t = s.match.scorer.end_t
+    assert end_t is not None and end_t <= t[0]
+    s.net.simulate_disconnect("stick-1")
+    t[0] += 30_000
+    s.net.simulate_utility_hello("stick-1", platform="esp32")   # the Stick comes back 30 s into the recap
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert body["ends_in_ms"] == 0 and body["end_age_ms"] == t[0] - end_t, body
+    E.validate(E.make_envelope("station_config", body), direction="mc")
+
+
 def test_aborted_start_clears_its_deadline_for_the_same_game():
     s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("stick-1")

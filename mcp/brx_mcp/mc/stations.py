@@ -1132,6 +1132,9 @@ class StationRegistry:
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
         if self.play.phase == "recap" or (not self.play.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
             body["ends_in_ms"] = 0
+            sc = self.play.match.scorer if self.play.match is not None else None
+            if sc is not None and sc.end_t is not None and sc.end_t <= now:
+                body["end_age_ms"] = now - sc.end_t   # F674: a late END ends the hill at MC's whistle, not at receipt
         else:
             match = self.play.match
             head = match.head if match is not None else None

@@ -1701,6 +1701,7 @@ class StationConfig(TypedDict):
     capture_s: NotRequired[int]       # F559: a control station's capture time, seconds (absent = the station's own)
     net_cap: NotRequired[int]         # F559: a control station's net cap (absent = the station's own)
     ends_in_ms: NotRequired[int]      # A68: match end from receipt (0 = the match is over)
+    end_age_ms: NotRequired[int]      # F674: with ends_in_ms 0, how long ago MC's whistle was (an older station ignores it)
     starts_in_ms: NotRequired[int]    # A68: go-live from receipt (negative once live)
     duration_ms: NotRequired[int]     # A68: a timed match's length
 
