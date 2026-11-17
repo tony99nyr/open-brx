@@ -1031,7 +1031,7 @@ async function sweepForMc() {
 // ---------- boot ----------
 (async () => {
   const params0 = new URLSearchParams(location.search);
-  if (params0.has('melee_beep')) engine.setMeleeNotReady(params0.get('melee_beep'));   // F665 bench switch: `?melee_beep=N92` on, `?melee_beep=` off
+  if (params0.has('melee_beep')) engine.setMeleeNotReady(params0.get('melee_beep'));   // F665: `?melee_beep=U55` picks another sound, `?melee_beep=` turns it off (N92 is the default)
   if (settings.role === 'utility' && !params0.has('demo') && !params0.has('gun') && !params0.has('hud')) { location.replace('utility.html'); return; }
   // 7 taps on the stage within 3 s, the LAST one HELD 1.5 s, while nothing is connected → utility mode
   // (a hidden door until the HUD grows a button). T2-B item 3: taps alone used to fire on an idle-stage

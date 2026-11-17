@@ -9644,29 +9644,34 @@ const press8 = h => { h.frame('$BUT,8,1,*'); h.frame('$BUT,8,0,*'); };
 const beeps = (h, id = 'N92') => h.writes.filter(f => f === NOT_READY(id)).length;
 const nrQuiet = h => { h.adv(30_000); h.eng.tick(); h.adv(30_000); h.eng.tick(); };   // past the go-live audio and any cooldown
 
-test('F665 bench switch: off by default; on, a press inside the cooldown plays the sound once and a press after it plays none', () => {
+test('F665: N92 is the default; a press inside the cooldown plays it once and a press after it plays none', () => {
   const h = goLive(harness()); nrQuiet(h);
+  assert.equal(h.eng._meleeNotReady, 'N92', 'no stored value: the default is N92');
   swing(h); h.adv(50);
   press8(h);
-  assert.equal(h.writes.filter(f => /,N92,/.test(f)).length, 0, 'off by default: no sound');
+  assert.equal(beeps(h), 1, 'a press inside the cooldown: one sound, at the press, with no switch set');
   assert.equal(h.eng.setMeleeNotReady('n92'), 'N92', 'the id is upper-cased');
   assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), 'N92', 'kept for the next app start');
+  h.adv(meleeMs(h)); nrQuiet(h); swing(h); h.adv(50);
+  const before = beeps(h);
   press8(h);
-  assert.equal(beeps(h), 1, 'a press inside the cooldown: one sound, at the press');
+  assert.equal(beeps(h), before + 1, 'a press inside the next cooldown: one more sound');
   h.adv(meleeMs(h)); nrQuiet(h);
   swing(h);
-  assert.equal(beeps(h), 1, 'a press after the cooldown is a swing: no sound');
+  assert.equal(beeps(h), 2, 'a press after the cooldown is a swing: no sound');
   h.adv(50); press8(h);
-  assert.equal(beeps(h), 2, 'the next refused press sounds again');
+  assert.equal(beeps(h), 3, 'the next refused press sounds again');
   h.adv(400); press8(h);
-  assert.equal(beeps(h), 3, 'the gun model times the real 0.2 s clip (clipms.gen.js), not the 2.5 s default: 400 ms later it is free');
+  assert.equal(beeps(h), 4, 'the gun model times the real 0.2 s clip (clipms.gen.js), not the 2.5 s default: 400 ms later it is free');
   assert.equal(h.eng.setMeleeNotReady(''), null, 'an empty id turns it off');
-  assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), null);
+  assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), '', 'the off switch is kept, so the default does not return');
   h.adv(meleeMs(h)); nrQuiet(h); swing(h); h.adv(50); press8(h);
-  assert.equal(beeps(h), 3, 'off again: no sound');
+  assert.equal(beeps(h), 4, 'off: no sound');
+  const k = new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => 1, synced: () => true, storage: h.eng.storage, log: () => {} });
+  assert.equal(k._meleeNotReady, null, 'a new engine on that store stays off');
 });
 
-test('F665 bench switch: a down player and a busy speaker get no sound, and nothing queues it for later', () => {
+test('F665: a down player and a busy speaker get no sound, and nothing queues it for later', () => {
   const h = goLive(harness()); nrQuiet(h);
   h.eng.setMeleeNotReady('N92');
   swing(h); h.adv(50);
@@ -9687,7 +9692,7 @@ test('F665 bench switch: a down player and a busy speaker get no sound, and noth
   assert.equal(beeps(k), 0, 'a press of a button not bound to melee gets no sound');
 });
 
-test('F665 bench switch: the id it accepts', () => {
+test('F665: the id the switch accepts', () => {
   assert.equal(meleeNotReadyId(' u55 '), 'U55');
   assert.equal(meleeNotReadyId('VX0W'), 'VX0W');
   for (const bad of ['', null, undefined, 5, 'N', '9AB', 'N92,*', '$PLAY']) assert.equal(meleeNotReadyId(bad), null, String(bad));

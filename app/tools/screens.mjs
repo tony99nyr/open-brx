@@ -7243,13 +7243,13 @@ for (const view of VIEWS) await step(`${view.name} F665 melee swing: dim and gre
   must(after.filter(x => x.s === 'ready').length === 1, `more than one shimmer: ${JSON.stringify(after)}`);
   must(cool.wn === before.wn && cool.mag === before.mag && !/PICKUP/.test(cool.wn), `the swing changed the weapon row: ${before.wn} ${before.mag} -> ${cool.wn} ${cool.mag}`);
 });
-// F665 bench switch (brx1 2026-11-03): `?melee_beep=<id>` turns on a short not-ready sound for a melee press the gun refuses.
-// The sound has no screen, so the step reads the engine's own write log: one `$PLAY` of the id for a press inside the
+// F665: a melee press the gun refuses plays a short not-ready sound, N92 by default; `?melee_beep=` (empty) turns it off.
+// The sound has no screen, so the step reads the engine's own write log: one `$PLAY` for a press inside the
 // cooldown, none for the swing itself, and none on a stage with the switch off.
 const notReadyWrites = pg => pg.evaluate(() => (window.brx.log || []).filter(l => /write F665: melee not ready/.test(typeof l === 'string' ? l : (l && l.m) || JSON.stringify(l))).length);
-await step(`F665 melee not-ready sound: ?melee_beep=N92 plays it for a press inside the cooldown only; off by default`, async () => {
+await step(`F665 melee not-ready sound: plays by default for a press inside the cooldown only; ?melee_beep= turns it off`, async () => {
   const view = VIEWS[0];
-  for (const [q, want] of [['&melee_beep=N92', 1], ['', 0]]) {
+  for (const [q, want] of [['', 1], ['&melee_beep=', 0]]) {
     const pg = await open(view, 'live-melee', q);
     await until(pg, () => window.brxDemo && window.brxDemo.settled, null, 10000);
     const id = await pg.evaluate(() => window.brx.engine._meleeNotReady);
@@ -7259,7 +7259,7 @@ await step(`F665 melee not-ready sound: ?melee_beep=N92 plays it for a press ins
     const afterSwing = await notReadyWrites(pg);
     await pg.waitForTimeout(300);
     await pg.evaluate(() => { const e = window.brx.engine; e.feedFrame('$BUT,8,1,*'); e.feedFrame('$BUT,8,0,*'); });
-    const n = await notReadyWrites(pg); await pg.close();
+    const n = await notReadyWrites(pg); await pg.evaluate(() => localStorage.removeItem('brx.melee_not_ready')); await pg.close();   // the off switch is kept: clear it for the next page
     must(id === (want ? 'N92' : null), `the URL switch set ${JSON.stringify(id)}`);
     must(afterSwing === 0, `the accepted swing itself played the not-ready sound (${q || 'off'})`);
     must(n === want, `a press inside the cooldown wrote the not-ready sound ${n} time(s), want ${want} (${q || 'off'})`);

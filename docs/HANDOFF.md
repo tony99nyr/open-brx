@@ -53,7 +53,6 @@ strip on the Grove port: bench commands, a 300 mA cap and an LED team palette (b
 and `STRIPPOWER EXT` (2000 mA, the strip on a U151 from the bank). stick.py has a build lock and a 30 min limit.
 **Next:** whatever brx1 assigns. Bench: the role patterns on a live hill, the U151 wiring, a current reading.
 **Blocked:** none.
-**Blocked:** none.
 
 ## Lane: brx5, cross-language seams and the stage
 **State (2026-10-27):** F574 (the mc-play vite proxy on IPv4), F512 (`mc-play` is a blocking CI gate), F624 (the
@@ -61,15 +60,23 @@ lander resolves an index-only FOLLOWUPS conflict) and F627 (CI's Python job spli
 `mcp-sim`, with `run_tests.py --group`) are landed. Now: the doc-rot apply lane for status, archive and privacy.
 **Next:** whatever brx1 assigns. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
 **Blocked:** none.
+## Lane: brx-desk-reds, the red MVP desk rows (under brx1)
+**State (2026-11-16):** the seven red rows are closed or on the bench (P5, P9, P16, P17). Batch A: F639 and F665
+closed, F640 (2)(3) built and moved to bench P19.
+**Next:** batch B, the Stick rows F671, F674 (2) and F675, built in an agent worktree; cherry-pick, review, land.
+**Blocked:** none.
+
 ## Lane: brx-row-triage, the MVP BENCH rows (2026-11-16)
 **State (2026-11-16):** every MVP BENCH row has a verdict (log 2026-11-16). Seven closed; 89 left, each in
 `bench-plan.md` *Start here* in rig order.
-**Next:** none; brx1 routes F453's desk fix and F444's card. **Blocked:** none.
+**Next:** none; a new desk lane takes F453, F444 and F463 step 1. **Blocked:** none.
+
 ## Lane: brx-desk-three, F453, F463 step 1, F444 (2026-11-16)
 **State (2026-11-16):** landed: the Stick claim ack (F453, A90), the play-queue stun jump, every on-gun clip timed
 (F463 step 1) and the enemy-captured HUD card (F444). Log 2026-11-16 brx-desk-three.
-**Next:** the bench rows: F453 (NEXT step 76), F463 step 1, F444. F676 (the dropped TTL line) is for brx1 and Tony.
+**Next:** the bench rows: F453 (NEXT step 76), F463 step 1, F444. F677 (the dropped TTL line) is for brx1 and Tony.
 **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row

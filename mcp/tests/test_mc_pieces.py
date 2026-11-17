@@ -755,7 +755,10 @@ def test_pick_keeps_the_venue_and_reads_the_builtin_loadout_back_as_open():
     c, s, *_ = _pclient()
     s.config["environment"] = "indoor"
     s.config["loadout_policy"]["primary"]["exclude_ids"] = ["sniper_rifle"]
-    r = c.post("/api/play/pick", json={"match": {"night": True}}).json()
+    kept = c.post("/api/play/pick", json={"match": {"night": True}}).json()
+    assert kept["ok"], kept
+    assert kept["config"]["loadout_policy"]["primary"]["exclude_ids"] == ["sniper_rifle"], "F639: a match-only pick keeps it"
+    r = c.post("/api/play/pick", json={"pieces": {"primary": s.game_pick["pieces"]["primary"]}, "match": {"night": True}}).json()
     assert r["ok"], r
     assert r["config"]["environment"] == "indoor"
     assert r["config"]["loadout_policy"]["preset"] == "open"
