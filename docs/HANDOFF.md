@@ -60,10 +60,16 @@ lander resolves an index-only FOLLOWUPS conflict) and F627 (CI's Python job spli
 `mcp-sim`, with `run_tests.py --group`) are landed. Now: the doc-rot apply lane for status, archive and privacy.
 **Next:** whatever brx1 assigns. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
 **Blocked:** none.
+## Lane: brx-desk-reds, the red MVP desk rows (under brx1)
+**State (2026-11-16):** the seven red desk rows had their desk fixes on main already. F653 and F638 are closed (F638
+by F661). F643, F644, F648, F657 and F660 moved to MVP BENCH: `bench-plan.md` P5, P9, P16 and P17.
+**Next:** nothing at the desk; the bench steps above. **Blocked:** none.
+
 ## Lane: brx-row-triage, the MVP BENCH rows (2026-11-16)
 **State (2026-11-16):** every MVP BENCH row has a verdict (log 2026-11-16). Seven closed; 89 left, each in
 `bench-plan.md` *Start here* in rig order.
 **Next:** none; a new desk lane takes F453, F444 and F463 step 1. **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row
