@@ -552,9 +552,12 @@ async function stopAdvert() {
  *  which is `release_utility`. The next beat says `armed: false`, and that is MC's proof the clear arrived. */
 async function clearedByMc() {
   log('Mission Control cleared this station: it stops advertising and waits for a new role', 'lk');
+  // The advert stops BEFORE `mcArmed` goes (Codex review): a beat sent while the stop is in flight must not say
+  // `armed: false`, which MC takes as proof that the old advert is off the air.
+  await stopAdvert();
   settings.mcArmed = null; settings.lockUntil = 0;
   resetPoint('MC cleared the station');
-  await stopAdvert();   // saves and renders
+  save(); render();
   if (transport && transport.state === 'bound') transport.status(utilityStatusBody());
 }
 async function restartIfLive() { if (advertising) await startAdvert(); else render(); }

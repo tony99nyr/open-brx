@@ -239,7 +239,9 @@ test('F677: clear_station stops the advert and unarms the station, and it stays 
   assert.equal(api.statusBody().live, true, 'setup: on air');
   assert.equal(api.statusBody().armed, true, 'setup: MC-armed');
   assert.ok(api.settings.lockUntil > 0, 'setup: locked');
-  await api.clearedByMc();
+  const clearing = api.clearedByMc();
+  assert.equal(api.statusBody().armed, true, 'a beat while the stop is in flight is no proof yet');
+  await clearing;
   const st = api.statusBody();
   assert.equal(st.live, false, 'the advert stops');
   assert.equal(st.armed, false, 'unarmed: the beat MC reads as proof');
