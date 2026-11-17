@@ -96,6 +96,7 @@ struct StationAssignment {
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
   int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
   int64_t ends_in_ms = -1; // A68: -1 unknown; otherwise MC duration anchored on local receipt
+  int64_t end_age_ms = -1; // F674: with ends_in_ms 0, how long ago MC's whistle was; -1 = absent (the END is at receipt)
   bool starts_known = false; // A68: a START config supplied the go-live offset
   int64_t starts_in_ms = 0; // MC offset anchored on local receipt; may be negative after go-live
   int64_t duration_ms = 0; // A68 extension: timed fallback duration from first alive game advert
@@ -545,6 +546,10 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     const json::Value& end = body.get("ends_in_ms");
     const double d = end.type == json::Value::Type::Number ? end.num : -1.0;
     a.ends_in_ms = d < 0 ? -1 : (d > 2147483647.0 ? 2147483647 : (int64_t)d);
+  }
+  {  // F674: an older MC sends none, and an older Stick ignores it
+    const json::Value& age = body.get("end_age_ms");
+    if (age.type == json::Value::Type::Number && age.num >= 0) a.end_age_ms = age.num > 2147483647.0 ? 2147483647 : (int64_t)age.num;
   }
   if (body.has("starts_in_ms")) {
     const json::Value& start = body.get("starts_in_ms");
@@ -2001,10 +2006,14 @@ class StationLink {
       hill_offline_waiting_ = false;
       if (!hill_restore_guard_) hill_.thaw();
     }
-    // MC's END for a following hill ends its game at this time: MC's deadline for the same game when it has passed (the
-    // recap delay is not possession, as utility.js `applyHillClock` says), else now. Read before the block below drops it.
-    const uint32_t mc_end_at = deadline_known_ && !kind_or_id_changed && !game_changed &&
-                               (int32_t)(received_at_ms - hill_deadline_ms_) >= 0 ? hill_deadline_ms_ : received_at_ms;
+    // MC's END for a following hill ends its game at the earliest of: MC's deadline for the same game when it has
+    // passed (the recap delay is not possession, as utility.js `applyHillClock` says), MC's whistle when the END names
+    // how long ago it was (F674; a frame that sat in a queue names a whistle later than the real one), and now. Read
+    // before the block below drops it.
+    uint32_t mc_end_at = deadline_known_ && !kind_or_id_changed && !game_changed &&
+                         (int32_t)(received_at_ms - hill_deadline_ms_) >= 0 ? hill_deadline_ms_ : received_at_ms;
+    if (a.ends_in_ms == 0 && a.end_age_ms >= 0 && (int32_t)(received_at_ms - (uint32_t)a.end_age_ms - mc_end_at) < 0)
+      mc_end_at = received_at_ms - (uint32_t)a.end_age_ms;
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
         (a.duration_ms > 0 && !duration_anchor_known_)) {

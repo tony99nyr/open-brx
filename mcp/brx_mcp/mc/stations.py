@@ -192,6 +192,9 @@ class StationRegistry:
         # back. Kept across NEXT MATCH and an MC restart (the snapshot); gone when that node is assigned again or on a
         # FRESH SESSION. `line` and the view are derived (`departures_view`).
         self._station_departures: dict[str, dict] = {}
+        # F671: Sticks MC cleared that have not yet shown it. Kept past `forget`, the 10 min prune and a restart, so a
+        # Stick out of Wi-Fi at the clear still drops its role at its next hello. A beat with station id 0 proves delivery.
+        self._cleared_sticks: set[str] = set()
         self._stations_unlocked = False
         self._range_epoch = 0
         # F535: every game byte MC armed a CONTROL station on. A hill keeps advertising its byte after a CLEAR (which
@@ -231,6 +234,8 @@ class StationRegistry:
         st["platform"] = platform or st.get("platform")
         if (gone := self._station_departures.get(nid)) is not None:
             gone["returned"] = True
+        if nid in self._cleared_sticks and not st.get("assigned"):
+            self.net.push(nid, "control", {"cmd": "release_utility"})   # F671: until a beat shows the Stick has no role
         return bool(st.get("assigned"))
 
     def on_heartbeat(self, nid: str, body: dict, t_recv: int) -> None:
@@ -238,6 +243,8 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "powerup", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
+        if body.get("station_id") == 0:
+            self._cleared_sticks.discard(nid)   # F671: the release arrived (an unassigned Stick beats id 0; ids start at 1)
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             st["report"]["control"] = ownership_clock(st["report"].get("control"))
         self._note_range(nid, st, body, t_recv)
@@ -292,6 +299,7 @@ class StationRegistry:
             "range_epoch": self._range_epoch,
             "hill_bytes": sorted(self._hill_bytes),
             "hill_letters": {str(k): v for k, v in self._hill_letters.items()},
+            "cleared_sticks": sorted(self._cleared_sticks),
         }
 
     def capture_state(self) -> dict:
@@ -300,6 +308,7 @@ class StationRegistry:
             "station_departures": self._station_departures,
             "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
             "hill_bytes": self._hill_bytes, "hill_letters": self._hill_letters,
+            "cleared_sticks": self._cleared_sticks,
         })
 
     def restore_state(self, state: dict) -> None:
@@ -310,6 +319,7 @@ class StationRegistry:
         self._range_epoch = state["range_epoch"]
         self._hill_bytes = state["hill_bytes"]
         self._hill_letters = state.get("hill_letters", {})
+        self._cleared_sticks = state.get("cleared_sticks", set())
 
     def seed_reports_from_tallies(self, game: int) -> None:
         """Review 2026-11-06 (brx4): the report is the station's last beat and a restart does not keep it, but the tally
@@ -332,6 +342,8 @@ class StationRegistry:
         self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
+        cleared = snap.get("cleared_sticks")
+        self._cleared_sticks = {n for n in cleared if isinstance(n, str)} if isinstance(cleared, list) else set()
         letters = snap.get("hill_letters")
         self._hill_letters = ({int(k): v for k, v in letters.items() if isinstance(k, str) and k.isdigit()
                                and isinstance(v, str) and 0 < len(v) <= 3} if isinstance(letters, dict) else {})
@@ -655,6 +667,7 @@ class StationRegistry:
         if item is not None:
             assignment["item"] = item
         st["assigned"] = assignment
+        self._cleared_sticks.discard(nid)   # F671: a new role replaces the pending release
         self._station_id_of[nid] = sid
         self._station_departures.pop(nid, None)   # bench 2026-10-02: assigned again (RESTORE or anew), so it is back
         if kind == "control":
@@ -807,10 +820,29 @@ class StationRegistry:
         slots_before, brief_before = self.powerup_slots(), self.changes._brief_key()
         st["assigned"] = None
         st["armed"] = None
+        st["arm_pending"] = False
+        if is_stick({**st, "node_id": nid}):
+            # F671: a Stick keeps its saved role until MC says otherwise. `release_utility` is its UNASSIGNED
+            # (§5g.7, every Stick since H8), and it lifts the A58 lock, so MC's lock state for it goes too.
+            for k in _STATION_LOCK_KEYS:
+                if k != "boot":
+                    st.pop(k, None)
+            self.release_stick(nid)
         self.changes._after_station_change(slots_before, brief_before)   # the survivors' valid_ids shrink
         self.changes._validate()
         self.changes._changed()
         return True
+
+    def release_if_assigned_stick(self, nid: str) -> None:
+        """F671: a Stick removed while assigned must not keep playing its old role either. Call it before the socket closes."""
+        st = self.stations.get(nid)
+        if st is not None and st.get("assigned") and is_stick({**st, "node_id": nid}):
+            self.release_stick(nid)
+
+    def release_stick(self, nid: str) -> None:
+        """F671: tell a cleared Stick it has no role, now and at every hello until a beat shows it has none."""
+        self._cleared_sticks.add(nid)
+        self.net.push(nid, "control", {"cmd": "release_utility"})
 
     def release_station(self, nid: str) -> bool:
         """A41 (2026-09-13 field): the operator's cure for a phone stuck in utility mode, whether it
@@ -1115,6 +1147,9 @@ class StationRegistry:
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
         if self.play.phase == "recap" or (not self.play.in_play() and self.game_no_started() and not self.roster.lobby_pushed):
             body["ends_in_ms"] = 0
+            sc = self.play.match.scorer if self.play.match is not None else None
+            if sc is not None and sc.end_t is not None and sc.end_t <= now:
+                body["end_age_ms"] = now - sc.end_t   # F674: a late END ends the hill at MC's whistle, not at receipt
         else:
             match = self.play.match
             head = match.head if match is not None else None

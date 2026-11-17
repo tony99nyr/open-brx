@@ -3373,6 +3373,68 @@ static void test_mc_arming_a_new_game_ends_a_missed_end() {
   CHECK(!b.link.hill_ended() && b.link.hill_game() == 42 && b.link.hill().capturing == 1);
 }
 
+// F671 (bench 2026-11-15, H7 set-up): MC's DELETE of a station now sends the Stick control{release_utility}. An owned,
+// following hill drops its role: no hill on the strip or the screen, and a live phone on the point captures nothing.
+static void test_f671_a_release_drops_an_owned_following_hill() {
+  FollowHillBench b;
+  b.link.wifi_configured(); b.link.wifi_up(); b.link.mc_address_known(); b.link.ws_open_hello_sent();
+  b.link.apply_welcome({true, "sess", "wk-1"});
+  b.link.apply_station_config(b.link.assignment(), b.t);
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.hill().owner == 0 && strip_role(b.state()) == StripRole::HILL_OWNED);
+  bool ok = false;
+  CHECK(parse_control_cmd(json::parse(R"({"cmd":"release_utility"})", &ok)) == "release_utility" && ok);
+  b.link.apply_release();  // StationController::on_release's link step (test_controller.cpp covers the NVS steps)
+  CHECK(!b.link.assignment().present && !b.link.follower().follows);
+  b.run(5000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  const StickState st = b.state();
+  CHECK(!st.control_present && strip_role(st) == StripRole::OFF);  // linked, no role: the strip is dark
+  CHECK(b.link.hill().owner != 0);
+}
+
+// F674 (2): a late END with no deadline the Stick knows (an untimed match, or a Stick that rebooted and lost MC's START)
+// ended the game at receipt, so the recap delay counted as possession. MC now sends `end_age_ms`, how long ago its whistle
+// was, and the hill ends at that time.
+static void test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms() {
+  bool ok = false;
+  StationAssignment parsed = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"game":41,"valid_ids":[9],"ends_in_ms":0,"end_age_ms":30000})", &ok));
+  CHECK(ok && parsed.ends_in_ms == 0 && parsed.end_age_ms == 30000);
+  StationAssignment bare = parse_station_config(json::parse(
+      R"({"kind":"control","team":255,"id":9,"game":41,"valid_ids":[9],"ends_in_ms":0,"end_age_ms":-5})", &ok));
+  CHECK(bare.end_age_ms == -1);  // a negative age is not a time: the END is at receipt, as before
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.follower().follows && b.link.hill_game() == 41 && b.link.hill().owner == 0);
+  b.run(5000, {});  // red walks out of earshot, still live: the Stick misses END
+  const uint32_t whistle = b.t;
+  const uint32_t own_at_whistle = b.link.hill().own_ms[0];
+  b.run(30000, {});
+  CHECK(!b.link.hill_ended() && b.link.hill().own_ms[0] > own_at_whistle + 20000);
+  StationAssignment end = b.link.assignment(); end.ends_in_ms = 0; end.end_age_ms = b.t - whistle;
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == whistle);
+  CHECK(b.link.hill().own_ms[0] == own_at_whistle);  // the recap delay is not possession
+  CHECK(b.link.hill_ended());
+}
+
+// F674 review: an END that sat in a queue names a whistle later than the real one. A timed hill whose own deadline has
+// passed ends there, the earlier of the two, so the queue delay is not possession either.
+static void test_f674_a_queued_end_never_ends_after_a_passed_deadline() {
+  FollowHillBench b;
+  StationAssignment timed = b.link.assignment();
+  timed.starts_known = true; timed.starts_in_ms = -1000; timed.ends_in_ms = 10000;
+  b.link.apply_station_config(timed, b.t);
+  const uint32_t deadline = b.t + 10000;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.t > deadline);
+  StationAssignment end = b.link.assignment(); end.ends_in_ms = 0; end.end_age_ms = 1000;  // queued: names t - 1 s
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == deadline);
+}
+
 // A game the hill follows but MC did not arm it with is not MC's to end: MC arming another game leaves it live.
 static void test_mc_arming_leaves_a_game_it_did_not_arm() {
   FollowHillBench b;  // MC armed game 41
@@ -3475,6 +3537,9 @@ int main(int argc, char** argv) {
   test_h6_a_following_hill_ends_with_its_game();
   test_mc_end_for_the_followed_game_ends_a_following_hill();
   test_mc_arming_a_new_game_ends_a_missed_end();
+  test_f671_a_release_drops_an_owned_following_hill();
+  test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms();
+  test_f674_a_queued_end_never_ends_after_a_passed_deadline();
   test_mc_arming_leaves_a_game_it_did_not_arm();
   test_mc_arming_before_the_whistle_leaves_the_live_game();
   test_a_countdown_start_restarts_an_ended_followed_game();

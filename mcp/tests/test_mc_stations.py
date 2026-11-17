@@ -352,6 +352,30 @@ def test_recall_and_panic_freeze_a_connected_hill():
         assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 0, cmd
 
 
+def test_f674_a_late_end_names_how_long_ago_mcs_whistle_was():
+    """F674: a Stick that gets MC's END late (a reconnect in the recap, after a reboot) ended the hill at receipt. MC's
+    END now carries `end_age_ms`, how long ago its whistle was, so the Stick ends the game there. Nothing before the end."""
+    s = _sess("koth", station_source="phone")
+    s.net.simulate_utility_hello("stick-1", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    assert "end_age_ms" not in _pushed(s, "station_config", "stick-1")[-1], "CONTROL: a START names no end"
+    s.phase = "live"
+    t = [s.now_ms()]
+    s.now_ms = lambda: t[0]
+    s.control("end")
+    assert s.phase == "recap", s.phase
+    end_t = s.match.scorer.end_t
+    assert end_t is not None and end_t <= t[0]
+    s.net.simulate_disconnect("stick-1")
+    t[0] += 30_000
+    s.net.simulate_utility_hello("stick-1", platform="esp32")   # the Stick comes back 30 s into the recap
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert body["ends_in_ms"] == 0 and body["end_age_ms"] == t[0] - end_t, body
+    E.validate(E.make_envelope("station_config", body), direction="mc")
+
+
 def test_aborted_start_clears_its_deadline_for_the_same_game():
     s = _sess("koth", station_source="phone")
     s.net.simulate_utility_hello("stick-1")
@@ -823,6 +847,60 @@ def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
     assert _pushed(s, "station_config", "util-1")[-1]["valid_ids"] == [3]
     assert s._station_ids() == [{"id": 3, "kind": "respawn"}]
     assert not s.clear_station("nobody")
+
+
+def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
+    """Bench 2026-11-15: a DELETE sent the Stick nothing, so it stayed MC-ARMED in its old hill role until a reboot.
+    The Stick's UNASSIGNED message is `control{release_utility}` (§5g.7). A phone station is not sent it: to a
+    phone it means BACK TO HUD."""
+    s = _sess()
+    s.net.simulate_utility_hello("stick-0123456789ab", platform="esp32")
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("stick-0123456789ab", {"kind": "control", "team": "any"})
+    s.set_station("util-1", {"kind": "respawn", "team": "any"})
+    s.net.pushed.clear()
+    assert s.clear_station("stick-0123456789ab")
+    assert _pushed(s, "control", "stick-0123456789ab") == [{"cmd": "release_utility"}]
+    assert s.clear_station("util-1")
+    assert _pushed(s, "control", "util-1") == [], "CONTROL: a phone station keeps its utility role"
+    # Review: a push to a half-open socket can return True and still be lost, so MC sends it again at every hello until
+    # a beat shows the Stick has no role. That record outlives the 10 min prune of an unassigned node and a restart.
+    stick = "stick-0123456789ab"
+    # the beat the firmware sends (station_link.h `fill_status`): unassigned, it names kind respawn and station id 0
+    beat = {"node_id": stick, "arm_state": "connected", "synced": False, "role": "utility", "team": 255,
+            "threshold": -70, "live": False, "app_ver": "utility", "platform": "esp32"}
+    s.net.simulate_status(stick, {**beat, "kind": "control", "station_id": 3, "armed": True}, s.now_ms())
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    assert len(_pushed(s, "control", stick)) == 1, "a beat that still names a station: the release is sent again"
+    s.station_registry.forget(stick)                     # the 10 min prune of an unassigned record
+    snap = s.station_registry.to_snapshot()
+    s2 = _sess()
+    s2.station_registry.restore(snap)                    # an MC restart
+    s2.net.simulate_utility_hello(stick, platform="esp32")
+    assert _pushed(s2, "control", stick) == [{"cmd": "release_utility"}], "the prune and the restart keep it"
+    s2.net.simulate_status(stick, {**beat, "kind": "respawn", "station_id": 0, "armed": False}, s2.now_ms())
+    s2.net.simulate_utility_hello(stick, platform="esp32")
+    assert len(_pushed(s2, "control", stick)) == 1, "an unassigned beat proves delivery: no more sends"
+    # a Stick re-armed before its release landed keeps its new role
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    s.set_station(stick, {"kind": "control", "team": "any"})
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    assert _pushed(s, "control", stick) == [], "CONTROL: a re-armed Stick is not released"
+    # DELETE /api/nodes on an assigned Stick releases it too, before its socket closes, but never in play
+    s.phase = "live"
+    s.evict_node(stick)
+    assert _pushed(s, "control", stick) == [], "CONTROL: a hill kicked in play keeps its role"
+    s.phase = "lobby"
+    s.net.simulate_utility_hello(stick, platform="esp32")
+    s.set_station(stick, {"kind": "control", "team": "any"})
+    s.net.pushed.clear()
+    close = s.net.evict
+    s.net.evict = lambda n: (s.net.pushed.append((n, "socket_closed", {})), close(n))[1]
+    s.evict_node(stick)
+    assert [k for n, k, _ in s.net.pushed if n == stick] == ["control", "socket_closed"], s.net.pushed
+    assert _pushed(s, "control", stick) == [{"cmd": "release_utility"}]
 
 
 # --------------------------------------------------------------------------- review 2026-09-11

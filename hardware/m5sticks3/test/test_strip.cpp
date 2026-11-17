@@ -179,6 +179,23 @@ static void an_idle_owned_hill_is_steady_and_dim() {
     auto top = [](Rgb x) { return x.r >= x.g && x.r >= x.b ? 0 : x.g >= x.b ? 1 : 2; };
     CHECK(top(lit) == top(full));  // the colour's main channel still leads
   }
+  // F675 (brx1 2026-11-15): at 144 LEDs on the Grove cap, red and yellow both lit (1,0,0) and blue and purple both
+  // (0,0,1). The four idle colours stay apart at every length, steady across the strip, under the cap.
+  for (size_t n : {size_t(60), size_t(100), size_t(STRIP_MAX_LEDS)}) {
+    Rgb lit[4];
+    for (int team = 0; team < 4; team++) {
+      auto t = hill(team, team, 100); t.control_scoring = false;
+      const auto px = role_frame(t, 0, n);
+      lit[team] = px[0];
+      CHECK(px[0] == px[n - 1]);
+      CHECK(strip_estimate_ma(px.data(), n) <= STRIP_BUDGET_MA);
+    }
+    for (int a = 0; a < 4; a++)
+      for (int b = a + 1; b < 4; b++) {
+        if (lit[a] == lit[b]) std::fprintf(stderr, "n=%zu team %d and %d both (%d,%d,%d)\n", n, a, b, lit[a].r, lit[a].g, lit[a].b);
+        CHECK(lit[a] != lit[b]);
+      }
+  }
 }
 
 static void a_contested_hill_flashes_the_two_teams_in_turn() {
