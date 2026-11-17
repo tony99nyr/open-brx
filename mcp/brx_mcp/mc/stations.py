@@ -193,7 +193,7 @@ class StationRegistry:
         # FRESH SESSION. `line` and the view are derived (`departures_view`).
         self._station_departures: dict[str, dict] = {}
         # F671: Sticks MC cleared that have not yet shown it. Kept past `forget`, the 10 min prune and a restart, so a
-        # Stick out of Wi-Fi at the clear still drops its role at its next hello. A beat with no kind proves delivery.
+        # Stick out of Wi-Fi at the clear still drops its role at its next hello. A beat with station id 0 proves delivery.
         self._cleared_sticks: set[str] = set()
         self._stations_unlocked = False
         self._range_epoch = 0
@@ -243,8 +243,8 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "powerup", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
-        if not body.get("kind"):
-            self._cleared_sticks.discard(nid)   # F671: the release arrived
+        if body.get("station_id") == 0:
+            self._cleared_sticks.discard(nid)   # F671: the release arrived (an unassigned Stick beats id 0; ids start at 1)
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             st["report"]["control"] = ownership_clock(st["report"].get("control"))
         self._note_range(nid, st, body, t_recv)
@@ -345,7 +345,8 @@ class StationRegistry:
         self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
-        self._cleared_sticks = {n for n in (snap.get("cleared_sticks") or []) if isinstance(n, str)}
+        cleared = snap.get("cleared_sticks")
+        self._cleared_sticks = {n for n in cleared if isinstance(n, str)} if isinstance(cleared, list) else set()
         letters = snap.get("hill_letters")
         self._hill_letters = ({int(k): v for k, v in letters.items() if isinstance(k, str) and k.isdigit()
                                and isinstance(v, str) and 0 < len(v) <= 3} if isinstance(letters, dict) else {})

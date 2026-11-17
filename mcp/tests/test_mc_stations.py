@@ -866,21 +866,22 @@ def test_f671_clearing_a_stick_tells_it_to_drop_its_role():
     # Review: a push to a half-open socket can return True and still be lost, so MC sends it again at every hello until
     # a beat shows the Stick has no role. That record outlives the 10 min prune of an unassigned node and a restart.
     stick = "stick-0123456789ab"
-    beat = {"node_id": stick, "arm_state": "connected", "synced": False, "role": "utility", "team": 255, "station_id": 0,
-            "threshold": -70, "live": False, "armed": False, "app_ver": "utility", "platform": "esp32"}
-    s.net.simulate_status(stick, {**beat, "kind": "control"}, s.now_ms())
+    # the beat the firmware sends (station_link.h `fill_status`): unassigned, it names kind respawn and station id 0
+    beat = {"node_id": stick, "arm_state": "connected", "synced": False, "role": "utility", "team": 255,
+            "threshold": -70, "live": False, "app_ver": "utility", "platform": "esp32"}
+    s.net.simulate_status(stick, {**beat, "kind": "control", "station_id": 3, "armed": True}, s.now_ms())
     s.net.pushed.clear()
     s.net.simulate_utility_hello(stick, platform="esp32")
-    assert len(_pushed(s, "control", stick)) == 1, "a beat that still names a kind: the release is sent again"
+    assert len(_pushed(s, "control", stick)) == 1, "a beat that still names a station: the release is sent again"
     s.station_registry.forget(stick)                     # the 10 min prune of an unassigned record
     snap = s.station_registry.to_snapshot()
     s2 = _sess()
     s2.station_registry.restore(snap)                    # an MC restart
     s2.net.simulate_utility_hello(stick, platform="esp32")
     assert _pushed(s2, "control", stick) == [{"cmd": "release_utility"}], "the prune and the restart keep it"
-    s2.net.simulate_status(stick, {**beat, "kind": ""}, s2.now_ms())
+    s2.net.simulate_status(stick, {**beat, "kind": "respawn", "station_id": 0, "armed": False}, s2.now_ms())
     s2.net.simulate_utility_hello(stick, platform="esp32")
-    assert len(_pushed(s2, "control", stick)) == 1, "a beat with no kind proves delivery: no more sends"
+    assert len(_pushed(s2, "control", stick)) == 1, "an unassigned beat proves delivery: no more sends"
     # a Stick re-armed before its release landed keeps its new role
     s.net.simulate_utility_hello(stick, platform="esp32")
     s.set_station(stick, {"kind": "control", "team": "any"})
