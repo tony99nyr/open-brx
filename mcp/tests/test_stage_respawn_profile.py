@@ -533,3 +533,24 @@ def test_f645_the_heads_gset_goes_again_at_t_minus_3_or_in_front_of_a_late_spawn
         assert [f for f in new if f.startswith("$GSET,")] == [gset], new
         assert new.index(gset) < new.index(_sir(new)[0]) < new.index("$SPAWN,,*"), "first in the late burst"
     asyncio.run(run())
+
+
+def test_f463_an_interrupt_slot_stun_goes_ahead_of_a_cue_waiting_for_the_gun():
+    """F463 review (play-queue.js `_jumpIndex`): a sound-only queue-slot cue waiting out the gun's clip does not hold back
+    a stun's disarm and its interrupt-slot clip; a write with gun rows is never passed."""
+    async def run():
+        st, mgr, clock, gate = _mk_gated()
+        await _live(st)
+        clock.advance(1.0)
+        _hold_gun(st, gate, 2.0)
+        n = len(tx(mgr))
+        cue = asyncio.create_task(st.write(["$PLAY,,4,6,D27,,,,*"], "reload sound"))
+        await settle(st)
+        assert "$PLAY,,4,6,D27,,,,*" not in tx(mgr)[n:], "setup: the cue waits for the gun"
+        stun = asyncio.create_task(st.write(["$AMMO,0,0,0,1,*", "$PLAY,X17,4,6,,,,,*"], "stun"))
+        await settle(st)
+        assert stun.done() and "$PLAY,X17,4,6,,,,,*" in tx(mgr)[n:], f"the stun goes at once: {tx(mgr)[n:]}"
+        gate.set()
+        clock.advance(10.0); await settle(st)
+        await cue
+    asyncio.run(run())

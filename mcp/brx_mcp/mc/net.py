@@ -1001,7 +1001,7 @@ class NetServer:
         if kind == "station_action":
             # F453: ack every report by its envelope id, after MC handled it. A station resends a report until the
             # ack names it, so a resend whose first copy did arrive is acked again and not handled twice.
-            # A handler that raised acks nothing, so the station sends the report again.
+            # A handler that raised acks nothing, so the station sends the report again (at most 5 sends, each one logged).
             aid = env["id"]
             if aid not in rec.action_ids:
                 try:

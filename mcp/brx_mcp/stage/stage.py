@@ -1017,7 +1017,8 @@ class GunStage:
         self._play_lock = asyncio.Lock()
         self._play_jump_lock = asyncio.Lock()   # F463 review: interrupt-slot writes that go ahead of a waiting cue
         self._play_lock_blockers = 0   # F463 review: writes waiting for the play lock that a jumping write may not pass
-        self._play_jumps = 0   # F463 review: interrupt-slot writes sent while a queue-slot write waited
+        self._play_sends = 0   # F463 review: every play write sent (a waiting write re-checks its waits after one)
+        self._play_jump_open = asyncio.Event()   # F463 review: set while `_jump_is_open`
         self._play_gun_waiters = 0   # F463 review: queue-slot writes that hold the play lock while they wait (the gap or the gun's clip)
         self._play_cancel_event = asyncio.Event()
         # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
@@ -2053,13 +2054,53 @@ class GunStage:
             return delivered
         return await self._deliver(job)
 
+    def _jump_is_open(self) -> bool:
+        """F463 review: a sound-only queue-slot cue is waiting for the gun (or the gap) and no write with gun rows waits
+        for the play lock: an interrupt-slot write may go ahead (play-queue.js `_jumpIndex`)."""
+        return self._play_gun_waiters > 0 and self._play_lock_blockers == 0
+
+    def _note_play_waiters(self, delta: int, blockers: int = 0) -> None:
+        self._play_gun_waiters += delta
+        self._play_lock_blockers += blockers
+        if self._jump_is_open():
+            self._play_jump_open.set()
+        else:
+            self._play_jump_open.clear()
+
+    async def _acquire_play_or_jump(self) -> tuple[asyncio.Lock, bool]:
+        """An interrupt-slot write takes the play lock, or, as soon as a jump opens while it waits (`_jump_is_open`), the
+        jump lock instead, so it never waits out a passable cue's sleep (play-queue.js `_replanWaiting`). Returns the lock
+        it holds and whether it jumped. Jumping writes queue on their own lock, so two keep the PLAY gap between them."""
+        acq = asyncio.ensure_future(self._play_lock.acquire())
+        try:
+            while True:
+                if self._jump_is_open():
+                    break
+                opener = asyncio.ensure_future(self._play_jump_open.wait())
+                try:
+                    await asyncio.wait({acq, opener}, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    opener.cancel()
+                if acq.done():
+                    return self._play_lock, False
+        except BaseException:
+            acq.cancel()
+            if acq.done() and not acq.cancelled():
+                self._play_lock.release()
+            raise
+        acq.cancel()
+        await asyncio.gather(acq, return_exceptions=True)
+        if acq.done() and not acq.cancelled() and acq.exception() is None:
+            self._play_lock.release()   # it got the lock in the same step the jump opened: give it back
+        await self._play_jump_lock.acquire()
+        return self._play_jump_lock, True
+
     async def _deliver(self, job: "_WriteJob") -> bool | None:
         """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send."""
         frames, why, gap_ms, take, on_start, queued_at, model, life = (
             job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
-        jumps = False
         held: asyncio.Lock | None = None
 
         def release_play() -> None:
@@ -2075,18 +2116,20 @@ class GunStage:
             # behind a sound-only queue-slot cue that waits for the gun (`_passable`), so it does not queue for the play
             # lock that cue holds. It may not pass a write that waits for the lock and carries gun rows or a life burst.
             # Jumping writes queue on their own lock, so two of them keep the PLAY gap between them.
-            jumps = (not any(is_queue_slot_play(f) for f in frames) and self._play_gun_waiters > 0
-                     and self._play_lock_blockers == 0)
             passable = (is_queue_slot_play(frames[play_indexes[0]]) and PLAYX not in frames and not life
                         and all(f == PLAYX or f.startswith("$PLAY,") for f in frames))
-            held = self._play_jump_lock if jumps else self._play_lock
-            if not jumps and not passable:
-                self._play_lock_blockers += 1
+            may_jump = not any(is_queue_slot_play(f) for f in frames)   # job.mustHear has no stage write path here
+            if not may_jump and not passable:
+                self._note_play_waiters(0, blockers=1)
             try:
-                await held.acquire()
+                if may_jump:
+                    held, _jumped = await self._acquire_play_or_jump()
+                else:
+                    held = self._play_lock
+                    await held.acquire()
             finally:
-                if not jumps and not passable:
-                    self._play_lock_blockers -= 1
+                if not may_jump and not passable:
+                    self._note_play_waiters(0, blockers=-1)
             play_lock_held = True
             play_frame = frames[play_indexes[0]]
             if play_generation != self._play_generation:
@@ -2094,7 +2137,7 @@ class GunStage:
                 return
             now = self.now()
             # F463 review: a queue-slot cue that waits (the PLAY gap or the gun's clip) lets an interrupt-slot write go
-            # ahead of it (`jumps` above, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
+            # ahead of it (`_acquire_play_or_jump`, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
             # both waits are checked again after each sleep (play-queue.js plans the job again).
             waits_gun = is_queue_slot_play(play_frame) and PLAYX not in frames
             yields = passable   # a write that may go ahead of this one is counted while it waits
@@ -2122,13 +2165,13 @@ class GunStage:
                 cancel_task = asyncio.create_task(cancel_event.wait())
                 wait_tasks = (sleep_task, cancel_task)
                 if yields:
-                    self._play_gun_waiters += 1
-                jumped = self._play_jumps
+                    self._note_play_waiters(1)
+                seen = self._play_sends
                 try:
                     await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
                 finally:
                     if yields:
-                        self._play_gun_waiters -= 1
+                        self._note_play_waiters(-1)
                     for task in wait_tasks:
                         if not task.done():
                             task.cancel()
@@ -2136,8 +2179,12 @@ class GunStage:
                 if play_generation != self._play_generation:
                     release_play()
                     return
-                if self._play_jumps == jumped:
-                    break   # nothing went ahead of it: the waits it planned are served
+                if self._play_jump_lock.locked() and held is not self._play_jump_lock:
+                    async with self._play_jump_lock:   # a write that went ahead is still on the link: wait for it
+                        pass
+                    continue
+                if self._play_sends == seen:
+                    break   # nothing was sent while it slept: the waits it planned are served
             # F478 r1 (play-queue.js `PlayQueue.drain`, F419 review): a queue-slot cue that waited longer than
             # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
             # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
@@ -2178,7 +2225,7 @@ class GunStage:
             if play_indexes:
                 self._last_play_sent_at = self.now()
                 self._last_play_at = self._last_play_sent_at
-                self._play_jumps += jumps
+                self._play_sends += 1
                 release_play()
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
@@ -2202,7 +2249,7 @@ class GunStage:
                 if play_indexes:
                     self._last_play_sent_at = self.now()
                     self._last_play_at = self._last_play_sent_at
-                    self._play_jumps += jumps
+                    self._play_sends += 1
             finally:
                 release_play()
 
