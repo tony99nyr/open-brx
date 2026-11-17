@@ -136,7 +136,7 @@ async function readBattery() {
 let lastBattery = null;
 
 // ---------- the station ----------
-let _advertStops = 0;   // F677 review: counts stops, so a start that a stop overtook knows it lost
+let _advertStops = 0, _advertStarts = 0;   // F677 review: a start that a stop overtook loses; a stop that a start overtook leaves it
 let advertising = false, advertisingPending = 0, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
@@ -206,6 +206,7 @@ function stationUuid() {
 /** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
  *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
 async function startAdvert(quiet = false) {
+  _advertStarts++;
   // Record the intent FIRST, whatever happens next: `seq` (byte 12) bumps on every change, and the
   // republish check in tick() is driven off what we last decided to publish. Doing this inside the try
   // below left the stage (no radio) asking to republish on every 250 ms tick, forever.
@@ -544,8 +545,11 @@ function stageMcMessage(kind, body) {
 
 async function stopAdvert() {
   _advertStops++;
+  const starts = _advertStarts;
   settings.live = false; save();   // before the wait (F677 review): a tick re-key must not start the advert again mid-stop
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
+  // A start that began while the radio stopped (MC armed the station again) is the newer intent: it owns the state.
+  if (_advertStarts !== starts) return;
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }
 /** F677: the operator CLEARED this station on MC (`control{cmd:"clear_station"}`, `stations.py release`). It stops
@@ -558,8 +562,10 @@ async function clearedByMc() {
   const armed = settings.mcArmed;
   await stopAdvert();
   if (settings.mcArmed !== armed) return;   // MC armed it again while the stop was in flight: the new role stands
-  settings.mcArmed = null; settings.lockUntil = 0;
+  settings.mcArmed = null; settings.lockUntil = 0; settings.hillStartsAt = settings.hillEndsAt = null;
   resetPoint('MC cleared the station');
+  // the old role's powerup state goes too, as an arming of another station clears it (`applyStationConfig`)
+  puFollower.clear(); pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup();
   save(); render();
   if (transport && transport.state === 'bound') transport.status(utilityStatusBody());
 }

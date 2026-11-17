@@ -435,7 +435,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
           {applyErr && <ItemChip id="items-apply-err" role="alert" testid="station-apply-error" short="Station not armed" detail={applyErr} />}
-          {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the station stops advertising and waits for a new role">CLEAR</GhostButton>}
+          {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the station stops advertising and waits for a new role (a phone app older than this release keeps advertising)">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
               a single tap. This works in ANY phase, armed/live included, and on ANY utility phone here,
