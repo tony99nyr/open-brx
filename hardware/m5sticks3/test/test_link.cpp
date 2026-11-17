@@ -3419,6 +3419,22 @@ static void test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms() {
   CHECK(b.link.hill_ended());
 }
 
+// F674 review: an END that sat in a queue names a whistle later than the real one. A timed hill whose own deadline has
+// passed ends there, the earlier of the two, so the queue delay is not possession either.
+static void test_f674_a_queued_end_never_ends_after_a_passed_deadline() {
+  FollowHillBench b;
+  StationAssignment timed = b.link.assignment();
+  timed.starts_known = true; timed.starts_in_ms = -1000; timed.ends_in_ms = 10000;
+  b.link.apply_station_config(timed, b.t);
+  const uint32_t deadline = b.t + 10000;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.t > deadline);
+  StationAssignment end = b.link.assignment(); end.ends_in_ms = 0; end.end_age_ms = 1000;  // queued: names t - 1 s
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {});
+  CHECK(b.link.follower().end.ended && b.link.follower().end.has_end_at && b.link.follower().end.end_at == deadline);
+}
+
 // A game the hill follows but MC did not arm it with is not MC's to end: MC arming another game leaves it live.
 static void test_mc_arming_leaves_a_game_it_did_not_arm() {
   FollowHillBench b;  // MC armed game 41
@@ -3523,6 +3539,7 @@ int main(int argc, char** argv) {
   test_mc_arming_a_new_game_ends_a_missed_end();
   test_f671_a_release_drops_an_owned_following_hill();
   test_f674_a_late_end_ends_at_mcs_whistle_from_end_age_ms();
+  test_f674_a_queued_end_never_ends_after_a_passed_deadline();
   test_mc_arming_leaves_a_game_it_did_not_arm();
   test_mc_arming_before_the_whistle_leaves_the_live_game();
   test_a_countdown_start_restarts_an_ended_followed_game();
