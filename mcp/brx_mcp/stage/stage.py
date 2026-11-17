@@ -763,6 +763,16 @@ class GunAudio:
         self.clips.insert(0, c)
         return playing
 
+    def cut_at(self, ix: int, now: int) -> None:
+        """play-queue.js `cutAt` (F678): one stop the node wrote cut clip `ix`, which plays on the gun now. It and every
+        clip before it leave the model; the clips behind it play on from `now`."""
+        del self.clips[:ix + 1]
+        tail = now
+        for c in self.clips:
+            c["start"] = tail
+            c["end"] = tail + c["ms"]
+            tail = c["end"]
+
     def _prune(self, now: int) -> None:
         self.clips = [c for c in self.clips if c["end"] > now]
 
@@ -6780,20 +6790,20 @@ class GunStage:
     def _stop_stun_clip(self) -> None:
         """engine.js `_stopStunClip` (F678): an expiry stops the stun clip X17 with one `$PLAYX,0,*` while it still plays,
         so a "Shields charging" line queued behind it is said inside its status TTL. X17 rides the interrupt slot, so it
-        plays from when it was sent: it still plays when it is the model's NEWEST clip and less than its length has
-        passed since then. A clip added after it may have cut it, and then nothing is stopped. The stop carries no `$PLAY`,
-        so the play lock never holds it, and the model is cleared at once (the gun holds nothing behind X17)."""
+        plays from when it was sent: it still plays when less than its length has passed since then and no
+        interrupt-slot clip came after it. A hit sound queues behind it and does not count. The stop carries no `$PLAY`,
+        so the play lock never holds it. The model drops X17 and the clips before it at once (`cut_at`)."""
         if not self.connected:
             return
         now = self._now_ms()
         g = self._gun_audio
-        if not g.outstanding(now):   # prunes the clips that ended
-            return
-        last = g.clips[-1]
-        if last["id"] != _cue_id(STUN_PLAY) or last["at"] + last["ms"] <= now:
+        g._prune(now)
+        sid = _cue_id(STUN_PLAY)
+        ix = max((i for i, c in enumerate(g.clips) if c["id"] == sid), default=-1)
+        if ix < 0 or g.clips[ix]["at"] + g.clips[ix]["ms"] <= now or any(c.get("irq") for c in g.clips[ix + 1:]):
             return
         self._spawn_task(self.write([PLAYX], "stun over: stop the stun clip X17", gap_ms=0, model=False))
-        g.clear()
+        g.cut_at(ix, now)
 
     # ---------- S42/F259: node-driven recoil, the `$TMP` t4 accuracy writer (engine.js `_recoil*`) ----------
     # A port, method for method, of engine.js's writer. Every weapon ships t21 == t22 == 100 (the native walk is
@@ -7275,7 +7285,9 @@ class GunStage:
         for f in frames:
             if f.startswith("$PLAY,"):
                 for one in play_slot_frames(f):   # F437: a two-slot frame is two clips
-                    g.add(self._audio_clip_ms(one), why, now, _cue_id(one))
+                    c = g.add(self._audio_clip_ms(one), why, now, _cue_id(one))
+                    if c is not None and not is_queue_slot_play(one):
+                        c["irq"] = True   # F677 review (play-queue.js `addPlay`): an interrupt-slot clip starts at once
 
     def _audio_hit(self, proto: str, subtype: str) -> None:
         """engine.js `_audioHit`: a hit the gun registered plays its `$SIR` row's sound, into the same FIFO. A row with no

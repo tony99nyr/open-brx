@@ -136,6 +136,7 @@ async function readBattery() {
 let lastBattery = null;
 
 // ---------- the station ----------
+let _advertStops = 0;   // F677 review: counts stops, so a start that a stop overtook knows it lost
 let advertising = false, advertisingPending = 0, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
@@ -222,7 +223,14 @@ async function startAdvert(quiet = false) {
     // A88: a following hill's tally rides as manufacturer data (Android; iOS cannot send it). It needs the TX-power
     // field's 3 bytes to fit the 31-byte legacy advert, and nothing reads that field.
     const md = tally ? { manufacturerId: ADVERT_TALLY_COMPANY, manufacturerData: tally.map(v => v.toString(16).padStart(2, '0')).join('') } : {};
+    const stops = _advertStops;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: !tally, ...md });
+    // F677 review: a stop (MC's clear, the operator's STOP) that landed while this start was on its way is the newer
+    // intent. Without this the late start put a cleared station's old advert back on air.
+    if (stops !== _advertStops) {
+      try { await plugins.beacon.stop(); } catch (_) { /* ignore */ }
+      advertising = false; save(); log('a stop came while the advert was starting: it stays off', 'li'); render(); return;
+    }
     advertising = !!(r && r.advertising);
     // `live` is the operator's intent: a reload mid-game comes back advertising (the settings stay behind the ⓘ gate).
     // F648 (game 2026-11-01 issue 7): a failed start never clears it, or the ticks' retry (gated on `live`) never runs and one
@@ -535,6 +543,7 @@ function stageMcMessage(kind, body) {
 }
 
 async function stopAdvert() {
+  _advertStops++;
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }

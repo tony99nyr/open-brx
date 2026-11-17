@@ -60,7 +60,10 @@ export class GunAudio {
   }
   /** The clips one `$PLAY` frame puts on the gun at `now`. F437: a two-slot frame is two clips. */
   addPlay(frame, why, now) {
-    for (const one of playSlotFrames(frame)) this.add(this.clipLen(one), why, now, clipId(one));
+    for (const one of playSlotFrames(frame)) {
+      const c = this.add(this.clipLen(one), why, now, clipId(one));
+      if (c && !isQueueSlotPlay(one)) c.irq = true;   // F677 review: an interrupt-slot clip starts at once on the gun
+    }
   }
   /** THE stop rule: `n` `$PLAYX,0,*` in one write. One removes the clip playing; two or more clear the model. */
   stop(n, now) {
@@ -70,6 +73,13 @@ export class GunAudio {
   /** `_death`: one stop the phone wrote itself cut the front clip at `now`; the clips behind it play on from `now`. */
   cutFront(now) {
     this.clips.shift();
+    let tail = now;
+    for (const c of this.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
+  }
+  /** F678: one stop the phone wrote itself cut clip `ix`, which plays on the gun now: it and every clip before it leave
+   *  the model (an interrupt-slot clip cut those when it started), and the clips behind it play on from `now`. */
+  cutAt(ix, now) {
+    this.clips.splice(0, ix + 1);
     let tail = now;
     for (const c of this.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
   }

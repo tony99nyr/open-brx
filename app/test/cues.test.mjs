@@ -357,14 +357,23 @@ test('F678: a stun expiry stops only the stun clip, and only while it plays', ()
   h.run(10100, { echo: false });
   assert.equal(h.eng.stunned, null, 'setup: the stun expired on its own timer');
   assert.equal(h.count(PLAYX), hStops, 'X17 had ended: there is nothing to stop');
-  // A short stun, then a hit sound after X17: it may have cut X17, and a clip that is not X17 is never stopped.
+  // A short stun, then an interrupt-slot clip after X17: on the gun it cut X17, so a stop would land on it. No stop.
   const g = shielded(), gStops = g.count(PLAYX);
   g.eng.config.stun = { duration_s: 1 };
   g.eng._stun();
   g.run(500, { echo: false });
-  g.eng._gun.add(1000, 'hit sound H21', g.eng.now(), 'H21');
+  g.eng._gun.addPlay('$PLAY,H21,4,6,,,,,*', 'an interrupt-slot clip', g.eng.now());
   g.eng._stunRestore('expired');
-  assert.equal(g.count(PLAYX), gStops, 'X17 is not the newest clip: no stop');
+  assert.equal(g.count(PLAYX), gStops, 'a clip that is not X17 plays: no stop');
+  // A hit sound queues behind X17 (`_audioHit`), so X17 still plays: it is stopped, and the hit sound plays from now.
+  const k = shielded(), kStops = k.count(PLAYX);
+  k.eng.config.stun = { duration_s: 1 };
+  k.eng._stun();
+  k.run(500, { echo: false });
+  k.eng._gun.add(1000, 'hit sound H21', k.eng.now(), 'H21');
+  k.eng._stunRestore('expired');
+  assert.equal(k.count(PLAYX), kStops + 1, 'a hit during the stun does not keep X17 on the gun');
+  assert.deepEqual(k.eng._gun.clips.map(c => [c.id, c.start - k.eng.now()]), [['H21', 0]], 'the hit sound plays from the stop');
   // CONTROL: the same short stun with X17 at the front is stopped once.
   const c = shielded(), cStops = c.count(PLAYX);
   c.eng.config.stun = { duration_s: 1 };

@@ -104,3 +104,24 @@ test('a live hill whose radio is retrying still offers STOP, and STOP takes it o
   await elFor('btnStart').onclick();
   assert.equal(api.settings.live, false, 'STOP clears the intent, so the tick stops retrying');
 });
+
+// F677 review (Codex): MC's clear (`clearedByMc`) or the operator's STOP can land while a native start is still on its
+// way. The start then settled after the stop and put the cleared station's old advert back on air.
+test('a stop that lands while a start is pending wins: the station stays off the air', async () => {
+  const beacon = fakeBeacon();
+  let release;
+  beacon.start = async () => { beacon.starts++; await new Promise(r => { release = r; }); return { advertising: true, txPowerControl: true }; };
+  let stops = 0;
+  beacon.stop = async () => { stops++; };
+  api.plugins.beacon = beacon;
+  await api.stopAdvert();
+  stops = 0;
+  const starting = api.startAdvert();
+  for (const t0 = Date.now(); !release && Date.now() - t0 < 2000;) await new Promise(r => realSetTimeout(r, 5));
+  await api.stopAdvert();   // the clear, while the native start is pending
+  release();
+  await starting;
+  assert.equal(api.settings.live, false, 'the stop is the newer intent');
+  assert.equal(api.statusBody().live, false, 'MC hears the station is off the air');
+  assert.equal(stops, 2, 'the radio is stopped again after the late start');
+});

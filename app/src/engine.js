@@ -4836,18 +4836,20 @@ export class Engine {
    *  queued behind it then waits past its status TTL and is dropped. So an expiry stops X17 with one `$PLAYX,0,*` while
    *  it still plays. X17 rides the interrupt slot (token 1), so on the gun it starts when it is sent and cuts the clip
    *  playing then; the model queues it behind that clip instead (it over-counts on purpose). So "X17 still plays" is:
-   *  X17 is the model's NEWEST clip and less than its length has passed since it was sent. A clip added after it (a hit
-   *  sound) may have cut it, and then nothing is stopped: a clip that is not X17 is never stopped. Once X17 stops the
-   *  gun holds nothing, so the model is cleared. The stop goes straight to the link (no `$PLAY`, so the play queue
-   *  never holds it). stage.py `_stop_stun_clip` mirrors it. */
+   *  less than its length has passed since it was sent, and no interrupt-slot clip came after it (that one cut it). A
+   *  hit sound queues behind it, so it does not count. Never a stop for another clip. The model then drops X17 and the
+   *  clips before it, and the clips behind it play on from now (`cutAt`). The stop goes straight to the link (no `$PLAY`,
+   *  so the play queue never holds it). stage.py `_stop_stun_clip` mirrors it. */
   _stopStunClip() {
     if (!this.bleUp) return;
     const now = this.now(), g = this._gun;
-    if (!g.outstanding(now)) return;   // prunes the clips that ended
-    const last = g.clips[g.clips.length - 1];
-    if (last.id !== clipId(STUN_PLAY) || last.at + last.ms <= now) return;
-    this._write([PLAYX], 'stun over: stop the stun clip X17');
-    g.clear();
+    g._prune(now);
+    const ix = g.clips.map(c => c.id).lastIndexOf(clipId(STUN_PLAY));
+    if (ix < 0 || g.clips[ix].at + g.clips[ix].ms <= now || g.clips.slice(ix + 1).some(c => c.irq)) return;
+    this._mustWrite = true;   // the model is kept below, not by `_audioWrite`'s front-clip stop
+    try { this._write([PLAYX], 'stun over: stop the stun clip X17'); }
+    finally { this._mustWrite = false; }
+    g.cutAt(ix, now);
   }
   // ---------- S16: damage over time, on the node (spec/node.md §3.17) ----------
   /** The tick numbers for an IR protocol, from the bundle's game-wide `dot` table (MC keys it by the protocol the
