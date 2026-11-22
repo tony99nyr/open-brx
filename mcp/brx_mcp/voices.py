@@ -91,8 +91,7 @@ VOICE_ROLES = PSET_ROLES + ("kill", "spawn") + NODE_ROLES   # A15.2: `spawn` pin
 # A15.2: the respawn cry has no candidates -- the field ships EMPTY and the spawn line is the node's `spawn` pool.
 # A15.3: neither have the three pains -- they ship EMPTY too and the node plays `pain_short` / `pain_long` /
 # `pain_melee` by the hit's damage.
-# F685 (Tony 2026-11-22, option a): the pain relief has no candidates either. The field ships EMPTY and the node
-# plays the `healed` line (slot 7) itself on a real heal, so the gun never says "that's better" on its own.
+# F685 (Tony 2026-11-22): the pain relief ships EMPTY too and the phone plays `healed` on a real heal.
 PSET_CANDIDATES = {"death_scream": "345", "respawn_cry": "", "melee_grunt": "",
                    "short_pain": "", "long_pain": "", "pain_relief": "", "kill": "A89KL"}
 # sounds a presentation event may name: "voice:<role>" resolves per player to that role's line (A15)

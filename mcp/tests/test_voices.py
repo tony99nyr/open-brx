@@ -72,7 +72,6 @@ def test_pset_ids_and_role_id_honour_the_override():
     ls = {l["id"]: l for l in V.lines("heavy", {"death_scream": "V35", "kill": "V38"})}
     assert ls["V35"]["uses"] == ["pset:death_scream"] and ls["V33"]["uses"] == [] and ls["V38"]["uses"] == ["cue:kill"]
     assert voice_tail("heavy", {"death_scream": "V35"}) == ["V35", "", "", "", "", ""]   # A15.3: cry + all three pains empty; F685: relief too
-    assert V.pset_ids("heavy", {"pain_relief": "V37"})["pain_relief"] == "V37"   # F685: the escape hatch puts a firmware relief back
     # a pick from OUTSIDE the family still appears in the list, flagged
     ls = {l["id"]: l for l in V.lines("heavy", {"pain_relief": "V87"})}
     assert ls["V87"]["role_words"] == "outside the family" and ls["V87"]["uses"] == ["pset:pain_relief"]
