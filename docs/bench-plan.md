@@ -17,7 +17,7 @@ Build everything from current main: the F645 and F650 fixes are merged, so one A
 About 3 h 48 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 23 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then steps 108 (F681 and F678), 109 (F687) and 110 (F684), once their fixes from brx-desk-1122 are on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
+**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then steps 108 (F681 and F678), 109 (F687), 110 (F684) and 111 (F685), once their fixes from brx-desk-1122 are on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
 
 Done on 2026-11-22 (phones on a local 0.4.46, main `192d7b326`; results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-22): steps 16, 17, 18, 20 (F541's tap half), 26, 27, 28 and 29, P19, step 108 (F678 REFUTED), SR5 part 3 and the SR23 tap cases. The IR rig emitter now runs main's `ir_emit.ino`.
 
@@ -523,6 +523,11 @@ A).
    drops again within 20 s). Log per slow run: `reconnect: 1 timeouts, releasing GATT and scanning`, then
    `fresh advert heard` or `no fresh gun advert`. Read: a slow run that heard no fresh advert means the gun was not
    advertising yet, and the wait is the gun's, not the phone's. (FOLLOWUPS F684)
+111. **F685 and F536**, the heal line (10 min, any TDM match with a Male voice). The head's `$PSET` t15 is empty. A
+   health heal: take a 20-damage hit, then a medkit or `$LIFE,20,0,0,*` from the laptop MCP. Pass: "Ugh, that's
+   better" (`VA7`) plays ONCE, and the phone log shows the `healed` line. Control: three lethal hits and their
+   respawns. Pass: no "that's better" after any death or respawn, and none at a shield refill. Reopens F685: a heal
+   plays the line twice (the gun still holds t15) or not at all. Reopens F536: the line after a death. (FOLLOWUPS F685)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old

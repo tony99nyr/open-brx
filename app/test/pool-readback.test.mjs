@@ -237,3 +237,22 @@ test('review M1: POOLS WRONG clears on a later in-range report (a RESYNC GUN or 
   assert.equal(h.eng.poolWrong, null);
   assert.equal(h.eng.poolStale(), null, 'POOLS WRONG must clear once the gun reads in range');
 });
+
+test('F685 (Tony 2026-11-22, option a): the $PSET ships t15 empty and the phone says the heal line once; a death and its respawn never do', () => {
+  const t15 = PSET.split(',')[15];
+  assert.equal(t15, '', `the head's $PSET t15 (painRelief) ships empty: ${PSET}`);
+  const HEALED = /^\$PLAY,[^*]*\bVA7\b/;
+  const h = harness();
+  h.adv(4000);
+  h.gun.hp = 25; h.f('$HIR,0,0,19,2,20,0,0,*').f('$HP,25,70,0,*');   // a 20 health hit
+  h.adv(3000);
+  let n = h.writes.length;
+  h.gun.hp = 45; h.f('$HP,45,70,0,*');                                // a medkit: health rises from 25
+  h.adv(4000);
+  assert.equal(h.writes.slice(n).filter(f => HEALED.test(f)).length, 1, `one heal line: ${h.writes.slice(n).join(' ')}`);
+  n = h.writes.length;
+  h.gun.hp = 0; h.gun.armor = 0; h.f('$HIR,0,0,19,2,120,0,0,*').f('$HP,0,0,0,*');   // a lethal hit
+  h.adv(15000);                                                       // past the 8 s auto respawn: the gun refills from 0
+  assert.equal(h.eng.alive, true, 'setup: the player respawned');
+  assert.equal(h.writes.slice(n).filter(f => HEALED.test(f)).length, 0, `no heal line on a death or a respawn: ${h.writes.slice(n).filter(f => f.startsWith('$PLAY')).join(' ')}`);
+});
