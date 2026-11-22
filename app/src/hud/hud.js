@@ -49,6 +49,7 @@ export class Hud {
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
     this._gunConfirm = null;  // {at} the LIVE two-tap guard on RELINK GUN (bench 2026-09-17, below)
+    this.vg = false;   // A91: the VOICE grid is open (every voice at once)
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
@@ -266,7 +267,7 @@ export class Hud {
       !!(st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload),
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length),
       // Tony 2026-11-22: the KIT screen's VOICE row (a step, its ack, a refusal, MC's list arriving)
-      st.voice, st.voicePending, st.voiceAck && st.voiceAck.t, st.canPickVoice, (st.voices || []).length,
+      st.voice, st.voicePending, st.voiceAck && st.voiceAck.t, st.canPickVoice, (st.voices || []).length, this.vg,
       // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
       // message arriving — nothing else in the signature moves at that moment.
@@ -391,6 +392,8 @@ export class Hud {
         if (!st.ended && !st.kitOpen) return this._lobby(st, 'setup');            // §4.1: MC is still picking the game
         if (!st.ended && !st.briefSeen && !this._tryoutShown(st)) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
         if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
+        if (!st.canPickVoice) this.vg = false;   // the kit closed under it: the next match opens on the kit, not the grid
+        if (!st.ended && this.vg && st.canPickVoice && st.wsState !== 'rejected' && !this._tryoutShown(st)) return this._voiceGrid(st);   // A91: every voice at once
         return this._lobby(st, st.ended ? 'over' : 'kitted');
       case 'lobby':
         // T2 INTEGRATION (A38 x A39): the same override the 'kitted' arm above makes, stated for the

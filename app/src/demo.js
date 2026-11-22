@@ -673,6 +673,9 @@ export function startDemo({ engine, log }) {
       'kitted-voice-picking': [...kitted, [400, () => ev.slowAck(60000)], [500, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')]],
       'kitted-voice-picked':  [...kitted, [400, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')], [600, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')]],
       'kitted-voice-refused': [...kitted, [400, () => ev.tap('[data-act="onVoiceStep"][data-arg="-1"]')]],   // with &reject
+      // Tony 2026-11-22 (storyboard): every voice at once, then a tap on a tile
+      'kitted-voice-grid':    [...kitted, [400, () => ev.tap('[data-act="onVoiceGrid"]')]],
+      'kitted-voice-grid-picked': [...kitted, [400, () => ev.tap('[data-act="onVoiceGrid"]')], [600, () => ev.tap('[data-act="onVoicePick"][data-arg="valkyrie"]')]],
       'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
       'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
       // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.

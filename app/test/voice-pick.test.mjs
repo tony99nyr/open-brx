@@ -177,7 +177,7 @@ test('the KIT screen draws the VOICE row with its two arrows and the name', () =
   const html = renderHtml({ now: 1_000_000, state: h.eng.state(), hud: {} }).screen;
   assert.match(html, /data-testid="voice-row"/);
   assert.match(html, /data-act="onVoiceStep" data-arg="-1"/); assert.match(html, /data-act="onVoiceStep" data-arg="1"/);
-  assert.match(html, /data-act="onVoiceHear"[^>]*>.*VOICE · 2\/3.*MALE/s);
+  assert.match(html, /data-act="onVoiceGrid"[^>]*>.*VOICE · 2\/3.*MALE.*TAP FOR ALL 3 VOICES/s);
   const none = kit({ voices: null }); none.eng.closeBriefing();
   assert.doesNotMatch(renderHtml({ now: 1_000_000, state: none.eng.state(), hud: {} }).screen, /voice-row/, 'no list, no row');
 });

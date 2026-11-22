@@ -2616,6 +2616,36 @@ for (const view of VIEWS) {
     must(/PLAYING ON YOUR GUN/.test(r.line), 'the row does not say the line is playing: ' + r.line);
     must(bad.length === 0, bad.join(' ; '));
   });
+  await step(`${view.name} VOICE grid: the name opens every voice at once; one tap picks any voice and plays it; DONE goes back`, async () => {
+    // Tony 2026-11-22 (storyboard): stepping one by one through 24 voices is too many taps, and the first one is far away.
+    const pg = await open(view, 'kitted');
+    await pg.evaluate(() => { const e = window.brx.engine; window.__vw = []; const o = e._write.bind(e);
+      e._write = (fr, why, opt, sched, ...rest) => { if (why === 'apply preview' && sched) window.__vw.push(fr.slice()); return o(fr, why, opt, sched, ...rest); }; });
+    await pg.click('[data-act="onVoiceGrid"]');
+    await pg.waitForSelector('[data-testid="voice-grid"] .vtile', { timeout: 4000 }).catch(() => {});
+    const g = await pg.evaluate(() => { const t = Array.from(document.querySelectorAll('[data-testid="voice-grid"] .vtile'));
+      const vw = innerWidth, vh = innerHeight;
+      return { n: t.length, voices: window.brx.engine.state().voices.length, on: t.filter(x => x.getAttribute('aria-pressed') === 'true').map(x => x.textContent.trim()),
+        small: t.map(x => x.getBoundingClientRect()).filter(r => r.width < 44 || r.height < 44).length,
+        off: t.map(x => x.getBoundingClientRect()).filter(r => r.right > vw || r.bottom > vh || r.left < 0 || r.top < 0).length }; });
+    await pg.click('[data-act="onVoicePick"][data-arg="heavy"]');   // the FIRST voice, one tap from anywhere
+    await pg.waitForFunction(() => window.__vw.length > 0, null, { timeout: 4000 }).catch(() => {});
+    await pg.waitForTimeout(300);
+    const r = await pg.evaluate(() => ({ on: Array.from(document.querySelectorAll('.vtile[aria-pressed="true"]')).map(x => x.textContent.trim()),
+      voice: window.brx.engine.player.voice, writes: window.__vw }));
+    await pg.click('[data-act="onVoiceGridDone"]');
+    await pg.waitForSelector('[data-testid="voice-row"]', { timeout: 4000 }).catch(() => {});
+    const back = await pg.evaluate(() => ({ grid: !!document.querySelector('[data-testid="voice-grid"]'), row: (document.querySelector('[data-testid="voice-row"] .v') || {}).textContent }));
+    const bad = await invariants(pg);
+    await pg.close();
+    must(g.n === g.voices && g.n >= 20, `the grid shows ${g.n} of ${g.voices} voices`);
+    must(g.small === 0 && g.off === 0, `tiles under 44 px: ${g.small}, off screen: ${g.off}`);
+    must(g.on.length === 1 && /MALE/.test(g.on[0]), 'the current voice is not marked: ' + JSON.stringify(g.on));
+    must(r.voice === 'heavy' && r.on.length === 1 && /HEAVY/.test(r.on[0]), 'the tap did not pick HEAVY: ' + JSON.stringify(r));
+    must(r.writes.length === 1 && r.writes[0][0] === '$VOL,90,0,*', 'expected one preview at game volume: ' + JSON.stringify(r.writes));
+    must(!back.grid && back.row === 'HEAVY', 'DONE did not return to the kit with HEAVY: ' + JSON.stringify(back));
+    must(bad.length === 0, bad.join(' ; '));
+  });
   await step(`${view.name} VOICE: an MC from before the picker sends no list, so the KIT screen has no VOICE row`, async () => {
     const pg = await open(view, 'kitted', '&novoices');
     const r = await pg.evaluate(() => ({ row: !!document.querySelector('[data-testid="voice-row"]'), hint: !!document.querySelector('.platehint') }));

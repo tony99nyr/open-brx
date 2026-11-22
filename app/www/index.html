@@ -1380,6 +1380,22 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .lobby .voicerow .vname.pend .s{color:var(--glow)}
 .lobby .voicerow .vname.bad .s{color:var(--warn)}
 [data-env="night"] .lobby .voicerow .vstep,[data-env="night"] .lobby .voicerow .vname{background:#0a0303;border-color:var(--mut);box-shadow:none}[data-env="night"] .lobby .voicerow .vstep,[data-env="night"] .lobby .voicerow .vname.pend .s{color:var(--num)}   /* the night kit: no glow, the plate ink (#24) */
+/* A91: every voice at once (Tony: one by one is too many taps). 24 tiles, 8 x 3, at least 44 px on an SE screen; a long name wraps. */
+.lobby.vg .vgtop{position:absolute;top:0;left:36px;right:36px;height:62px;display:flex;align-items:flex-end;gap:16px;padding-bottom:8px;border-bottom:1px solid var(--edge)}
+.lobby.vg .vgtop .t{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.08em;white-space:nowrap}
+.lobby.vg .vgtop .s{font-size:12px;color:var(--mut);letter-spacing:.04em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-bottom:3px}
+.lobby.vg .vgtop .who{white-space:nowrap;display:flex;align-items:baseline;gap:10px;padding:0 16px 3px 0}
+.lobby.vg .vgtop .who .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.08em;line-height:1}
+.lobby.vg .vgtop .who .num{font-family:var(--fd);font-weight:700;font-size:16px;color:var(--glow)}
+[data-env="night"] .lobby.vg .vgtop .who .num{color:var(--num)}
+.lobby.vg .vgrid{position:absolute;top:72px;left:36px;right:56px;bottom:80px;display:grid;grid-template-columns:repeat(8,1fr);grid-auto-rows:1fr;gap:8px;pointer-events:auto}
+.lobby.vg .vtile{min-height:44px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-8deg);font-family:var(--fd);font-weight:700;font-size:15px;line-height:1.05;letter-spacing:.01em;color:var(--num);padding:0 4px;overflow:hidden}
+.lobby.vg .vtile .unskew{transform:skewX(8deg)}
+.lobby.vg .vtile:active{border-color:var(--glow)}
+.lobby.vg .vtile.on{border-color:var(--glow);box-shadow:0 0 22px -10px var(--glow);color:var(--glow)}
+.lobby.vg .vtile.pend{box-shadow:0 0 26px -6px var(--glow)}
+.lobby.vg .vgbar{position:absolute;left:36px;right:36px;bottom:14px;height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+[data-env="night"] .lobby.vg .vtile{background:#0a0303;border-color:#3a1414}[data-env="night"] .lobby.vg .vtile.on{border-color:var(--mut);color:var(--num);box-shadow:none}
 .lobby .platehint{flex:0 0 100%;padding-left:8px;margin-top:-2px;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:700}
 .tryout .tact{flex:0 0 170px;display:flex;flex-direction:column;justify-content:center;gap:8px;pointer-events:auto}
 .tryout .tact .small{line-height:1.4;letter-spacing:.08em}
