@@ -12,16 +12,16 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 113.** Desk 4 · bench 102 · decision 7.
+**MVP open: 113.** Desk 3 · bench 103 · decision 7.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🟡 **F676** · **F679** · **F685**
+**MVP DESK (3),** a keyboard is enough:
+- 🟡 **F676** · **F679**
 - 🟢 **F680**
 
-**MVP BENCH (102),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (103),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F643** · **F650** · **F533** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226**
 - 🟠 **F684** · **F642** · **F658** · **F659** · **F663** · **F666** · **F644** · **F648** · **F660** · **F391** · **F563** · **F157** · **F525** · **F526** · **F459** · **F453** · **F452** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F443** · **F444** · **F365** · **S57** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F448** · **F450** · **F293** · **F340** · **F345** · **F311** · **F275** · **F231** · **F580** · **F649** · **F661** · **F668** · **F682**
-- 🟡 **F678** · **F681** · **F687** · **F671** · **F640** · **F657** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F536** · **F606** · **F618** · **F637** · **F641** · **F673**
+- 🟡 **F685** · **F678** · **F681** · **F687** · **F671** · **F640** · **F657** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F536** · **F606** · **F618** · **F637** · **F641** · **F673**
 - 🟢 **F675** · **F592** · **F686**
 
 **MVP DECISION (7),** awaiting Tony:
