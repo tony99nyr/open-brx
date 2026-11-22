@@ -228,11 +228,9 @@ function reasonOf(root: string): string {
     '$.recap.post_end_facts': 'The mock counts three seeded late facts that the compared match never produced.',
     '$.recap.post_end': 'The mock counts three seeded late facts that the compared match never produced.',
     '$.config.presentation': 'The mock omits the server presentation settings.',
-    '$.lan.ip': 'The recording pins a safe network address.',
     '$.lan.join_secret': 'The recording pins a safe join secret.',
     '$.lan.qr': 'The recording pins a safe QR URL.',
     '$.lan.ssid': 'The recording pins a safe network name.',
-    '$.lan.ws_url': 'The recording pins a safe WebSocket URL.',
   };
   if (known[root]) return known[root];
   if (/^\$\.start\.per_node\.[^.]+\.last_seen_ms$/.test(root)) return 'The fake and demo phone receipt times differ at this step.';

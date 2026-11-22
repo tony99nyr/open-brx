@@ -1,5 +1,5 @@
 # What the lights mean in a game
-Last verified: 2026-09-24
+Last verified: 2026-11-22
 
 In an Open BRX game the host takes over the tagger body LEDs and the headset ring, so what you see is
 ours. For the stock behaviour of a tagger nobody is hosting, see [Meet the BRX](/manual/hardware).
@@ -82,11 +82,13 @@ The ring is what everyone else reads. You cannot see your own head, so nothing o
 | Match start | white double flash, then the resting state |
 | In play, resting | dark (a mode can choose to hold the team colour instead) |
 | Hit taken | the tagger's own flash, which is brighter than anything we can write |
-| Down | the tagger's own bright flash on the small LED, every 750 ms, for as long as you stay down |
+| Down | the tagger's own bright flash on the small LED, repeating slowly, for as long as you stay down. It is slow on purpose, so nobody takes it for a hit. |
 | Respawn | white double flash, then the resting state |
 
-Some modes hold a role on your head until it ends. The carrier blink and the infected colour are the
-two in play today.
+Some modes hold a role on your head until it ends. None of the four modes on the console's picker
+sets a role, so in those modes the head stays dark while you are alive. The roles below belong to
+modes that the picker does not offer yet (Infection and Extraction) and to flag and bomb modes that
+are not built.
 
 | Role | Headset |
 |---|---|
@@ -116,9 +118,8 @@ the level.
 **You see a shield bar only on the Shields health preset** (45 health, no armour, 105 shield). The
 Standard and Hardcore presets grant no shield, so the tagger reports 0 on every life. The pool is
 writable over Bluetooth: on 2026-09-11 the bench filled it with `$LIFE,0,0,20,*` and emptied it
-again with a negative. A painted teal segment has been seen on a spawned tagger. The Shields preset
-first ran in a real match on 2026-09-24, where every spawn started with an empty shield; the fix is
-in the code and has not yet been checked on a tagger.
+again with a negative. A painted teal segment has been seen on a spawned tagger. Each life starts
+with a full shield (checked on a tagger on 2026-10-02).
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
 on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all
@@ -146,5 +147,4 @@ written to either surface anywhere in the game except the down flash, which surv
 - **A blinking top segment**: you are half a step above the level below.
 - **The bar goes to one red segment**: the next hit is likely to be the one that ends you.
 - **Someone's head is dark**: they are alive and playing.
-- **Someone's head flashes small and fast**: they are down.
-- **Someone's head blinks white**: they are carrying the objective.
+- **Someone's head flashes small and slowly**: they are down.

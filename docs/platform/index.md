@@ -26,7 +26,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 ![Mission Control readiness board: eight taggers with headset, battery and link state for each](/shots/mc-armory.jpg)
 
 - **Readiness board.** A headset that is off, a battery that is low or a phone that is missing shows up before the match, not during it.
-- **Pick or write the game.** Start from a stock mode. Set the rules and who carries what. Save it under a name. MVP games run outdoors only; indoor play is a post-launch feature.
+- **Pick or write the game.** Start from a stock mode. Set the rules and who carries what. Save it under a name. Games run outdoors.
 - **The match, added up.** Scores, kills and the winner, collected from every phone as it comes back into range. Export the sheet.
 
 ![Pick the game: one choice per row, and your favourites](/shots/mc-games.jpg) ![Kit: assign taggers, teams and loadout policy](/shots/mc-kit.jpg)
@@ -58,9 +58,9 @@ modes
 
 ### The whole arsenal. Three slots.
 
-Every player carries a primary, a secondary and a perk. The weapons in the game fall into six classes. Twelve weapons can take the primary slot and thirteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are pickups: you take one from a station during the match. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
+Every player carries a primary, a secondary and a perk. The weapons in the game fall into six classes. A weapon that cannot kill can take the secondary slot but never the primary: it makes a fine backup and a poor primary. Two weapons, the rocket launcher and the rail gun, are pickups: you take one from a station during the match. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
-Four perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
+Four perks fill the third slot. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less.
 
 - [See every weapon](/arsenal)
 
@@ -99,7 +99,7 @@ brx-mcp also speaks MCP, the protocol AI agents use to call tools. So an agent c
 
 ![A BRX smart grenade in hill mode, lit](/photos/grenade.jpg)
 
-The King of the Hill point defaults to presence: a spare phone or an M5StickS3 sitting on the objective, reading who is nearby over Bluetooth. Set a BRX smart grenade to hill mode instead and it also works as a king-of-the-hill objective, shot rather than stood on: the taggers already see its beacon, so possession is read off the player's own tagger, with no base, no extra hardware and no firmware change. The same presence idea gives you respawn points: a spare phone works as one today.
+A King of the Hill or Domination point is presence: a spare phone or an M5StickS3 sits on the objective and sends a Bluetooth beacon, and each player's phone knows when its player stands inside the circle. Set a BRX smart grenade to hill mode instead and it also works as a king-of-the-hill objective, shot rather than stood on: the taggers already see its beacon, so possession is read off the player's own tagger, with no base, no extra hardware and no firmware change. The same presence idea gives you respawn points: a spare phone works as one today.
 
 ## The kit
 

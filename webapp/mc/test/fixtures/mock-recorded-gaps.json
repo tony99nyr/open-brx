@@ -3,12 +3,6 @@
   "rows": [
     {
       "group": "by design",
-      "path": "$.lan.ip",
-      "count": 71,
-      "sha1": "b12b930e86c3603f"
-    },
-    {
-      "group": "by design",
       "path": "$.lan.join_secret",
       "count": 71,
       "sha1": "90e9386208aa1b4f"
@@ -17,19 +11,13 @@
       "group": "by design",
       "path": "$.lan.qr",
       "count": 71,
-      "sha1": "f5b670a88df21a80"
+      "sha1": "4cab787102a10434"
     },
     {
       "group": "by design",
       "path": "$.lan.ssid",
       "count": 71,
       "sha1": "30d83c7b37d84453"
-    },
-    {
-      "group": "by design",
-      "path": "$.lan.ws_url",
-      "count": 71,
-      "sha1": "bf965445e24853fb"
     },
     {
       "group": "cosmetic",

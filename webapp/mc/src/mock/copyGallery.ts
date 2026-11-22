@@ -22,7 +22,7 @@ export function copyState(base: State, spec: string): State {
   const fail = (error: string) => ({ since: t - 95_000, count: 7, error });
   if (has.has('notsaving')) s.not_saving = { store: fail('OSError: [Errno 28] No space left on device') };
   if (has.has('ticker')) s.ticker_failing = { since: t - 40_000, count: 12, error: 'RuntimeError: clock thread died' } as State['ticker_failing'];
-  if (has.has('joinerr')) s.join_error = { error: 'OSError: network is unreachable', ws_url: 'ws://192.168.8.10:8765/ws' };
+  if (has.has('joinerr')) s.join_error = { error: 'OSError: network is unreachable', ws_url: 'ws://192.0.2.10:8765/ws' };
   const pub = (extra: Record<string, unknown>) => ({ ws_url: null, provider: 'cloudflared', available: true, ...(base.lan.public ?? {}), ...extra });
   if (has.has('tunnel')) s.lan = { ...s.lan, public: pub({ status: 'error', error: 'cloudflared exited with code 1: could not reach the edge' }) as never };
   if (has.has('auto')) s.lan = { ...s.lan, public: pub({ status: 'up', ws_url: 'wss://demo.example/ws', auto: { reason: 'kit', cellular: 1 } }) as never };

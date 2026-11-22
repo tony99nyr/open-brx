@@ -1,5 +1,5 @@
 # Meet the BRX
-Last verified: 2026-09-09
+Last verified: 2026-11-22
 
 This page names every part of the BRX tagger, headset and grenade. It explains what each button, port and light does, and it lists the specs for anyone building their own gear.
 
@@ -10,7 +10,7 @@ The Battle Company BRX is a laser tagger shaped like a rifle. It comes with a wi
 Four numbers that sum up the BRX:
 
 - **980 nm / 38 kHz**: the IR beam every shot rides on.
-- **~600 ft**: how far a shot usually reaches. Shade and night are better, and bright sun cuts it about in half.
+- **~600 ft**: the range Battle Company rates for a shot. Our own field tests confirmed hits to about 200 ft, the furthest we paced. Shade and night are better, and bright sun cuts it about in half.
 - **~8 h**: play time on one charge.
 - **2,477**: sound files on the tagger, every one indexed.
 
@@ -266,7 +266,7 @@ BRX tagger:
 | Form factor | rifle-style, ABS shell, reload handle on the right |
 | Controls | trigger, reload handle, ALT (orange), SELECT, LEFT/RIGHT, power slide switch |
 | Emitter | Class 1 IR laser, 980 nm, 38 kHz, 6.5 µs pulses, 111 nJ/pulse, < 18 mm beam at aperture |
-| Range | up to ~600 ft; best in shade/night |
+| Range | rated up to ~600 ft (about 200 ft confirmed in our field test); best in shade/night |
 | Sensors | hit sensor on the body + wireless headset |
 | Indicators | LED bank (mode / team / life gauge) + green kill-confirm in the sight |
 | Audio | on-board speaker; 2,477 SFX and voice lines; sound pack replaceable over USB |
