@@ -50,7 +50,7 @@ Every weapon in the list above is one of these, and so is the Armor Piercing per
 This is a platform built on someone else's firmware, over a serial protocol, and being honest about the edges is more useful than pretending there are none.
 
 - **Range is a hit-odds setting, not a distance.** The range field changes how likely a shot is to register. It does not shorten the beam. We measured it in a garden with two taggers. A very low value barely lands at all, there is a sharp change somewhere between 13 and 26, and between about 31 and 100 every value reaches as far as anyone has been able to pace out. So a short-range weapon is not something the hardware lets us simply ask for.
-- **Some weapons fire twice.** Three of them send a second infrared word from the shooter's own headset, about 88 milliseconds behind the first, with its own damage and its own reach. We measured it on the wire rather than reading it off a spec.
+- **Some weapons fire twice.** The Shotgun and the Rocket Launcher send a second infrared word from the shooter's own headset, about 88 milliseconds behind the first, with its own damage and its own reach. We measured it on the wire rather than reading it off a spec.
 - **The firmware is never modified.** Every weapon here is assembled from frames the tagger already understands. That is a hard rule, not a limitation we are working around.
 
 Protocol discovery credit belongs to LaserTagMods. The way powerful weapons are held in check here, through ammunition and reload rather than raw damage, is how the original designers did it, as it was described to us.

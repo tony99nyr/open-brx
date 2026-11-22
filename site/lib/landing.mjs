@@ -74,7 +74,7 @@ const DATA = {
     return `<div class="counts">${one(f.modes.length, 'game modes')}${one(f.roles.total, 'weapons')}${one(f.sounds, 'sounds on the tagger')}</div>`;
   },
   modes(ctx) {
-    const colour = { tdm: '#39b4ff', ffa: '#e8eef5', infection: '#2ecc71', lms: '#ffb020', extraction: '#ff8c42', koth: '#c48bff' };
+    const colour = { tdm: '#39b4ff', ffa: '#e8eef5', infection: '#2ecc71', lms: '#ffb020', extraction: '#ff8c42', koth: '#c48bff', domination: '#5fd4c4' };
     return `<ul class="tiles" data-reveal>${ctx.facts.modes.map(m => `<li class="tile${m.proven ? '' : ' wip'}"><span class="abbr" style="color:${colour[m.id] || '#8aa0b4'}">${esc(m.abbr)}</span><span class="name">${esc(titleCase(m.name))}</span>${m.proven ? '' : '<span class="badge">In development</span>'}<p>${esc(m.brief)}</p></li>`).join('')}</ul>`;
   },
   roles(ctx) {

@@ -1,5 +1,5 @@
 # Install
-Last verified: 2026-09-18
+Last verified: 2026-11-22
 
 ## What you need
 
@@ -10,8 +10,9 @@ Last verified: 2026-09-18
 - Git, to clone the repository. No git? See *Without git* below.
 - One Android phone per player, for the Companion app. iOS builds from source.
 
-The start script below installs Node.js and Python for you if either is missing. Use the manual
-path further down if you would rather install them yourself.
+On macOS with Homebrew and on Windows with winget, the start script below offers to install Node.js
+and Python if either is missing. On Linux, or without those tools, it prints what to install and
+stops. Use the manual path further down if you would rather install them yourself.
 
 ## Quick start
 
@@ -168,4 +169,4 @@ Debian or Ubuntu, download the `.deb` for your CPU from the
 
 ## The Android app
 
-Download the current build from [`/download/`](/download/), which also covers iOS.
+Download the current build from [`/download/`](/download/). The page also says how to build the app for iOS.

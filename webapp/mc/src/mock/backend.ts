@@ -1046,7 +1046,7 @@ export class MockBackend implements Api {
   }
   /** A28.2: the LAN URL first, the join secret always, the public URL only while the tunnel is up. */
   private joinQr(): string {
-    const base = `ws://192.168.8.10:8765/ws?s=${this.joinSecret}`;
+    const base = `ws://192.0.2.10:8765/ws?s=${this.joinSecret}`;
     return this.tunnelStatus === 'up' && this.tunnelWsUrl ? `${base}&pub=${encodeURIComponent(this.tunnelWsUrl)}` : base;
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
@@ -1122,7 +1122,7 @@ export class MockBackend implements Api {
         // it sends the flat "lan" and, separately, an `ssid` it may or may not have been able to read.
         // `?mock&nossid=1` demos the "could not read one" case, which must print "LAN", never a
         // placeholder word standing in for a network name.
-        mode: 'lan', ssid: this.demoNoSsid ? null : 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
+        mode: 'lan', ssid: this.demoNoSsid ? null : 'BRX-FIELD', ip: '192.0.2.10', port: 8765, ws_url: 'ws://192.0.2.10:8765/ws',
         qr: this.joinQr(), join_secret: this.joinSecret, public: this.publicView(),
         // T3-A: `?mock&lanwarn=1` — see `demoLanWarning` above.
         warning: this.demoLanWarning ? WSL_UNREACHABLE_WARNING : null,

@@ -1,5 +1,5 @@
 # Gameplay
-Last verified: 2026-09-24
+Last verified: 2026-11-22
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 
@@ -428,7 +428,7 @@ Everything below was measured on the bench.
 - **A non-capturing hit emits nothing we can decode**, so a contested point is not a state anything can read. Downed players on the point are invisible to it too.
 - **A beacon is unauthenticated.**
 
-**The hill chips you, and that is measured.** An unattended enemy hill killed a player in about 106 seconds, 8 damage every 5 seconds, with no host involved. In a native game that is the mode working: it punishes standing on someone else's point.
+**The hill can chip you, and that is measured.** An enemy hill chipped a player to death in about 106 seconds, 8 damage every 5 seconds, when the host armed the gun with the damage-over-time row (function 24). The tick comes from the gun, not from the grenade. The same hill armed with function 28 held the player's pool steady for 70 seconds. Whether a stock native game chips a player at a hill has not been measured.
 
 **Do not put a player on team 2 in a hill game.** A neutral hill broadcasts team 2. The gun's own filter compares that against the gun's team, so a player on team 2 reads every neutral point as already theirs and takes no hill damage. Use teams 0, 1 and 3. That consequence follows from two measured facts and has not been tested directly.
 

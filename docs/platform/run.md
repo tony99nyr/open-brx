@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-10-27
+Last verified: 2026-11-22
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -205,8 +205,10 @@ voice lines built into the Battle Company tagger's own sound bank, except Beat D
 "Fatality" line) and Killjoy (text only, no line). Open BRX ships no audio. If a rights holder objects to a name,
 we will rename it.
 
-Before anyone closes the app, have each player hit **Share log**. The HUD keeps its log and the last
-60 raw Bluetooth frames in memory only, and closing the app loses them. The launch folder
+After a match, each phone sends its log and its recent raw Bluetooth frames to Mission Control by
+itself, when it is back in range and no game is running. The HUD keeps them in memory only, so closing
+the app first loses anything not yet sent. If a phone cannot reach Mission Control, have the player
+press **SHARE LOG** on the HUD's diagnostics panel before closing the app. The launch folder
 `~/.brx-mcp/sessions/<launch-id>/` already holds the session database (`session.sqlite`) and the
 Mission Control log (`mc.log`); copy it off if you want to keep it. Results export as CSV,
 and every finished match of the session stays available. Starting the next game is one action, and

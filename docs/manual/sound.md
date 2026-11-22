@@ -1,5 +1,5 @@
 # Sound, voice and updates
-Last verified: 2026-09-20
+Last verified: 2026-11-22
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, and how to change what you hear over USB or through a firmware update.
 
@@ -133,7 +133,7 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 | SMG-x3 | `VA5R` | `G10` |
 | TAR-33 (silenced AR) | `VA6B` | not documented |
 
-> **Killstreak audio is not free under a phone or host.** "Double kill" and its friends are announced natively only in a game started from the gun's own menu. As soon as a host drives the gun over Bluetooth, the host must play them itself (`$PLAY` on the announcer slot). Open BRX's Mission Control does this. A bare Bluetooth script gets silence.
+> **Killstreak audio is not free under a phone or host.** "Double kill" and its friends are announced natively only in a game started from the gun's own menu. As soon as a host drives the gun over Bluetooth, the host must play them itself (`$PLAY` on the announcer slot). The Open BRX phone app does this: it plays the streak line on the announcer slot when it scores the kill. A bare Bluetooth script gets silence.
 
 ## The sound bank
 

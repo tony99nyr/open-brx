@@ -14,7 +14,7 @@ const read = (repo, rel) => {
   return fs.readFileSync(p, 'utf8');
 };
 
-/** Every game mode Mission Control offers, in the order it offers them. */
+/** Every game mode Mission Control offers on its picker (the `mvp` rows), in the order it offers them. */
 export function modes(repo) {
   const src = read(repo, 'mcp/brx_mcp/mc/state.py');
   // `MODES: list[ModeRow] = [` since the pyright pass (2026-09-12); the annotation is optional here so a
@@ -23,7 +23,9 @@ export function modes(repo) {
   if (!block) throw new Error('facts: could not find the MODES list in mcp/brx_mcp/mc/state.py (renamed?)');
   const out = [];
   // one dict per entry; each starts with {"mode": ... and carries name/abbr/desc/brief on the wire
-  for (const m of block[1].matchAll(/\{"mode":\s*"([a-z_]+)",\s*"name":\s*"([^"]+)",\s*"abbr":\s*"([^"]+)",\s*"desc":\s*"([^"]+)"[\s\S]*?"brief":\s*"([^"]+)"[\s\S]*?"proven":\s*(True|False)/g)) {
+  for (const m of block[1].matchAll(/\{"mode":\s*"([a-z_]+)",\s*"name":\s*"([^"]+)",\s*"abbr":\s*"([^"]+)",\s*"desc":\s*"([^"]+)"[\s\S]*?"brief":\s*"([^"]+)"[\s\S]*?"proven":\s*(True|False)(?:,\s*[^\n]*?"mvp":\s*(True|False))?/g)) {
+    // a post-MVP row (`mvp: False`) is hidden from the console's picker, so the site does not offer it either
+    if (m[7] === 'False') continue;
     out.push({ id: m[1], name: m[2], abbr: m[3], desc: m[4], // the briefs use em dashes as asides; a comma reads where a colon did not
     brief: m[5].replace(/\s*—\s*/g, ', '), proven: m[6] === 'True' });
   }

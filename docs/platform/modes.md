@@ -1,5 +1,5 @@
 # Modes and game setup
-Last verified: 2026-10-27
+Last verified: 2026-11-22
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
@@ -37,8 +37,8 @@ kill, and **regenerating health** refills a player who has gone a few seconds wi
 exist only in the laptop command-line path, so neither reaches a player carrying a phone.
 
 Infection, Last Man Standing and Extraction still run end to end through Mission Control, but the
-console's own game picker offers only Team Deathmatch, Free-for-all and King of the Hill for now
-(2026-09-25 MVP scope). Load one of the three through the API (`PUT /api/config`) and it still plays. PLAY and a favourite cannot pick one.
+console's own game picker offers only Team Deathmatch, Free-for-all, King of the Hill and Domination
+(the MVP scope). Load one of the three through the API (`PUT /api/config`) and it still plays. PLAY and a favourite cannot pick one.
 
 ## How a game is put together
 
@@ -66,8 +66,8 @@ Every player carries three slots.
 
 | Slot | Holds | Notes |
 |---|---|---|
-| Primary | Any of the twelve weapons that can kill. Not a support weapon, not a pickup. | Required. Never empty. |
-| Secondary | Any of the thirteen, including the two pistols and the support weapon | Optional. |
+| Primary | Any of the eleven weapons that can kill. Not a support weapon, not a pickup. | Required. Never empty. |
+| Secondary | Any of the twelve, including the two pistols and the support weapon | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
 Four perks are offered today. Body Armor gives 20 extra armour and
@@ -77,6 +77,7 @@ halves reload and swap times, except for the Sniper Rifle bolt. It leaves ammuni
 Armour Piercing sends your
 primary straight through armour and shields to health, with damage and cycle costs set per weapon,
 and the primary cannot land a critical hit.
+Body Armor and Armour Piercing are not offered on the Shields preset, which has no armour.
 Five more are in the catalogue and not yet offered. Motion Tracker puts nearby enemies on your HUD.
 Second Wind lets you survive the hit that would finish you, once a life. Med Kit heals a teammate you
 tag. Concussion jams an enemy's weapon for a few seconds. Med Kit and Concussion wait for a hardware
@@ -111,12 +112,12 @@ it carries one gun. Any future perk that claims a button joins the same rule.
 Open BRX defines weapons on the wire. Each one is a frame the tagger is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
-The catalogue holds 25 entries: the 19 weapons captured from the Callsign app, melee among them,
-three pistols we added (Glock-18, USP-S, Desert Eagle), and three of our own that the stock app has
-no equivalent for. Fifteen are in the game. Ten rows are hidden, because the full list is mostly
-duplicates and a player should not have to tell four grenade launchers apart. Of the fifteen, two are
+The catalogue holds 26 entries. Most are weapons captured from the Callsign app, melee among them.
+We added three pistols (Glock-18, USP-S, Desert Eagle) and some weapons of our own that the stock app
+has no equivalent for. Fourteen are in the game. Twelve rows are hidden, because the full list is
+mostly duplicates and a player should not have to tell four grenade launchers apart. Of the fourteen, two are
 never in a starting kit: the Rocket Launcher and the Rail Gun are pickups. A player takes one from a
-powerup station during the match. Pickups have worked on the bench; they have not yet run at a field. So a player building a loadout chooses from thirteen, counting the two
+powerup station during the match. Pickups have worked on the bench; they have not yet run at a field. So a player building a loadout chooses from twelve, counting the two
 pistols on their own tab. Melee is always loaded and never shown.
 
 Every weapon starts from the real frame Battle Company sent. Only the balance numbers are
@@ -130,7 +131,7 @@ is a description of Battle Company's product. This page describes what Open BRX 
 they differ, the difference is a balance decision we made and can explain.
 
 A player can also try a weapon before the game starts. The tagger is armed with that one weapon,
-privately, at a lower volume, with no team and no identity, so they can pull the trigger and feel
+privately, at the game's volume, with no team and no identity, so they can pull the trigger and feel
 the reload without it counting for anything.
 
 ## Control points: the grenade or a phone

@@ -36,7 +36,7 @@ REGEN_HELP = ('From repo root: cd mcp && BRX_GENERATE_MOCK_RECORDED=1 python3 ru
 FIXTURE_LAN = {'mode': 'lan', 'ip': '192.0.2.10', 'port': 8765,
        'ssid': 'FIXTURE-SSID', 'ws_url': 'ws://192.0.2.10:8765/ws', 'qr': ''}
 FIXTURE_RELEASE_VERSION = '0.4.99'
-MOCK_IP = '192.168.8.10'  # the mock's checked-in demo address
+MOCK_IP = '192.0.2.10'  # the mock's checked-in demo address (RFC 5737 documentation range, safe to publish)
 MOCK_SSID = 'BRX-FIELD'
 MOCK_SECRET = 'k7q2m9xz'
 

@@ -1,5 +1,5 @@
 # Fix, mod and accessorise
-Last verified: 2026-09-13
+Last verified: 2026-11-22
 
 Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,
 and see what the community repairs, mods and accessories actually look like.
@@ -338,7 +338,7 @@ is designed.
 - **JBOX / JCUBE / JBOX Mini / JTOWER / JHALO (Jay, Extreme Laser Tag And More!).** ESP32
   objective stations: domination, CTF, respawn, medic, sentry, supply/upgrade, tug-of-war,
   battle-royale checkpoints. JHALO turns a spare BRX headset into a respawn box. Each one is its
-  own WiFi hotspot (`192.168.4.1`). You get a ~45 s window after boot to reach the menu. Firmware
+  own WiFi hotspot: join it and open its page in a browser. You get a ~45 s window after boot to reach the menu. Firmware
   is flashed from that page. See Accessories for stations.
 - **SwapTX headset mod.** A ~$50 replacement headset (single 18650) that unlocks STX-style
   on-tagger hosting and JEDGE controls. It has no IR emitters, so you lose splash damage,
