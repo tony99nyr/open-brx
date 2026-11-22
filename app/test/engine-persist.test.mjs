@@ -744,6 +744,23 @@ test('F687: the reboot heal silences the gun\'s own spawn sound with a $PLAYX ri
   assert.notEqual(rw[rs + 1], '$PLAYX,0,*', 'no stop after a real respawn\'s $SPAWN');
 });
 
+test('F687 review: the announcer hears of the heal\'s stop when the burst reaches the gun, not when it is built', async () => {
+  const seen = [];
+  const r = await relinked(h => {
+    const ann = h.eng._ann, respawn = ann.respawn.bind(ann);
+    ann.respawn = (now, stopped) => {
+      const w = h.writes, sp = w.lastIndexOf('$SPAWN,,*');
+      seen.push({ stopped, stopSent: sp >= 0 && w[sp + 1] === '$PLAYX,0,*' });
+      return respawn(now, stopped);
+    };
+    h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd);
+  });
+  await settleAsks(r.h);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.ok(reArmedAt30(r.w), 'setup: the heal re-armed the life');
+  assert.deepEqual(seen, [{ stopped: true, stopSent: true }], 'told once, with the stop, after the burst went');
+});
+
 test('F532: failed head heals after an unanswered reboot check never book a death', async () => {
   let healWrites = 0;
   const r = await relinked(h => {
