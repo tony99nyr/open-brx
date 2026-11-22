@@ -918,3 +918,252 @@ export const DEMO_PERKS = [
   }
 ];
 // GENERATED-END perks
+// GENERATED-START voices
+export const DEMO_VOICES = [
+  {
+    "id": "heavy",
+    "name": "HEAVY"
+  },
+  {
+    "id": "medic",
+    "name": "MEDIC"
+  },
+  {
+    "id": "male",
+    "name": "MALE"
+  },
+  {
+    "id": "scout",
+    "name": "SCOUT"
+  },
+  {
+    "id": "valkyrie",
+    "name": "VALKYRIE"
+  },
+  {
+    "id": "clean_male",
+    "name": "CLEAN MALE"
+  },
+  {
+    "id": "soldier",
+    "name": "SOLDIER"
+  },
+  {
+    "id": "female_sniper",
+    "name": "FEMALE SNIPER"
+  },
+  {
+    "id": "female",
+    "name": "FEMALE"
+  },
+  {
+    "id": "fury",
+    "name": "FURY"
+  },
+  {
+    "id": "grenadier",
+    "name": "GRENADIER"
+  },
+  {
+    "id": "guardian",
+    "name": "GUARDIAN"
+  },
+  {
+    "id": "hive_queen",
+    "name": "HIVE QUEEN"
+  },
+  {
+    "id": "infiltrator",
+    "name": "INFILTRATOR"
+  },
+  {
+    "id": "marauder",
+    "name": "MARAUDER"
+  },
+  {
+    "id": "raider",
+    "name": "RAIDER"
+  },
+  {
+    "id": "sentinel",
+    "name": "SENTINEL"
+  },
+  {
+    "id": "stalker",
+    "name": "STALKER"
+  },
+  {
+    "id": "technician",
+    "name": "TECHNICIAN"
+  },
+  {
+    "id": "viper",
+    "name": "VIPER"
+  },
+  {
+    "id": "wraith",
+    "name": "WRAITH"
+  },
+  {
+    "id": "russian",
+    "name": "RUSSIAN"
+  },
+  {
+    "id": "mercenary",
+    "name": "MERCENARY"
+  },
+  {
+    "id": "creature",
+    "name": "CREATURE"
+  }
+];
+// The demo MC's pick preview pool per voice (spawn lines + kill confirms, `Compiler.voice_pick_preview`).
+export const DEMO_VOICE_LINES = {
+  "heavy": [
+    "V3I",
+    "V38",
+    "V39",
+    "V3A"
+  ],
+  "medic": [
+    "V8I",
+    "V88",
+    "V89",
+    "V8A"
+  ],
+  "male": [
+    "VAI",
+    "VAN",
+    "VAO",
+    "VA8",
+    "VA9",
+    "VAA"
+  ],
+  "scout": [
+    "VBI",
+    "VB8",
+    "VB9",
+    "VBA"
+  ],
+  "valkyrie": [
+    "VHI",
+    "VH8",
+    "VH9",
+    "VHA"
+  ],
+  "clean_male": [
+    "VPI",
+    "VP8",
+    "VP9",
+    "VPA"
+  ],
+  "soldier": [
+    "VEI",
+    "VE8",
+    "VE9",
+    "VEA"
+  ],
+  "female_sniper": [
+    "VDI",
+    "VD8",
+    "VD9",
+    "VDA"
+  ],
+  "female": [
+    "VMI",
+    "VM8",
+    "VM9",
+    "VMA"
+  ],
+  "fury": [
+    "V0I",
+    "V08",
+    "V09",
+    "V0A"
+  ],
+  "grenadier": [
+    "V1I",
+    "V18",
+    "V19",
+    "V1A"
+  ],
+  "guardian": [
+    "V2I",
+    "V28",
+    "V29",
+    "V2A"
+  ],
+  "hive_queen": [
+    "V4I",
+    "V48",
+    "V49",
+    "V4A"
+  ],
+  "infiltrator": [
+    "V6I",
+    "V68",
+    "V69",
+    "V6A"
+  ],
+  "marauder": [
+    "V7I",
+    "V78",
+    "V79",
+    "V7A"
+  ],
+  "raider": [
+    "V9I",
+    "V98",
+    "V99",
+    "V9A"
+  ],
+  "sentinel": [
+    "VCI",
+    "VC8",
+    "VC9",
+    "VCA"
+  ],
+  "stalker": [
+    "VFI",
+    "VF8",
+    "VF9",
+    "VFA"
+  ],
+  "technician": [
+    "VGI",
+    "VG8",
+    "VG9",
+    "VGA"
+  ],
+  "viper": [
+    "VJI",
+    "VJ8",
+    "VJ9",
+    "VJA"
+  ],
+  "wraith": [
+    "VKI",
+    "VK8",
+    "VK9",
+    "VKA"
+  ],
+  "russian": [
+    "VLI",
+    "VL8",
+    "VL9",
+    "VLA"
+  ],
+  "mercenary": [
+    "VNI",
+    "VN8",
+    "VN9",
+    "VNA"
+  ],
+  "creature": [
+    "V5I",
+    "V58",
+    "V59",
+    "V5A"
+  ]
+};
+// GENERATED-END voices

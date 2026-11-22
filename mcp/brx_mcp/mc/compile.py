@@ -3260,6 +3260,17 @@ class Compiler:
         except Exception:
             return None
 
+    def voice_pick_preview(self, voice: str, slots: dict | None = None, rng=None) -> str | None:
+        """Tony 2026-11-22 (bench): a player who picks a voice on the phone's KIT screen hears ONE random line of it, a
+        spawn line or a kill confirm, so they can judge the character by what it says in a match. The pool is the
+        family's `spawn` and `kill_confirm` takes (an explicit `voice_slots` pick narrows a role to that id). Falls
+        back to the console preview's line when the family has neither. The line INTERRUPTS (token 1, bench-confirmed
+        2026-09-11): a player stepping through voices hears the newest pick at once, not a queue of the ones before."""
+        pool = _voices.role_ids(voice, "spawn", slots) + _voices.role_ids(voice, "kill_confirm", slots)
+        if not pool:
+            return self.voice_preview(voice, slots)
+        return _pres.play_frame((rng or _random).choice(pool), None, "interrupt")
+
     def validate(self, config: GameConfig, roster: list[Player],
                  opts: dict | None = None) -> dict:
         """§7 rules → {ok, errors, warnings} (A6: frag-limit-without-coverage is a WARNING).

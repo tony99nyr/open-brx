@@ -178,6 +178,45 @@ export function _writeScanRow(el, d) {
     if (num && num.textContent !== txt) num.textContent = txt;
   }
 
+/** Tony 2026-11-22: the player's VOICE on the KIT screen. Two big arrows step through MC's list (gloves, a gun in the
+ *  other hand); the name between them plays another line. Every step plays one spawn or kill line on the gun at the game's
+ *  volume (MC, `_on_voice_request`). No row when MC sends no list (an older MC) or the kit is closed. Tony 2026-11-22
+ *  (storyboard): stepping one by one through 24 is too many taps, so the name opens every voice at once (`_voiceGrid`). */
+const voiceLine = (st, idle) => {
+  const ack = st.voiceAck;
+  return st.voicePending ? 'ASKING THE HOST…'
+    : ack && !ack.ok ? esc(String(ack.reason || 'THE HOST SAID NO').toUpperCase())
+    : ack ? 'PLAYING ON YOUR GUN' : idle;
+};
+export function _voiceRow(st) {
+  const list = st.voices || [];
+  if (!list.length || !st.canPickVoice || st.wsState === 'rejected') return '';   // MC turned this phone away: it would not hear a pick
+  const i = list.findIndex(v => v.id === st.voice);
+  const name = i >= 0 ? list[i].name : String(st.voice || 'DEFAULT').replace(/_/g, ' ');
+  const ack = st.voiceAck;
+  const line = voiceLine(st, `TAP FOR ALL ${list.length} VOICES`);
+  const pos = i >= 0 ? ` · ${i + 1}/${list.length}` : '';
+  return `<div class="voicerow" data-testid="voice-row">
+      <button class="vstep" data-act="onVoiceStep" data-arg="-1" aria-label="Previous voice"><span class="unskew">◀</span></button>
+      <button class="vname ${st.voicePending ? 'pend' : ''} ${ack && !ack.ok ? 'bad' : ''}" data-act="onVoiceGrid" aria-label="All voices"><span class="k">VOICE${pos}</span><span class="v">${esc(String(name).toUpperCase())}</span><span class="s">${line}</span></button>
+      <button class="vstep" data-act="onVoiceStep" data-arg="1" aria-label="Next voice"><span class="unskew">▶</span></button></div>`;
+}
+
+/** Every voice on one screen: a tap picks it and plays a line on the gun; a tap on the current one plays another line.
+ *  DONE goes back to the kit. Drawn only while the player can pick (`_structure` routes here). */
+export function _voiceGrid(st) {
+  const list = st.voices || [];
+  const tiles = list.map(v => {
+    const on = v.id === st.voice, pend = on && st.voicePending;
+    return `<button class="vtile ${on ? 'on' : ''} ${pend ? 'pend' : ''}" data-act="onVoicePick" data-arg="${esc(v.id)}" aria-pressed="${on}"><span class="unskew">${esc(String(v.name).toUpperCase())}${on ? (pend ? ' ⟳' : ' ✓') : ''}</span></button>`;
+  }).join('');
+  const bad = st.voiceAck && !st.voiceAck.ok;
+  return `<div class="lobby vg" data-testid="voice-grid"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="vgtop"><span class="t">PICK YOUR VOICE</span><span class="s">Tap a voice to hear it on your gun. Tap it again for another line.</span><span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
+      <div class="vgrid">${tiles}</div>
+      <div class="vgbar"><span class="ackchip ${bad ? 'bad' : st.voiceAck ? 'ok' : ''}"><span class="unskew">${voiceLine(st, 'YOUR VOICE FOR THIS MATCH')}</span></span><button class="lobtn done" data-act="onVoiceGridDone"><span class="unskew">DONE</span></button></div></div>`;
+}
+
 export function _lobby(st, mode) {
     const [nm, tail] = splitGun(st.gun);
     // QA-13 (2026-09-23): LINKED read as "joined" beside a CONNECTING… line. Before MC binds, the gun is set and nothing more.
@@ -208,10 +247,12 @@ export function _lobby(st, mode) {
     const _res = st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : null);
     const ammoLine = (_mag == null && _res == null) ? 'SET AT ARM TIME'
       : `<span class="nw">MAG ${_mag != null ? _mag : '—'} · RES ${_res != null ? _res : '—'}</span>`;   // one line, never a dangling separator (breaker 2026-09-03); RES: the A14 plate is 250px
+    // Tony 2026-11-22: the VOICE row takes the hint's line (there is room for one); the ▸ on each plate still says it opens
+    const voice = mode === 'kitted' && !tw ? this._voiceRow(st) : '';
     // A14: three plates — PRIMARY / SECONDARY / PERK; HP · ARMOR moved up into the header line
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
-        ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
+        ${voice || (mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : '')}</div>` : '';
     const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab">${[`<span style="color:var(--health)">HP ${st.maxHp}</span>`, st.maxArmor > 0 ? `<span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>` : '',
       st.maxShield > 0 ? `<span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : '', st.playerNum ? `#${st.playerNum}` : ''].filter(Boolean).join(' · ')}</span>` : '';
     // A27/A30 (loadout.md §4.4): a host advance that lands mid-kit is never a silent screen swap, and a refusal
@@ -325,4 +366,4 @@ export function _readyNote(st, mode) {
       : 'Tap when you are set. The host pushes the game once everyone is ready.';
   }
 
-export const methods = { _idleBtOff, _idleLocOff, _scanList, _idleMcLine, _idle, _patchScan, _patchScanRows, _writeScanRow, _lobby, _statusLine, _readyNote };
+export const methods = { _idleBtOff, _idleLocOff, _scanList, _idleMcLine, _idle, _patchScan, _patchScanRows, _writeScanRow, _lobby, _voiceRow, _voiceGrid, _statusLine, _readyNote };

@@ -293,6 +293,11 @@ loadout_request { node_id, player_id, slot: "primary"|"secondary"|"perk", kind: 
   `loadout.overrides`, which this channel never writes, so a `loadout_request` can no longer create or resolve the
   ALT-button conflict**: `policy.dropped_by()` now always returns `(None, None)`. The field stays on the wire for a
   future conflict of this shape; none exists today.
+- **[A91] The voice (Tony 2026-11-22).** `slot: "voice"`, `kind: "voice"`, `id` = one of `assign.catalog.voices`. The KIT
+  screen shows a VOICE row under the plates: two 72 px arrows step through the list (wrapping), and a tap on the name opens
+  every voice at once (a grid of 24 tiles; Tony: one by one is too many taps). A tile tap picks that voice; a tap on the
+  current one plays another line. MC sets `Player.voice` and the gun plays one random spawn or kill-confirm line at the game's head volume
+  (contracts.md A91). The policy does not lock it; the A30 lock and `kit_open` do.
 ### 4.3 `loadout_browse` (node → MC) — NEW, presence only
 ```jsonc
 loadout_browse { node_id, player_id, open: boolean }        // HUD opened/closed the loadout browser

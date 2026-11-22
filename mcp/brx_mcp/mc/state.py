@@ -522,6 +522,7 @@ class Session:
         # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
         # players with the same character do not die with the same scream; inject a seeded Random in tests.
         self._voice_rng = voice_rng or random.Random()
+        self._preview_rng = random.Random()   # the KIT voice-pick preview's draw, apart from the seeded roll above
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.session_id = uuid.uuid4().hex[:8]
         self.phase: Phase = "muster"
@@ -1375,7 +1376,9 @@ class Session:
         from .views import weapon_views                  # one view builder for HTTP and the wire
         weapons, perks = self._catalog_rows()
         # `bars` need the whole arsenal; htk/ttk need this game's health pool
-        return {"weapons": weapon_views(weapons, self.health_pool(p)), "perks": perks}
+        # Tony 2026-11-22: the KIT screen's VOICE picker reads the same personas the console offers (`GET /api/voices`).
+        voices = [{"id": o["id"], "name": o["name"]} for o in self.compiler.voice_options() if o.get("id")]
+        return {"weapons": weapon_views(weapons, self.health_pool(p)), "perks": perks, "voices": voices}
 
     def kit_open(self) -> bool:
         """A10 §4.1: phones may browse/pick/try only while the host is on KIT and the lobby is not pushed. Before
@@ -6651,6 +6654,9 @@ class Session:
         p = self.players[pid]
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
+        if slot == "voice":
+            self._on_voice_request(nid, p, rid)
+            return
         if rid and slot == "perk" and kind == "perk":
             rid = canonical_perk_id(rid)                # a live client may still say quick_hands / quick_switch
         weapons, perks = self._catalog_rows()
@@ -6708,6 +6714,39 @@ class Session:
                     return
         self.net.push(nid, "loadout_ack", {"slot": slot, "ok": bool(ok), **({"reason": reason} if reason else {}),
                                            **({"dropped": dropped} if dropped else {}), "loadout": p["loadout"]})
+        self._changed()
+
+    def _on_voice_request(self, nid: str, p: Player, voice: str | None) -> None:
+        """Tony 2026-11-22: the player picks their voice on the phone's KIT screen. The pick is the same `Player.voice`
+        the console sets, so a later console edit wins, and it is refused on the same terms as a loadout pick: the kit
+        locks at START (A30) and it opens only on KIT (loadout.md §4.1). The voice is not a loadout rule: a game that fixes
+        the weapons (`hud_select` off) still lets the player pick a voice. Always acked."""
+        ok, reason = True, None
+        if voice is None or voice not in self._voice_ids():
+            ok, reason = False, "Unknown voice"
+        elif self.in_play():
+            ok, reason = False, KIT_LOCKED
+        elif not self.lobby_pushed and self.phase != "kit":
+            ok, reason = False, "Mission Control is still setting up the game"
+        if ok and voice is not None and voice != p.get("voice"):
+            p["voice"] = voice
+            self._after_player_change(p)
+        # The gun plays one random spawn or kill line of the voice, at the game's head volume so it is as loud as in the
+        # match. The same voice again plays a line too: the player asked to hear it. Never after the push (the node's
+        # gate drops a preview once ARMED anyway).
+        if ok and self.phase == "kit" and not self.lobby_pushed:
+            try:   # a bad config must never cost the player the ack (as `_kit_volume`)
+                # its own RNG: a preview must not shift the seeded A15.1 $PSET roll that `_voice_rng` drives
+                cue = self.compiler.voice_pick_preview(p.get("voice") or "male", p.get("voice_slots"), self._preview_rng)
+                frames = [f"$VOL,{self.compiler.head_volume(self.config)},0,*", cue] if cue else []
+            except Exception:
+                frames = []
+            if frames:
+                self.net.push(nid, "apply", {"preview": True, "frames": frames})
+        # `id` names the pick this ack answers, so the phone keeps a newer pick on screen while an older ack lands.
+        self.net.push(nid, "loadout_ack", {"slot": "voice", "ok": ok, **({"reason": reason} if reason else {}),
+                                           **({"id": voice} if voice is not None else {}),
+                                           "loadout": p.get("loadout") or {"weapons": []}})
         self._changed()
 
     def _kit_volume(self, nid: str) -> bool:

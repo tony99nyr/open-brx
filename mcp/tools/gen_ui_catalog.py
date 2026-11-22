@@ -22,6 +22,7 @@ Source of truth, in every case the thing MC actually publishes:
            and a `hidden` row like `melee` is dropped exactly where the server drops it)
   perks    `Compiler().perk_catalog()` -> the API.md `PerkView` (`PerkCatalog.view()`, the same rows
            `GET /api/perks` serves), so hidden `slot_frame` rows are dropped where the server drops them
+  voices   `Compiler().voice_options()` as `{id, name}` (the `assign.catalog.voices` rows), the demo only
   modes    `mc/state.py MODES`, prose fields only (`params`/`defaults` stay hand-written TS)
 
 Only the text BETWEEN the marker comments is replaced; everything else in each file is left alone.
@@ -58,6 +59,22 @@ def perk_views() -> list[dict]:
     from brx_mcp.mc.compile import Compiler
 
     return Compiler().perk_catalog()
+
+
+def voice_views() -> list[dict]:
+    """The KIT screen's VOICE list (Tony 2026-11-22): `{id, name}` per persona, exactly as `assign.catalog.voices`
+    carries it (`Session._catalog_views`)."""
+    sys.path.insert(0, str(REPO / "mcp"))
+    from brx_mcp.mc.compile import Compiler
+
+    return [{"id": o["id"], "name": o["name"]} for o in Compiler().voice_options() if o.get("id")]
+
+
+def voice_lines() -> dict[str, list[str]]:
+    sys.path.insert(0, str(REPO / "mcp"))
+    from brx_mcp import voices as V
+
+    return {o["id"]: V.role_ids(o["id"], "spawn") + V.role_ids(o["id"], "kill_confirm") for o in voice_views()}
 
 
 def mode_text() -> list[dict]:
@@ -105,6 +122,9 @@ def render() -> dict[pathlib.Path, str]:
     js = DEMO_JS.read_text(encoding="utf-8")
     js = _splice(js, "weapons", "export const DEMO_WEAPONS = " + _lit(weapons, 0) + ";", DEMO_JS)
     js = _splice(js, "perks", "export const DEMO_PERKS = " + _lit(perks, 0) + ";", DEMO_JS)
+    js = _splice(js, "voices", "export const DEMO_VOICES = " + _lit(voice_views(), 0) + ";\n"
+                 "// The demo MC's pick preview pool per voice (spawn lines + kill confirms, `Compiler.voice_pick_preview`).\n"
+                 "export const DEMO_VOICE_LINES = " + _lit(voice_lines(), 0) + ";", DEMO_JS)
 
     return {DATA_TS: ts, DEMO_JS: js}
 
