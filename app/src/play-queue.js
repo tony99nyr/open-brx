@@ -142,6 +142,7 @@ export class PlayQueue extends GunAudio {
     this.waiting = null;          // the job planned for later (`job.sendAt`), on its timer
     this.busy = false;            // a job is planned or on the link: the next one waits
     this.inFlight = false;        // a job is on the link
+    this.settleOnAir = false;     // that job is `settleRows` rows: their hold starts when they settle (`sendAt`)
     this.gen = 0;                 // `cancelAll` moves it on: a timer or a link reply of an older generation is void
   }
 
@@ -262,11 +263,11 @@ export class PlayQueue extends GunAudio {
         if (job.settle && ok === false) this._dropRest(job);   // review: no stun clip for a disarm that failed
         this.pending.delete(job);
         job.resolve(ok);
-        this.inFlight = false;
+        this.inFlight = false; this.settleOnAir = false;
         this.busy = false;
         this.drain();
       };
-      this.inFlight = true; job.started = true;   // F493 r3: handed to the link, no longer waiting in the queue
+      this.inFlight = true; this.settleOnAir = !!job.settle; job.started = true;   // F493 r3: handed to the link, no longer waiting in the queue
       const options = { ...job.options, shouldSend: () => !job.cancelled && generation === this.gen
         && (!job.options || !job.options.shouldSend || job.options.shouldSend()) };
       // Bench 2026-11-14: a send that throws (the engine runs a burst's `atSend` in it) is our bug. Before, it left the
@@ -300,6 +301,9 @@ export class PlayQueue extends GunAudio {
     if (ix < 0) return null;
     const model = this.copy(now);
     let last = this.lastAt, next = this.nextAt || 0, t = now, hold = this.holdUntil;
+    // F681 review: the rows of a `settleRows` write on the link hold the `$PLAY` from when they settle, which is not
+    // before now. Their planned send is past and no longer counts.
+    if (this.settleOnAir) hold = Math.max(hold, now + PLAY_SETTLE_MS);
     const sent = (j, at) => {
       if (j.settle) hold = Math.max(hold, at + PLAY_SETTLE_MS);   // F681: as `finish` holds the `$PLAY` behind the rows
       if (!j.group.some(isPlay)) return;
