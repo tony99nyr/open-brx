@@ -21,7 +21,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same 6 weapon slots with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live on [the arsenal page](/arsenal) and [Modes and setup](/docs/modes), not here.
+> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same weapon slots (Callsign uses six) with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live on [the arsenal page](/arsenal) and [Modes and setup](/docs/modes), not here.
 
 ## The complete Callsign arsenal
 
@@ -424,7 +424,7 @@ Everything below was measured on the bench.
 - **It beacons its owner every 5 seconds** to every gun in range, and it changes colour and beeps, so everyone nearby knows the moment it flips.
 - **It holds its owner with nobody standing there.** Ten straight beacons on one owner, with no one shooting it.
 - **Ownership travels only over IR, and only a gun receives IR.** So nobody learns that a far point flipped until a player walks into range. Reception is solid close in and intermittent by about 30 feet, with dropouts of 85 and 145 seconds measured at the edge.
-- **One beacon carries no point id**, so two grenades cannot be told apart on the wire. That caps you at one usable point per game.
+- **One beacon carries no point id**, so two grenades cannot be told apart on the wire. That caps you at one usable grenade point per game.
 - **A non-capturing hit emits nothing we can decode**, so a contested point is not a state anything can read. Downed players on the point are invisible to it too.
 - **A beacon is unauthenticated.**
 

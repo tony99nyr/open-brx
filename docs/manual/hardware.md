@@ -132,7 +132,7 @@ Headset LEDs:
 
 ### For modders: what the headset LEDs are
 
-- The addressable RGB LEDs are WS2812B 5050 (NeoPixel-compatible). On the BRX headset they are wired as a series string (parallel on the SwapTX variant). One data line, 5 V and ground.
+- The addressable RGB LEDs are WS2812B 5050 (NeoPixel-compatible), as identified by the modding community. On the BRX headset they are wired as a series string (parallel on the SwapTX variant). One data line, 5 V and ground.
 - Indoor mode dims the green hit LEDs and switches the RGB LEDs on. That is Battle Company's wording for the setting itself. How it interacts with the ring going dark at game start is unverified: nobody has watched an indoor-mode headset through a running game.
 
 ## The headset
@@ -224,7 +224,7 @@ Identify your generation:
 
 ## Grenade and accessories
 
-This section covers what each add-on physically is. How to use them lives in the Accessories & Stations section.
+This section covers what each add-on physically is. How to use them is in [The Grenade and Other Accessories](/manual/operate#the-grenade-and-other-accessories).
 
 Smart Grenade, anatomy:
 

@@ -77,7 +77,7 @@ Two ports on the gun, two kinds of charger, one polarity trap.
 
 > **Warning.** Two ports, and you must not confuse them. The round charging port takes the
 > charger. The micro-USB "Programing Port" next to it is only for firmware and sound updates
-> (see Firmware and Sounds). It is not a charging input.
+> (see [Firmware updates and factory restore](/manual/sound#firmware-updates-and-factory-restore)). It is not a charging input.
 
 **Swapping the gun battery:**
 
@@ -254,7 +254,7 @@ It is the same boot mode you use to pair a grenade or a sidearm.
 > **Warning.** Firmware updates can un-pair everything. Owners report the v4.30 update wipes
 > settings and breaks headset pairing until you re-run setup. Battle Company's own fix involved
 > a temporary downgrade. Re-pair after any firmware update, before a game day. Details are in
-> Firmware and Sounds.
+> [Firmware updates and factory restore](/manual/sound#firmware-updates-and-factory-restore).
 
 **Headset troubleshooting:**
 
@@ -561,4 +561,4 @@ Keep it charged, keep it dry, and turn it off between rounds.
 
 > **Tip.** Sound and firmware updates go through the micro-USB Programing Port with a
 > SELECT-hold boot. The gun then shows up as a disk with an AUDIO folder. Keep a copy of the
-> originals before you swap anything. The full procedure is in Firmware and Sounds.
+> originals before you swap anything. The full procedure is in [Custom sounds over USB](/manual/sound#custom-sounds-over-usb).

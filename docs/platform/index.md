@@ -42,7 +42,7 @@ The BRX Companion holds the Bluetooth link to one tagger and shows what the tagg
 ![Loadout picker: browse the arsenal and try a weapon on the real tagger](/shots/hud-loadout.jpg) ![Down screen: who got you and the redeploy count](/shots/hud-down.jpg)
 
 - **Loadout.** Primary, secondary and a perk. Browse the arsenal, read the numbers, and fire a try-out on the real tagger before you commit.
-- **Down.** Who got you and how long until you redeploy. The headset goes dark and the tagger stays silent until the count ends.
+- **Down.** Who got you and how long until you redeploy. A slow flash marks you as down, and the tagger stays silent until the count ends.
 
 ## Game modes
 
