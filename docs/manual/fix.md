@@ -141,7 +141,7 @@ community)**
 
 ### "Can't pair / connect my phone"
 
-1. **Android 11 or newer?** → The official Callsign app works only on Android 10 and older. Use an
+1. **Android 11 or newer?** → Owners report that the official Callsign app works only on Android 10 and older. Use an
    older Android device.
 2. **Is the headset linked (not rainbow)?** → no → Callsign connects to a headset-less tagger,
    then quietly drops about a second later. You cannot create a game until the app's top-right
@@ -320,7 +320,7 @@ The community norm is "no permanent modification". Everything rides on the phone
 to the rail.
 
 Bolt on, never cut. The proven BRX mods run from a reload button up to a full ESP32 field host.
-Every one of them leaves the tagger stock and reversible. That is also how the Open BRX Companion
+Every one of them leaves the tagger stock and reversible. That is also how the Open BRX Companion (a paper design so far)
 is designed.
 
 ### Mods owners actually run
@@ -511,7 +511,7 @@ originals.
 
 ### Which phones work with the official app?
 
-Callsign works on Android 10 and older, not on newer Android. On any phone the headset must be
+Owners report that Callsign works on Android 10 and older, not on newer Android. On any phone the headset must be
 linked, or the app disconnects.
 
 ### What battery and charger does it take?

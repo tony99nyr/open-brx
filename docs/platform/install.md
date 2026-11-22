@@ -130,13 +130,14 @@ For a no-hardware demo:
 `--demo` seeds a roster of players and taggers; `--fake-net` simulates the phone nodes in memory, so
 the demo needs no phones and no taggers.
 
-`pnpm mc` starts Mission Control once the setup above is done. It skips the update, install and
+`pnpm mc` (or `node scripts/mc.mjs` without pnpm) starts Mission Control once the setup above is done. It skips the update, install and
 `cloudflared` steps, but it still rebuilds an old console and checks that the ports are free.
 
 ### First contact with a tagger
 
 ```
 .venv/bin/python -m brx_mcp scan
+.venv/bin/python -m brx_mcp diagnose <address>
 .venv/bin/python -m brx_mcp identify <address>
 .venv/bin/python -m brx_mcp listen <address> [seconds]
 ```

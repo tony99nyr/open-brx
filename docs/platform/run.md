@@ -29,7 +29,7 @@ field session played four matches (Free-for-all, Team Deathmatch and two King of
 player phones and two station phones. It is also unfinished and changes week to week, and the
 published Android build can be behind the current game rules. Three things have never been run: a
 dispersed start with players out of Wi-Fi range before T-0, a recovery after real coverage loss, and
-a 20 minute soak. The 2026-10-17 field day does not count as that recovery, because all four player phones stayed on the Wi-Fi and kept sending status all day. It did lead to the result-wait fixes F595 and F596, which the desk then measured and tested.
+a 20 minute soak. The 2026-10-17 field day does not count as that recovery, because all four player phones stayed on the Wi-Fi and kept sending status all day. It did lead to fixes in how Mission Control waits for results, which were then measured and tested.
 
 ## What you need
 

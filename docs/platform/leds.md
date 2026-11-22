@@ -135,7 +135,7 @@ Night dims the lights, it does not switch them off:
 - the down flash is unchanged and stays at full brightness, because a downed player has nothing to
   hide and is the one most likely to be shot again or walked into
 
-Blackout is a separate switch and is the one that empties the lights. With blackout on, nothing is
+Blackout is a separate setting in the game's presentation profile, and it is the one that empties the lights. The PLAY screen has no control for it. With blackout on, nothing is
 written to either surface anywhere in the game except the down flash, which survives every setting.
 
 ## What a player actually sees

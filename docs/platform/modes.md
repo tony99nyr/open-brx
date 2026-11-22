@@ -52,7 +52,7 @@ a game you can save and run again.
 | Time limit | The clock. It is the only ending every player sees, because each phone counts it down locally and stops on its own even with nothing in range. |
 | Frag or score limit | An early end. Mission Control decides it from the events it has and tells the phones. Players in range stop; players out of range keep playing until the clock runs out. |
 | Respawn | Timed (the phone counts a delay and re-arms the tagger), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
-| Health pool | One of three presets: Standard (45 health, 70 armour, the default), Shields (45 health, 105 shield) or Hardcore (45 health only). Shield soaks first, then armour. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
+| Health pool | One of three presets: Standard (45 health, 70 armour, the default), Shields (45 health, 105 shield) or Hardcore (45 health only). Shield soaks first, then armour. A shield starts to refill after 6.5 s with no damage. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
 | Loadout policy | Who picks the weapons: the operator, the players, or nobody (see below). |
 | Venue | Every MVP game runs outdoors: the tagger's IR range profile and the game volume (90) are fixed to it. Indoor play is a post-launch feature; an unrecognised venue still falls back to the quieter indoor volume (80) as a safety net, not a choice. Night dims the LEDs instead of lighting the field up. |
 | Friendly fire and critical hits | Both are tagger settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
@@ -96,7 +96,7 @@ Who picks is set per slot, per game:
 | Snipers | fixed to the Sniper Rifle | off | off |
 | Custom | whatever you set, slot by slot | | |
 
-Free-for-all defaults to No heavies. Every other mode defaults to Open. A slot can also be set to
+Free-for-all defaults to No heavies. Every other mode defaults to Open. Every heavy weapon is pickup-only, so it is never a starting pick, and Open and No heavies offer the same starting picks. A slot can also be set to
 "host", which means the operator picks for the player, or "off", which disables it for everyone. If
 you tighten the policy after players have already kitted, every loadout is re-fixed to the new rules
 and the affected players are told.
@@ -155,7 +155,7 @@ A control point is a place on the field a team can own: the King of the Hill poi
 | Presence range | you aim a gun at it | a circle around the point, the same for every phone, with no direction at all. Its size at the default setting is not yet measured outdoors |
 | It fights back | yes. A tagger near an enemy-held hill takes damage from its own internal table. No damage shot goes through the air. So pushing onto a point you do not own costs you health | no |
 | Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
-| What it costs | about $200 for ours, bought from Battle Company | a second-hand Android phone, a small fraction of that |
+| What it costs | a Smart Grenade, bought from Battle Company | a second-hand Android phone, a small fraction of that |
 
 The money does not buy capability, then. It buys the interaction: you can shoot the grenade, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on.
 
