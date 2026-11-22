@@ -242,6 +242,8 @@ class GameDriver:
                 # F685: the CLI `$PSET` ships t15 empty, so the heal line is ours (the default voice's). `$LIFE` is additive and
                 # clamped, so a grant to a player the last `$HP` showed at full health raises nothing and says nothing.
                 known = self._pools.get(a.player_id)
+                if known is not None:   # until the next `$HP`: a second grant must not read the old health again
+                    self._pools[a.player_id] = (min(self.config.hp, known[0] + max(0, a.hp)), *known[1:])
                 if a.hp > 0 and (known is None or known[0] < self.config.hp):
                     from .. import voices
                     line = voices.role_id(None, "healed")

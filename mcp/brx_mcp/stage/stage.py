@@ -6037,9 +6037,9 @@ class GunStage:
                 # F685 review (engine.js `_hpGainMoment`): any health rise says `healed`, even when the armour rose more.
                 kind = ("healed" if any(g[0] == "health" for g in gains) else "armour_up" if pool == "armor"
                         else "shield_online" if full else None if self._shield_regen else "shield_up")
-                if kind == "shield_online" or (kind == "healed" and shield_filled):
+                if kind == "shield_online" or shield_filled:
                     # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights
-                    # stay. F685 review: a heal that also fills the shield keeps these lights and says `healed` below.
+                    # stay. F685 review: any frame that fills the shield keeps these lights; its own line follows below.
                     self._log(f"pool rise: shield_online ({pool} +{amount}) -- its lights only, no voice line", "info")
                     self._event_now("shield_online", sound=False)
                 if kind and kind != "shield_online":

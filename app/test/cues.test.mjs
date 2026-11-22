@@ -586,4 +586,9 @@ test('F685 review: a heal that also fills the shield says healed AND keeps the s
   h.f(`$HP,40,70,${MAX_SHIELD},*`);                                 // health +30 is the larger rise; the shield fills too
   assert.deepEqual(said, ['healed']);
   assert.ok(leds.includes('shield_online'), `the lights stay when health rose more: ${leds}`);
+  h.f('$HIR,0,0,19,2,30,0,0,*').f(`$HP,40,40,${MAX_SHIELD - 5},*`).adv(3000);   // armour down 30, shield down 5
+  leds.length = 0; said.length = 0;
+  h.f(`$HP,40,70,${MAX_SHIELD},*`);                                 // armour +30 names the line; the shield fills too
+  assert.deepEqual(said, ['armour_up']);
+  assert.ok(leds.includes('shield_online'), `the lights stay when armour rose more: ${leds}`);
 });

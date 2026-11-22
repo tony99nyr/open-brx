@@ -7838,8 +7838,8 @@ export class Engine {
     const kind = gains.some(g => g[0] === 'health') ? 'healed' : pool === 'armor' ? 'armour_up'
       : full ? 'shield_online' : this._shieldRegen ? null : 'shield_up';   // mid-recharge: `shield_charging` already spoke
     // Tony 2026-09-24: no voice line when the shield comes back online. Its lights stay; the line is gone.
-    // F685 review: a heal that also fills the shield keeps the shield_online lights, and says `healed`
-    if (kind === 'shield_online' || (kind === 'healed' && shieldFilled)) this._eventLeds('shield_online');
+    // F685 review: a frame that fills the shield keeps the shield_online lights, whichever pool names the line
+    if (kind === 'shield_online' || shieldFilled) this._eventLeds('shield_online');
     if (kind && kind !== 'shield_online') this._announceStatus(kind);   // A11; docs/announcer.md: a pool voice line waits its turn
   }
 
