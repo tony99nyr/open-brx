@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-11-16. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-11-22. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 The next sitting is NEXT GAME PREP ([below](#next-game-prep-one-sitting-in-this-order-2026-11-02)), from its *Start here* list, before the next game; it includes the rest of the swap and reload sheet. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
@@ -17,7 +17,11 @@ Build everything from current main: the F645 and F650 fixes are merged, so one A
 About 3 h 48 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 23 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Start here (rewritten 2026-11-16 by the bench row triage).** Done on 2026-11-08: P4 parts 1 and 2, MN1 (partial),
+**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then step 108 (F678) again once its new fix is on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
+
+Done on 2026-11-22 (phones on a local 0.4.46, main `192d7b326`; results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-22): steps 16, 17, 18, 20 (F541's tap half), 26, 27, 28 and 29, P19, step 108 (F678 REFUTED), SR5 part 3 and the SR23 tap cases. The IR rig emitter now runs main's `ir_emit.ino`.
+
+**The list below (rewritten 2026-11-16 by the bench row triage).** Done on 2026-11-08: P4 parts 1 and 2, MN1 (partial),
 SR1-SR5 parts 1-2, SR9-SR12, SR14 and SR15. Done on 2026-11-14/15 (phones on 0.4.41, 0.4.43 and 0.4.44; results:
 [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-14/15): SR6, SR7, SR8, SR16 (B), SR17 (a) to (e),
 SR18, SR19 (a) to (d), SR20, SR21, the SR23 hold case, the strip hill H1 to H6, PU, and P2 parts 1, 3 and 4.
@@ -29,17 +33,18 @@ A "step" is a NEXT step and a "P" or "SR" is a step of this file; each one cites
 procedure. The minutes come from those steps. The total is about 27 h, so it takes several sittings.
 
 1. **Build and flash (about 70 min).** P3, the APK from main on every phone (the 0.4.44 phones lack `acb16124b`'s
-   phone hill END change). P1 (step 63), every Stick from main. F449, the IR rig emitter board (step 16), before any
-   step that uses the rig emitter.
+   phone hill END change). P1 (step 63), every Stick from main. The IR rig emitter was reflashed on 2026-11-22 (F449 closed).
 2. **One gun on the laptop MCP (about 205 min).** Step 4 (F668 rule (h)), 5 (F277), 6 (F592 part 2), 7 (B26),
    8 (S10), 9 (F128), 12 to 15 (F272, F269, F270, F274: the screamers sheet, 130 min). F637 on one gun (10 min, its
    row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
-3. **One gun and both rig boards (about 31 min).** Steps 16 (F449), 17 (F322) and 18 (F264).
-4. **One gun, its phone, MC and the rig emitter (about 143 min).** P8's open SR steps: SR5 part 3, SR13 and the
-   SR23 tap cases (F650, 18 min). P19 (F640, 10 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
-   28 (F545), 29 (F3), 30 (F340), 31 (F293), 108 (F678), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
-5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
-   107 (F641). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
+3. **One gun and both rig boards.** Done 2026-11-22: steps 16 (F449), 17 (F322) and 18 (F264). F322's open half
+   (does the victim's second protocol-10 word hit a neighbour) needs two guns: run it in item 5.
+4. **One gun, its phone, MC and the rig emitter (about 105 min).** Done 2026-11-22: SR5 part 3 and the SR23 tap cases
+   (F650), P19 (F640), step 20's F541 tap half, 26 (F511), 27 (F50), 28 (F545), 29 (F3) and 108 (F678, REFUTED).
+   Open: SR13 (F650), step 20 for F533 and F416 (a spawn write that fails in flight), 25 (F277), 30 (F340),
+   31 (F293), 108 again after F678's new fix, with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
+5. **Two guns on the laptop MCP and the rig receiver (about 110 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
+   107 (F641). F322's two-gun check (5 min, its row). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
 6. **Two guns, both phones, MC and a phone station (about 135 min).** Steps 36 (F395, F21), 38 (F438), 40 (F298,
    S57), 41 (F461), 42 (F459), 43 (F460), 44 (F436), 45 (F447), 46 (F442, F396), 48 (F463), 49 (F536), 50 (F296)
    and 51 (F592 part 1). F444 waits for its enemy-captured card (desk) before its bench.
@@ -59,8 +64,8 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
 12. **No bench minutes.** P16 (F644, F657) through a whole game. Step 39 (F264, a live stall if one occurs),
     step 94 (F157, after a field match) and the F226 watch (a phone reload during an ordinary overheat).
 
-The IR rig emitter board runs an old `hardware/esp32-ir-bridge/ir_emit.ino` (`--gap` sends 30 bits): reflash it from main
-before any step that uses the rig emitter.
+The IR rig emitter board runs main's `hardware/esp32-ir-bridge/ir_emit.ino` since 2026-11-22 (`--gap` acks 25 bits).
+With the rig about 1 m from a headset, one word sometimes lands twice on two sensors (F686): count hits per word.
 
 | # | when | minutes | step | procedure |
 |---|---|---|---|---|
@@ -71,7 +76,7 @@ before any step that uses the rig emitter.
 | P5 | before a game on the Mac | 10 | The Mac 5-step check, with the phone that could not ping on 2026-11-01 (F643). Skip it when MC runs on the PC. | [`mac-dev-runbook.md`](mac-dev-runbook.md) §1b, *5-step check* |
 | P6 | before a game | 5 | Hill off: an FFA with hills turned off, with a Stick hill powered in the field. | FOLLOWUPS F658 (its hill-off bench line) |
 | P7 | before a Domination game | 20 | F666: three Stick hills, a Domination game, two players. Check the target reads 1000 before START (a KOTH game before it can carry its hold target over, F666 item 6). Capture each hill once; an owned hill keeps scoring while contested; the console shows the score. The phone HUD shows one hill only for now (F666 item 2). | FOLLOWUPS F666 (open item 5), [`domination-design.md`](domination-design.md) §2 |
-| P8 | before a game (P0) | 23 | Swap and reload: SR16, SR6, SR7 and SR8 passed on 2026-11-14/15; SR13, SR22, the SR23 tap cases and SR5 part 3 (about 5 min) are still open. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
+| P8 | before a game (P0) | 13 | Swap and reload: SR16, SR6, SR7 and SR8 passed on 2026-11-14/15; SR5 part 3 and the SR23 tap cases passed on 2026-11-22; SR13 and SR22 are still open. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
 | P9 | before a game with phone hills | 20 | F648: arm a phone hill, toggle its Bluetooth off and on mid-match. Pass: it logs "the advert is down" and comes back with the point intact. Needs the APK from P3. Then a short KOTH match on that phone hill (10 min). | FOLLOWUPS F648 |
 | P15 | before a Domination game | 70 | A88, the hill tally relay, HT1-HT5, after P1, P3 and P7. HT4 and HT5 need brx4's MC half of A88 on main (`config.hill_tally`). | [HT1-HT5](#next-the-hill-tally-relay-a88) |
 | P10 | can wait | 5 | The near-miss flash colour (F68): Tony asked whether a recoil miss flashes the headset green. State the headset's team. Fire one magnitude-0 word from the IR rig at the worn headset, then one magnitude-100 word as the control. Tony reports each colour; the gun should buzz and play `H06` on the miss, with no `$HIR`. Then watch the headset return to its team colour within about 5 s (F68's eyes check). | post-mvp F68 |
@@ -82,7 +87,7 @@ before any step that uses the rig emitter.
 | P16 | in the game | – | Watch two surfaces through a whole game (F644, F657). (1) The MC console updates by itself across match end, the recap and PLAY AGAIN, on every open tab, with no reload. Note each reload that was needed and what the tab showed. (2) After a KOTH match, the phone FINAL screen and the history headline the held time, with `KILLS n` under it, and the MC recap leads with hill time. | FOLLOWUPS F644, F657 |
 | P17 | before a game on the Mac, and once on a Windows-native start | 5 | F660: `./start.sh` on the MacBook (and `start.cmd` on Windows, not WSL) prints one `keep-awake:` line that says held. On the Mac, unplug the charger before the start: the line warns about battery. Then leave the laptop idle for 15 min with the lid open: it does not sleep and the console still answers. | FOLLOWUPS F660; `mcp/brx_mcp/mc/keepawake.py` |
 | P18 | before a game, after P1 | 25 | F658's two Stick checks. (1) A Stick powerup, MC-armed for game A, with its item taken in game A: start game B (a new byte) with two phones in range. Pass: the Stick follows B within about 10 s (`powerup.follows` in its status, `STATION_FOLLOWS` at MC), offers the item again on B's clock, and the first B claim lands on one phone only. (2) A Stick respawn station armed for an old game, listed as `respawn` in the new game's `config.stations`: a down player at the Stick respawns, with no re-arm. Control for (2): a game whose `config.stations` does not list it, where the same player does not respawn there. | FOLLOWUPS F658 |
-| P19 | with one gun, its phone and MC | 10 | F640 (2) and (3): RESYNC on a gun power-cycled mid-match. Start a TDM match, fire some rounds from the primary, and take one hit. Power-cycle the gun and wait for the phone to reconnect. Press RESYNC on MC for that player. Pass: the player does not die, the life pool and the shield are kept, each magazine shows the count from before the power-cycle, and MC shows the RESYNC outcome `ok`. Control: the same RESYNC on a gun that did not reboot also shows `ok`. | FOLLOWUPS F640 |
+| P19 | with one gun, its phone and MC | 10 | **PASS 2026-11-22 (0.4.46).** F640 (2) and (3): RESYNC on a gun power-cycled mid-match. Start a TDM match, fire some rounds from the primary, and take one hit. Power-cycle the gun and wait for the phone to reconnect. Press RESYNC on MC for that player. Pass: the player does not die, the life pool and the shield are kept, each magazine shows the count from before the power-cycle, and MC shows the RESYNC outcome `ok`. Control: the same RESYNC on a gun that did not reboot also shows `ok`. | FOLLOWUPS F640 |
 | P20 | with the Sticks, after P1 | 15 | F671: MC's clear reaches the Stick. (1) Arm a Stick as a hill from MC, then clear it on ITEMS (`DELETE /api/stations`). Pass: the Stick screen shows UNASSIGNED within about 2 s, and its next status beat at MC shows station id 0. (2) Arm it again, carry it out of Wi-Fi, clear it, wait 1 min, bring it back. Pass: it shows UNASSIGNED within about 5 s of its reconnect. (3) Arm it again and remove it with `DELETE /api/nodes` in LOBBY. Pass: UNASSIGNED. Control: a Stick MC never cleared keeps its saved role across a reconnect. | FOLLOWUPS F671 |
 | P21 | with the Sticks, eyes | 5 | F675: a 144-LED strip on the Grove port at the 300 mA cap. Set the owned-idle hill to red, yellow, blue and purple in turn. Pass: the four idle colours look different from each other, and the 60-LED strip looks as before. | FOLLOWUPS F675 |
 
@@ -128,7 +133,7 @@ log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rul
 | SR2 | 5 | **PASS 2026-11-08.** ALT before the first pull of a life (F650) | Control: a timed respawn, one trigger pull, ALT, fire: the other slot. Then a respawn and ALT with no pull first, then fire. Pass: SWITCHING shows at the press, and the round comes from the slot the HUD shows. If the round comes from the old slot, the gun refuses that ALT: note it (the HUD corrects with GUN WAS ON) and tell brx4. |
 | SR3 | 5 | **PASS 2026-11-08.** swap mid-reload | Fire 5 from the primary, pull the lever, ALT during the reload. Control: the same without the ALT, where the reload fills. Pass: the gun ignores the ALT mid-reload (bench 2026-10-02), the HUD stays on the primary, the reload fills, and the next ALT swaps. |
 | SR4 | 3 | **PASS 2026-11-08.** reload on a full magazine | Control: fire one round, lever: the reload fills. Then a full magazine, lever. Pass: no RELOADING card, no sound, counts unchanged. |
-| SR5 | 10 | **Parts 1-2 PASS 2026-11-08 (0.4.38); part 3 (slot B empty) still open.** the lever after a swap, each pair (F650) | For primary to secondary and back: fire from slot A, ALT to slot B (part-used), lever. Pass: RELOADING on slot B, a reload sound at the press and at the end, slot B full after its reload time, slot B reserve lower by exactly the rounds added, and slot A's count right on the next ALT (the gun may refill slot A too). Repeat with slot A full, and with slot B empty. Control: fire one round from slot B first, then lever: the gun's own reload. The Shotgun as slot B is SR16. |
+| SR5 | 10 | **Parts 1-2 PASS 2026-11-08 (0.4.38); part 3 (slot B empty) PASS 2026-11-22 (0.4.46).** the lever after a swap, each pair (F650) | For primary to secondary and back: fire from slot A, ALT to slot B (part-used), lever. Pass: RELOADING on slot B, a reload sound at the press and at the end, slot B full after its reload time, slot B reserve lower by exactly the rounds added, and slot A's count right on the next ALT (the gun may refill slot A too). Repeat with slot A full, and with slot B empty. Control: fire one round from slot B first, then lever: the gun's own reload. The Shotgun as slot B is SR16. |
 | SR6 | 5 | **PASS 2026-11-15 (0.4.43).** Easy Reload | A one-weapon kit with Easy Reload on. Pass: ALT reloads (fn 97), the card fills, and no swap shows. Control: the same kit with Easy Reload off, where ALT does nothing. |
 | SR7 | 8 | **PASS 2026-11-15 (0.4.43).** the Charge Rifle lock (F226) | Charge from 4 rounds. Pass: the phone reloads the cell at once, the next charge fires, no OVERHEAT word. Control: a full cell, where a charge fires normally. Then swap to the secondary and back, lever: as SR5. |
 | SR8 | 8 | **PASS 2026-11-15 (0.4.44; the HUD failed on 0.4.43).** the Energy Rifle heat lock (F229) | Fire to the heat lock (about 75 rounds). Pass: OVERHEAT shows, the lever during the lock does not show a dead RELOADING card, the gun fires again when the heat falls. Control: 20 rounds, no lock. |
@@ -146,7 +151,7 @@ log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rul
 | SR20 | 5 | **PASS 2026-11-14.** a pull during the swap's `$BMAP,0,98` hold alone delays nothing (the emulator: swp1's refusal came from the AR fire before it, SR21) | Kit: Assault Rifle + USP-S, both loaded, on the phone-owned swap. ALT, and tap the trigger once inside the swap (it fires nothing); release, then pull again at about 150, 300, 450 and 600 ms after the release (one case each, three times). Record which pulls fire and log the write times. Control: the same with no tap inside the swap; the first pull after the bind fires. Do not fire the AR in the 1 s before the swap. Pass: every pull after the bind fires (swp1 showed refused at 117 ms after the release, fired at 300, after AR fire), and no `gun fired slot` line is logged. If a block appears and reaches about 1.5 s, three pulls in a row can trip the phone's stale-pool check (brx5): report it to brx5. |
 | SR21 | 5 | **PASS 2026-11-14** (the bench edge is about release + 740 to 780 ms). after a pull that fired one slot, a bind to another slot fires nothing until that pull's release plus the old slot's tok15 (the emulator, F668; review L3) | Kit: Assault Rifle (tok15 850) + USP-S (tok15 500), both loaded, on the phone-owned swap. Tap the AR once, ALT at once, then pull the USP-S at about 300, 600, 800 and 1000 ms after the AR release (one case each, three times). Then the same from the USP-S to the AR, at 300, 450, 600 and 800 ms. Control (L3): ALT with no fire in the 2 s before it, and pull at about 100 ms after ALT: it fires. Pass: AR to USP-S fires from about 850 ms after the release, USP-S to AR from about 500 ms, the control fires on the first pull, and no `gun fired slot` line is logged. Held case (brx5): hold the trigger through an AR burst and an ALT, keep holding about 1 s, release, then pull the USP-S at once. Record the first round's time from the release and from the ALT. The model says the release ends live fire, so the round comes at about release + 850 ms; if it comes at about ALT + 850 ms, the swap hold ends live fire and the HUD swap timer (`_gunSwapReadyAt`, counted from the release) can start earlier: report it to brx5. Also report any `swap timer: a held pull hit the 5 s cap` line in the phone log (a release the link lost). |
 | SR22 | 5 | **Not run; needs a Stick powerup.** a double ALT after a heavy fires the heavy: a `$WEAP` moves what the trigger fires once the bound slot has fired, and re-sent binds do not undo it (the emulator, F668; brx5's guard) | A/B/A: 0.4.40 without the guard, the guard build (brx5-weapguard), then 0.4.40 again. Kit: AR + USP-S. ALT to the USP-S and fire one round (the HUD shows 11). Take the Rockets at the station and fire one rocket. ALT (the HUD goes to the AR), wait about 1 s without a pull, ALT again (the HUD goes to the USP-S), wait about 1 s, and pull once. Variant: hold the trigger through each swap's SWITCHING; expect no round until the bind, then a USP-S round. Pass on the guard build: a USP-S round (11 to 10, rockets unchanged), and in a life with no heavy the swap log shows no re-equip line. Without the guard (the emulator's prediction): a rocket fires or the pull is dry, with the HUD on the USP-S, and the log shows `gun fired slot 2, bound 1`. |
-| SR23 | 5 | **Hold case PASS 2026-11-15 (first round 1.68 s after the `$SPAWN` write); the tap cases are open.** after `$SPAWN` the trigger and ALT do nothing for about 1.5 to 1.6 s, and each `$SPAWN` restarts it (the emulator, F668; no capture has a pull this soon after a spawn) | Kit: AR + USP-S, both loaded. Die and respawn, then pull the trigger once at about 0.5, 1.0, 1.4 and 1.8 s after the respawn sound (one case each, three times). Then respawn and hold the trigger from about 0.5 s: record when the first round fires. Repeat the hold with the USP-S in hand. Then respawn, ALT at about 0.6 s, and pull at 2.5 s. Log the `$SPAWN` write times. Pass: the pulls before about 1.5 s fire nothing, the held trigger fires at about 1.5 to 1.6 s (AR about 1.6, USP-S about 1.5), the early ALT does not swap, and no `gun fired slot` line is logged. If the phone shows a weapon-ready cue earlier than the gun fires, report it to brx5. |
+| SR23 | 5 | **Hold case PASS 2026-11-15 (first round 1.68 s after the `$SPAWN` write); the tap cases PASS 2026-11-22 (the phone's weapon delay, about 1.75 s, gates them). "The early ALT does not swap" below is stale: the phone-owned swap keeps an early ALT and binds it when the delay ends.** after `$SPAWN` the trigger and ALT do nothing for about 1.5 to 1.6 s, and each `$SPAWN` restarts it (the emulator, F668; no capture has a pull this soon after a spawn) | Kit: AR + USP-S, both loaded. Die and respawn, then pull the trigger once at about 0.5, 1.0, 1.4 and 1.8 s after the respawn sound (one case each, three times). Then respawn and hold the trigger from about 0.5 s: record when the first round fires. Repeat the hold with the USP-S in hand. Then respawn, ALT at about 0.6 s, and pull at 2.5 s. Log the `$SPAWN` write times. Pass: the pulls before about 1.5 s fire nothing, the held trigger fires at about 1.5 to 1.6 s (AR about 1.6, USP-S about 1.5), the early ALT does not swap, and no `gun fired slot` line is logged. If the phone shows a weapon-ready cue earlier than the gun fires, report it to brx5. |
 
 ## NEXT: the hill tally relay (A88)
 
@@ -450,20 +455,10 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
 
 ### Group B: one gun and both IR rig boards (1 gun, the laptop MCP, about 31 min)
 
-16. **F449** and **F538**, the rig itself (10 min). Control: a single `ir-emit` word at a hit-ready headset hits (4/4
-   on 2026-10-16). A/B/A: single word; one word with a gap, reading the ack's `bits=`; single word. Closes both: if
-   the ack reads 29, reflash the emitter from hardware/esp32-ir-bridge on main, and `--repeat 4 --gap 600` then hits
-   4/4. (FOLLOWUPS F449, F538)
-17. **F322**, what one protocol-9 or -10 hit sends (6 min). The victim armed from `compile.resolve()` (its table ships
-   `$SIR,9,3` and `$SIR,10,0`). Control: protocol 0, 3 emits, board A sees one word per emit. A/B/A: protocol 0,
-   protocol 9 then 10, protocol 0. Closes: one word per emit. Reopens: a second word from the victim's headset, so one
-   shot can land twice on a neighbour. (runbook 2b.3)
-18. **F264**, how a dead gun leaves its dead state (15 min). A: a live gun's pull fires. B: kill it with a rig word
-   and log every frame (expect one `$LCD` with HP 0, never repeated); re-send the recipe's `$SIR` table (a pull fires
-   nothing); send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` (the row: without `$HLED,,6` the headset keeps the death
-   flash), and a pull fires. A: re-arm from `compile.resolve()` (`$HLED,,6` turns off the native death flash for the
-   life, A16), and a pull fires. Closes the 2026-10-26 code read: a positive `$LIFE` frees the trigger and `$SIR` does
-   not. F264 stays open for step 39. Keep `$GSET` t8 at its compiled value. (FOLLOWUPS F264)
+16. **F449** and **F538**: done 2026-11-22, PASS after the emitter reflash (log; F449 closed).
+17. **F322**: done 2026-11-22, CONFIRMED for protocol 10: a hit makes the victim send a second word (log).
+   Open: does that word hit a neighbour (two guns, NEXT GAME PREP item 5).
+18. **F264**: done 2026-11-22, the code read CONFIRMED (log). F264 stays open for step 39.
 
 ### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 185 min)
 
@@ -471,14 +466,11 @@ Tactix-9498 with the green Pixel 5. The rig emitter is the shooter wherever a st
 A).
 
 19. F548: closed 2026-11-16 as superseded. Nothing to run.
-20. **F533**, **F416** and the tap half of **F541**, a lost spawn write at go-live (20 min). F541's relink half passed
-   on 2026-10-17 (5 of 5 back inside 20 s); only the tap is open. In one start that hits the slow timeout ladder, tap
-   TO RECONNECT mid-relink. Closes F541: the log shows the restart line. Open for F533: no start yet hit the repair
-   path. Control: a start with no relink. A/B/A: control; 5 starts with
-   `window.brx.link.relink()` about 1 s before go-live, then 3 with the phone about 10 m from its gun; control. Closes
-   F533: each start that logs `write err` fires at go-live or heals once, and no life starts at 0/0. F416: a lost
-   write logs the re-send and a closing match. A start with no `write err` tests neither: say so. (0426 P1.3, 0424
-   P1.1, 0422 C.4b) **→ 2026-11-01:** 1 of 5 relink runs done (healed; log). Run the other 4 and the 3 far-phone runs.
+20. **F533** and **F416**, a lost spawn write at go-live. **→ 2026-11-22:** 4 relinks and 3 far-phone runs done;
+   no start logged `write err`, so neither row is tested yet. F541's tap half PASS (F541 closed; the 17 s
+   gap is F684). Next: a start where the spawn write fails in flight. Closes F533: each start that logs
+   `write err` fires at go-live or heals once, and no life starts at 0/0. F416: a lost write logs the re-send
+   and a closing match. (0426 P1.3, 0424 P1.1, 0422 C.4b)
 21. **F532**: done 2026-11-01, PASS (log; F532 closed, its other items are F640).
 22. **F530**: done 2026-11-01, PASS 6 of 6 (log; F530 closed).
 23. F542: closed 2026-11-16 as superseded by F650 (the lever reloads the weapon in hand). The open swap and reload
@@ -490,19 +482,11 @@ A).
 25. **F277**, a reload that never completes (15 min). Control: a normal Energy Rifle reload completes. Ten tries to
    time out a partial reload on purpose; log every `reload partial` line against the gun's slot. Closes: a repro (brx4
    builds the detector and its `$QUERY` cure), or a clear "no repro in 10 tries". (0422 A.18)
-26. **F511**, a phone restart around an ABORT (10 min). Control: an ABORT with no restart sends the phone to the
-   lobby. A/B/A: control; part 1, then part 2 of 0424 P2.11; control. Closes: part 1 leaves the phone in the lobby
-   with no `$PSET` or `$SPAWN` on the gun; in part 2 the abort frames reach the gun on relink and it does not spawn.
-   (0424 P2.11)
-27. **F50**, the A17 pain gate (10 min, ears). Control: a rig word with magnitude 0 moves no pool and plays nothing.
-   A/B/A: control; an armour-absorbed hit, a health hit, a spill from armour into health, a lethal hit; control.
-   Closes: silent, grunt, grunt, no grunt. (0422 A.16)
-28. **F545**, a trigger held at power-on (5 min). Control: a normal power-on links and arms. A/B/A: normal; trigger
-   held at power-on (the gun says "Game host"), then the phone connects and arms; normal. Read: whether the connect
-   and `$START` recover the gun. Result: Tony decides whether the setup warns a player. (FOLLOWUPS F545)
-29. **F3**, the reload prompt on sustained full auto (5 min). Control: the empty-magazine prompt after a magazine
-   emptied in single taps. A/B/A: taps, one sustained full-auto hold, taps; Share log before closing the app. Closes:
-   the prompt shows on the hold. Reopens: it does not; the frame ring goes to the HUD lane. (FOLLOWUPS F3)
+26. **F511**: done 2026-11-22, parts 1 and 2 PASS (log; F511 closed).
+27. **F50**: done 2026-11-22, PASS (log; F50 closed). The pain-relief line after a death is F536; on a heal, F685.
+28. **F545**: done 2026-11-22: a phone connect mid-match recovers the gun (log). The lobby case is untested;
+   the warning is Tony's call (F545 is in MVP DECISION).
+29. **F3**: done 2026-11-22, PASS (log; F3 closed).
 30. **F340**, the picker with Location off on Android 11 (5 min). The grey Pixel 5, the gun on and unlinked. Control:
    Location on lists the gun within 5 s. A/B/A: on; off (TURN ON LOCATION TO FIND YOUR TAGGER, never "No guns found",
    and OPEN LOCATION SETTINGS opens the page); on (the gun lists within 10 s, no tap). Closes: all three. (runbook
@@ -516,13 +500,8 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-108. **F678**, the stun clip stops at the stun's end (10 min, ears). One gun at `$VOL,65` in a Shields game with
-   `config.stun` at `{"duration_s": 4}` (shorter than X17's 7.9 s). The rig emitter sends the `<8,0>` word with the
-   shield part-used, so the refill starts after the stun. Control: a stun of 10 s (X17 ends before the stun does), then
-   the refill. A/B/A: 10 s, 4 s, 10 s. Pass: in the 4 s runs X17 stops at the stun's end (the log shows `stun over:
-   stop the stun clip X17`) and "Shields charging" plays at the refill. In the 10 s runs no stop is written and the
-   line plays too. (FOLLOWUPS F678)
-### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 175 min)
+108. **F678**: run 2026-11-22, REFUTED: the `$PLAYX` stop swallows "Shields charging" (log). Run the A/B/A
+   again (10 s, 4 s, 10 s stun; pass: the line plays in every run) once the new fix is on main. (FOLLOWUPS F678)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old

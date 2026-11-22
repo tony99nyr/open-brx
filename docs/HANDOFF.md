@@ -15,15 +15,15 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 
 ## Lane: brx1, orchestration
-**State (2026-11-15):** the 2026-11-14/15 bench is recorded (log 2026-11-14/15, `bench-plan.md` *Start here*). The SR
-sheet passed on 0.4.43 and 0.4.44 after the fixes it found: the revive P0, Easy Reload's 97 row, ALT bounce, the bind
-on time, the Shotgun hold-to-chain and the heat HUD. The Stick strip hill passed H1 to H6 and PU. 0.4.44 (main
-`0d8802917`) is on the three bench phones, local only. New rows: F671 to F675. The Stick strip's idle 8 % and
-scoring band (Tony: "perfect") are on main (`3c8b06008`), and the bench Stick runs that build. `~/wt-heat` holds brx3's uncommitted
-Energy Rifle heat numbers (F575 note).
-**Next:** build the next APK from main (the phones lack `acb16124b` and `04147c037`). Then the re-bench in
-`bench-plan.md` *Start here*: SR23 taps, SR22, SR5 part 3, SR13, P2 parts 2 and 5, H7.
-**Blocked:** B21 on the MacBook; publishing waits for Tony's go.
+**State (2026-11-22):** the 2026-11-22 bench is recorded (log 2026-11-22, `bench-plan.md` *Next sitting, start here*).
+Phones ran a local 0.4.46 (main `192d7b326`, not published); the rig emitter now runs main's `ir_emit.ino`. Closed:
+F449, F541, F50, F3, F511. PASS: P19 (F640 (2)(3)), SR5 part 3, the SR23 tap cases. CONFIRMED: F322 for protocol 10
+(the victim sends a second word), F264's code read. F678's fix is REFUTED on hardware (the X17 stop swallows
+"Shields charging"), so F678 is back at the desk. F545 waits on Tony (brx1 recommends no warning). New rows: F681 to
+F686.
+**Next:** route the desk rows (F678, F681 to F685). Then the next sitting: APK and Stick reflash, item 4's open steps,
+F322's two-gun check, step 108 after F678's new fix.
+**Blocked:** F533 and F416 need a spawn write that fails in flight; B21 on the MacBook; publishing waits for Tony.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State (2026-11-02):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
