@@ -35,8 +35,8 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
    8 (S10), 9 (F128), 12 to 15 (F272, F269, F270, F274: the screamers sheet, 130 min). F637 on one gun (10 min, its
    row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
 3. **One gun and both rig boards (about 31 min).** Steps 16 (F449), 17 (F322) and 18 (F264).
-4. **One gun, its phone, MC and the rig emitter (about 143 min).** P8's open SR steps: SR5 part 3, SR13 and the
-   SR23 tap cases (F650, 18 min). P19 (F640, 10 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
+4. **One gun, its phone, MC and the rig emitter (about 148 min).** P8's open SR steps: SR5 part 3, SR13 and the
+   SR23 tap cases (F650, 18 min). P19 (F640, 10 min). P22 (F682, the KIT voice pick, 5 min). Step 20 (F533, F416 and F541's tap half), 25 (F277), 26 (F511), 27 (F50),
    28 (F545), 29 (F3), 30 (F340), 31 (F293), 108 (F678), with step 32 (F563) beside them. P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 105 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
    107 (F641). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
@@ -85,6 +85,7 @@ before any step that uses the rig emitter.
 | P19 | with one gun, its phone and MC | 10 | F640 (2) and (3): RESYNC on a gun power-cycled mid-match. Start a TDM match, fire some rounds from the primary, and take one hit. Power-cycle the gun and wait for the phone to reconnect. Press RESYNC on MC for that player. Pass: the player does not die, the life pool and the shield are kept, each magazine shows the count from before the power-cycle, and MC shows the RESYNC outcome `ok`. Control: the same RESYNC on a gun that did not reboot also shows `ok`. | FOLLOWUPS F640 |
 | P20 | with the Sticks, after P1 | 15 | F671: MC's clear reaches the Stick. (1) Arm a Stick as a hill from MC, then clear it on ITEMS (`DELETE /api/stations`). Pass: the Stick screen shows UNASSIGNED within about 2 s, and its next status beat at MC shows station id 0. (2) Arm it again, carry it out of Wi-Fi, clear it, wait 1 min, bring it back. Pass: it shows UNASSIGNED within about 5 s of its reconnect. (3) Arm it again and remove it with `DELETE /api/nodes` in LOBBY. Pass: UNASSIGNED. Control: a Stick MC never cleared keeps its saved role across a reconnect. | FOLLOWUPS F671 |
 | P21 | with the Sticks, eyes | 5 | F675: a 144-LED strip on the Grove port at the 300 mA cap. Set the owned-idle hill to red, yellow, blue and purple in turn. Pass: the four idle colours look different from each other, and the 60-LED strip looks as before. | FOLLOWUPS F675 |
+| P22 | with one gun, its phone and MC | 5 | F682: the KIT screen VOICE pick, by ear. Build the APK and MC from a main that holds the voice picker; outdoor venue (head volume 90). Control: with the phone on KIT and the gun linked, tap the voice name once and confirm a line plays. Then tap the right arrow four times in about a second. Pass: the name steps at once, then ONE spawn or kill-confirm line of the last voice plays, as loud as an in-game kill line (not the quiet 30 diagnostic level); a tap on the name plays another line of the same voice; the console's KIT row shows the new voice; after READY UP and the push, a voice step is no longer offered, and nothing plays once ARMED. | [F682](FOLLOWUPS.md); contracts.md A91 |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
 
