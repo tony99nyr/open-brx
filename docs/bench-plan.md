@@ -523,13 +523,15 @@ A).
    drops again within 20 s). Log per slow run: `reconnect: 1 timeouts, releasing GATT and scanning`, then
    `fresh advert heard` or `no fresh gun advert`. Read: a slow run that heard no fresh advert means the gun was not
    advertising yet, and the wait is the gun's, not the phone's. (FOLLOWUPS F684)
-111. **F685 and F536**, the heal line (10 min, a TDM match with a Male voice, a phone over CDP). The head's `$PSET`
-   t15 is empty. MVP has no medkit or heal source yet, and the laptop MCP cannot write while the phone holds the link,
-   so send the heal through the phone's live engine over CDP (adb webview forward): take a 20-damage hit, then
-   `engine._write(['$LIFE,20,0,0,*'])`. Pass: "Ugh, that's better" (`VA7`) plays ONCE, and the phone log shows
-   `healed`. Control: three lethal hits and their respawns, and one shield refill. Pass: no "that's better" at any of
-   them. Reopens F685: the line plays twice (the gun still holds t15) or not at all. Reopens F536: the line after a
-   death. A laptop `$LIFE` with no phone (as on 2026-11-22) is silent now: that is expected, not a fail. (FOLLOWUPS F685)
+111. **F685 and F536**, the heal line (10 min, a Shields TDM match with a Male voice, a phone over CDP). The head's
+   `$PSET` t15 is empty. MVP has no medkit or heal source yet, and the laptop MCP cannot write while the phone holds the
+   link, so drive the phone's live engine over CDP (adb webview forward). Drain health first, since a hit takes the
+   shield before health: `window.brx.engine._write(['$LIFE,-20,0,0,*'], 'bench F685 drain')`, and check that the HUD
+   shows 25 health. Then heal: `window.brx.engine._write(['$LIFE,20,0,0,*'], 'bench F685 heal')`. Pass: "Ugh, that's
+   better" (`VA7`) plays ONCE, and the phone log shows `healed`. Control: three lethal hits and their respawns, and
+   one shield refill. Pass: no "that's better" at any of them. Reopens F685: the line plays twice (the gun still holds
+   t15) or not at all. Reopens F536: the line after a death. A laptop `$LIFE` with no phone (as on 2026-11-22) is
+   silent now: that is expected, not a fail. (FOLLOWUPS F685)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old
