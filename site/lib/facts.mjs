@@ -22,8 +22,12 @@ export function modes(repo) {
   const block = src.match(/^MODES(?:\s*:\s*[^=\n]+?)?\s*=\s*\[([\s\S]*?)^\]/m);
   if (!block) throw new Error('facts: could not find the MODES list in mcp/brx_mcp/mc/state.py (renamed?)');
   const out = [];
-  // one dict per entry; each starts with {"mode": ... and carries name/abbr/desc/brief on the wire
-  for (const m of block[1].matchAll(/\{"mode":\s*"([a-z_]+)",\s*"name":\s*"([^"]+)",\s*"abbr":\s*"([^"]+)",\s*"desc":\s*"([^"]+)"[\s\S]*?"brief":\s*"([^"]+)"[\s\S]*?"proven":\s*(True|False)(?:,\s*[^\n]*?"mvp":\s*(True|False))?/g)) {
+  // one dict per entry; each starts with {"mode": ... and carries name/abbr/desc/brief on the wire.
+  // Split the list into rows first, so a field can only ever be read from its own row.
+  for (const row of block[1].split(/(?=\{"mode":)/).filter(r => r.startsWith('{"mode":'))) {
+    const m = row.match(/^\{"mode":\s*"([a-z_]+)",\s*"name":\s*"([^"]+)",\s*"abbr":\s*"([^"]+)",\s*"desc":\s*"([^"]+)"[\s\S]*?"brief":\s*"([^"]+)"[\s\S]*?"proven":\s*(True|False),\s*"mvp":\s*(True|False)/);
+    // `proven` and `mvp` sit side by side on the row's field line; a comment between rows can mention either
+    if (!m) throw new Error(`facts: a MODES row in state.py lacks name/abbr/desc/brief and a "proven": X, "mvp": Y pair: ${row.slice(0, 60)}`);
     // a post-MVP row (`mvp: False`) is hidden from the console's picker, so the site does not offer it either
     if (m[7] === 'False') continue;
     out.push({ id: m[1], name: m[2], abbr: m[3], desc: m[4], // the briefs use em dashes as asides; a comma reads where a colon did not

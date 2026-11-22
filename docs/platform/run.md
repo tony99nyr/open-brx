@@ -206,7 +206,8 @@ voice lines built into the Battle Company tagger's own sound bank, except Beat D
 we will rename it.
 
 After a match, each phone sends its log and its recent raw Bluetooth frames to Mission Control by
-itself, when it is back in range and no game is running. The HUD keeps them in memory only, so closing
+itself, when it is back in range and no game is running. This needs **Log sync** on the **Armory** screen
+set to **AUTO**, the default. The HUD keeps the log and the frames in memory only, so closing
 the app first loses anything not yet sent. If a phone cannot reach Mission Control, have the player
 press **SHARE LOG** on the HUD's diagnostics panel before closing the app. The launch folder
 `~/.brx-mcp/sessions/<launch-id>/` already holds the session database (`session.sqlite`) and the

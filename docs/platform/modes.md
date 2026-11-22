@@ -38,7 +38,7 @@ exist only in the laptop command-line path, so neither reaches a player carrying
 
 Infection, Last Man Standing and Extraction still run end to end through Mission Control, but the
 console's own game picker offers only Team Deathmatch, Free-for-all, King of the Hill and Domination
-(the MVP scope). Load one of the three through the API (`PUT /api/config`) and it still plays. PLAY and a favourite cannot pick one.
+(the MVP scope). Load Infection, Last Man Standing or Extraction through the API (`PUT /api/config`) and it still plays. PLAY and a favourite cannot pick one.
 
 ## How a game is put together
 

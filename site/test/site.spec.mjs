@@ -536,7 +536,9 @@ it('11 · every old URL really resolves over HTTP, in one hop, with no loop', as
 // screenshots that loaded, buttons that go where they say, numbers that equal the repo data, and
 // motion that reveals rather than hides.
 const facts = () => {
-  const modes = (fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/state.py'), 'utf8').match(/\{"mode":\s*"[a-z_]+",\s*"name"/g) || []).length;
+  // the modes on the console's picker: a post-MVP row (`"mvp": False`) is hidden there and on the site
+  const modes = fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/state.py'), 'utf8').match(/^MODES\b[\s\S]*?^\]/m)[0].split(/(?=\{"mode":\s*"[a-z_]+",\s*"name")/)
+    .slice(1).filter(row => /"proven":\s*(True|False),\s*"mvp":\s*True/.test(row)).length;
   // VISIBLE weapons, the same predicate the server publishes its catalogue with (`WeaponCatalog.all()`).
   // Counting every ROW advertised 25 weapons on the home page when 15 are in the game, and gave the class
   // pills a MELEE entry nobody can pick and a HEAVY entry of 5 when 3 of those are cut (2026-09-18).

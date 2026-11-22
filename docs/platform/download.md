@@ -13,7 +13,7 @@ download
 
 1. When Android warns about installing from outside the Play Store, allow it from the browser or Files app that downloaded the APK.
 2. Open the downloaded file to install it.
-3. Grant the Bluetooth (Nearby devices) permission when the app asks. On Android 11 and older, also turn Location on: those versions cannot scan for Bluetooth devices without it.
+3. Grant the permission the app asks for. On Android 12 and later it is Nearby devices (Bluetooth). On Android 11 and older it is Location, and Location must also be turned on: those versions cannot scan for Bluetooth devices without it.
 
 The build is release-signed by Open BRX but does not come from the Play Store, so Android shows its usual warning for an app from outside the store.
 
