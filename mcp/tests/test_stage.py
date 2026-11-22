@@ -866,7 +866,7 @@ def test_the_heal_line_card_reads_the_bundle_heal_cue_and_a_pain_relief_pick():
     assert v["pset"]["pain_relief"] == "" and v["slots"] == {"pain_relief": "V36"}
 
 
-def test_the_stage_storyboard_builds_every_frame(tmp_path=None):
+def test_the_stage_storyboard_builds_every_frame():
     """`tools/stage_storyboard.py`: every frame embeds the real page fed a state the HEAL LINE card can read."""
     import importlib.util, tempfile
     spec = importlib.util.spec_from_file_location("stage_storyboard", pathlib.Path(__file__).parents[1] / "tools" / "stage_storyboard.py")

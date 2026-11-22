@@ -19,16 +19,10 @@ from brx_mcp.stage.stage import GunStage
 PAGE = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "page.html"
 
 
-def _stage(**profile) -> GunStage:
+def _state(voice: str = "male", pick: dict | None = None, edit=None) -> dict:
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
     st = GunStage(mgr, None, sleep=lambda _s: None, voice_verdict_sink=lambda _r: None)
-    if profile:
-        st.set_profile(**profile)
-    return st
-
-
-def _state(voice: str = "male", pick: dict | None = None, edit=None) -> dict:
-    st = _stage(voice=voice)
+    st.set_profile(voice=voice)
     for role, sid in (pick or {}).items():
         st.set_voice_slot(role, sid)
     s = json.loads(json.dumps(st.state(), default=str))
@@ -42,7 +36,7 @@ def _no_heal_cue(s: dict) -> None:
 
 
 def _stale(s: dict) -> None:
-    s["voice"].pop("heal", None), s["voice"].pop("heal_line", None)   # a stage server that predates the card
+    del s["voice"]["heal"], s["voice"]["heal_line"]   # a stage server that predates the card
 
 
 # (id, group, caption, state)
