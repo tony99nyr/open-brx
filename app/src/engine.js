@@ -7832,7 +7832,9 @@ export class Engine {
     const full = this.maxShield > 0 && shield >= this.maxShield;
     const pool = gains[0][0];
     if (pool === 'shield' && full) this._shieldCharged();
-    const kind = pool === 'health' ? 'healed' : pool === 'armor' ? 'armour_up'
+    // F685 review: the gun no longer says the heal line (t15 ships empty), so any health rise is a heal and says
+    // `healed`, even when the armour rose more (a combined grant). The moment above still shows the largest rise.
+    const kind = gains.some(g => g[0] === 'health') ? 'healed' : pool === 'armor' ? 'armour_up'
       : full ? 'shield_online' : this._shieldRegen ? null : 'shield_up';   // mid-recharge: `shield_charging` already spoke
     // Tony 2026-09-24: no voice line when the shield comes back online. Its lights stay; the line is gone.
     if (kind === 'shield_online') this._eventLeds(kind);

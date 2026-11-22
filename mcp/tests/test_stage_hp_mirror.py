@@ -608,3 +608,22 @@ def test_r3_a_revive_burst_that_waited_past_play_queue_stale_still_goes():
     assert sent(True), "the revive burst goes out after the backlog, never stale-dropped"
     assert not sent(False), "CONTROL: an ordinary cue behind the same backlog is stale-dropped"
     assert sent(False, over_ms=0), "CONTROL: at exactly PLAY_QUEUE_STALE_MS the ordinary cue still goes (the limit is inclusive)"
+
+
+def test_f685_a_combined_grant_says_healed_as_on_the_phone():
+    """F685 review (engine.js `_hpGainMoment`): t15 ships empty, so any health rise says `healed`, even when the armour
+    rose more. CONTROL: an armour-only rise still says `armour_up`."""
+    async def run():
+        st, mgr, clock, sched = _mk_audio()
+        await _live_quiet(st, clock, sched, clock_sleep=False)
+        healed, armour = st.bundle["cues"]["healed"], st.bundle["cues"]["armour_up"]
+        st._inject_rx(HIT); _says(st, "$HP,30,0,0,*"); await settle(st)
+        clock.advance(2.0); st.poll(); await settle(st)
+        n = len(tx(mgr))
+        _says(st, "$HP,35,20,0,*"); await settle(st)                     # +5 health, +20 armour
+        assert healed in tx(mgr)[n:] and armour not in tx(mgr)[n:], tx(mgr)[n:]
+        clock.advance(3.0); st.poll(); await settle(st)
+        n = len(tx(mgr))
+        _says(st, "$HP,35,30,0,*"); await settle(st)                     # CONTROL: armour only
+        assert armour in tx(mgr)[n:] and healed not in tx(mgr)[n:], tx(mgr)[n:]
+    asyncio.run(run())

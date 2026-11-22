@@ -657,7 +657,8 @@ def quiet_gun(st, clock) -> None:
 
 def test_a_pool_rise_fires_healed_armour_up_or_shield_up_by_the_biggest_gain_like_the_phone():
     """CONTROL: before this the stage fired none of them (zero occurrences of `healed` in stage.py), so the
-    bench could not exercise the heal path at all. The event named is the BIGGEST rise; the readout
+    bench could not exercise the heal path at all. The event named is the BIGGEST rise, except that any health rise
+    is `healed` (F685); the readout
     repaints for the innermost pool that moved (health first) exactly as a drop does."""
     async def go():
         st, mgr, clock = mk_gain()
@@ -693,13 +694,14 @@ def test_a_pool_rise_fires_healed_armour_up_or_shield_up_by_the_biggest_gain_lik
         n = mark(mgr)
         st._on_rx("$HP,40,0,0,*"); await settle(st)                  # +20 health: healed
         assert cues["healed"] in since(mgr, n) and cues["armour_up"] not in since(mgr, n)
-        # the biggest rise names the event: health +5 and armour +70 in one frame is armour_up
+        # F685 review: any health rise is a heal (t15 ships empty, so only this line says it): health +5 and
+        # armour +70 in one frame is `healed`, though the log names the biggest rise
         clock.advance(1.0)
         quiet_gun(st, clock)
         n = mark(mgr)
         st._on_rx("$HP,45,70,0,*"); await settle(st)
-        assert cues["armour_up"] in since(mgr, n) and cues["healed"] not in since(mgr, n)
-        assert any("pool rise: armour_up (armor +70)" in l["text"] for l in st.log)
+        assert cues["healed"] in since(mgr, n) and cues["armour_up"] not in since(mgr, n)
+        assert any("pool rise: healed (armor +70)" in l["text"] for l in st.log)
         # ...and the readout repainted for the INNERMOST pool that moved (health first), gain or drop alike
         assert st._readout_last_pool == "health"
     asyncio.run(go())

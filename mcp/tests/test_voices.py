@@ -73,8 +73,10 @@ def test_pset_ids_and_role_id_honour_the_override():
     assert ls["V35"]["uses"] == ["pset:death_scream"] and ls["V33"]["uses"] == [] and ls["V38"]["uses"] == ["cue:kill"]
     assert voice_tail("heavy", {"death_scream": "V35"}) == ["V35", "", "", "", "", ""]   # A15.3: cry + all three pains empty; F685: relief too
     # a pick from OUTSIDE the family still appears in the list, flagged
+    # F685 review: a pain relief pick never goes back into t15; it picks the phone's heal line instead
+    assert V.pset_ids("heavy", {"pain_relief": "V87"})["pain_relief"] == "" and V.role_ids("heavy", "healed", {"pain_relief": "V87"}) == ["V87"]
     ls = {l["id"]: l for l in V.lines("heavy", {"pain_relief": "V87"})}
-    assert ls["V87"]["role_words"] == "outside the family" and ls["V87"]["uses"] == ["pset:pain_relief"]
+    assert "V87" not in ls
 
 
 def test_hurt_loop_is_playable_and_long_death_is_retired():

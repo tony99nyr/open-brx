@@ -214,7 +214,9 @@ def pset_ids(voice: str | None, slots: dict | None = None) -> dict[str, str]:
     out = {role: fam + suf for role, suf in zip(PSET_ROLES, _VOICE_SLOTS)}
     for role in OURS:
         out[role] = ""
-    out.update({r: i for r, i in ov.items() if r in PSET_ROLES})
+    # F685 review: a `pain_relief` pick never goes back into t15 (the phone would say the line too); it is the
+    # phone's `healed` line instead (`role_ids`).
+    out.update({r: i for r, i in ov.items() if r in PSET_ROLES and r != "pain_relief"})
     return out
 
 
@@ -227,6 +229,8 @@ def role_ids(voice: str | None, role: str, slots: dict | None = None) -> list[st
     ov = check_slots(slots)
     if role in ov:
         return [ov[role]]
+    if role == "healed" and "pain_relief" in ov:   # F685 review: the old $PSET pick now picks the phone's heal line
+        return [ov["pain_relief"]]
     fam = family(voice)
     on = snd.on_gun_ids()
     if role in ROLE_FIXED:

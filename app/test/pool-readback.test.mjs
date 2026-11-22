@@ -241,6 +241,7 @@ test('review M1: POOLS WRONG clears on a later in-range report (a RESYNC GUN or 
 test('F685 (Tony 2026-11-22, option a): the $PSET ships t15 empty and the phone says the heal line once; a death and its respawn never do', () => {
   const t15 = PSET.split(',')[15];
   assert.equal(t15, '', `the head's $PSET t15 (painRelief) ships empty: ${PSET}`);
+  for (const f of golden.pset_pool) assert.equal(f.split(',')[15], '', `every per-spawn $PSET ships t15 empty too: ${f}`);
   const HEALED = /^\$PLAY,[^*]*\bVA7\b/;
   const h = harness();
   h.adv(4000);
@@ -250,6 +251,12 @@ test('F685 (Tony 2026-11-22, option a): the $PSET ships t15 empty and the phone 
   h.gun.hp = 45; h.f('$HP,45,70,0,*');                                // a medkit: health rises from 25
   h.adv(4000);
   assert.equal(h.writes.slice(n).filter(f => HEALED.test(f)).length, 1, `one heal line: ${h.writes.slice(n).join(' ')}`);
+  h.gun.hp = 35; h.gun.armor = 10; h.f('$HIR,0,0,19,2,70,0,0,*').f('$HP,35,10,0,*');   // review: a hit that takes armour and health
+  h.adv(3000);
+  n = h.writes.length;
+  h.gun.hp = 45; h.gun.armor = 70; h.f('$HP,45,70,0,*');              // a combined grant: armour rises more than health
+  h.adv(4000);
+  assert.equal(h.writes.slice(n).filter(f => HEALED.test(f)).length, 1, `a combined grant is still a heal: ${h.writes.slice(n).join(' ')}`);
   n = h.writes.length;
   h.gun.hp = 0; h.gun.armor = 0; h.f('$HIR,0,0,19,2,120,0,0,*').f('$HP,0,0,0,*');   // a lethal hit
   h.adv(15000);                                                       // past the 8 s auto respawn: the gun refills from 0
