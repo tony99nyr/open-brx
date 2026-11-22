@@ -45,7 +45,7 @@ test('only the voice a thumb stops on goes to MC, after the debounce', () => {
   h.eng.stepVoice(1); h.eng.stepVoice(1); h.eng.stepVoice(1);
   assert.deepEqual(h.sent(), [], 'nothing on the wire inside the window');
   h.adv(400);
-  assert.deepEqual(h.sent(), [{ player_id: 'p1', slot: 'voice', kind: 'voice', id: 'male' }]);
+  assert.deepEqual(h.sent(), [{ player_id: 'p1', slot: 'voice', kind: 'voice', id: 'male', req: 1 }]);
   h.adv(400);
   assert.equal(h.sent().length, 1, 'sent once');
 });
@@ -95,6 +95,31 @@ test('an ack that names an older sent pick keeps the newer sent pick on screen',
   assert.equal(h.eng.state().voice, 'heavy'); assert.equal(h.eng.state().voicePending, true);
   h.ack({ ok: true, id: 'heavy' });
   assert.equal(h.eng.state().voicePending, false);
+});
+
+test('two requests for the same voice: the first ack keeps the second pending (MC echoes req)', () => {
+  const h = kit();
+  h.eng.requestVoice('scout'); h.adv(400);
+  h.eng.requestVoice('scout'); h.adv(400);
+  const [a, b] = h.sent().map(x => x.req);
+  assert.ok(a && b && a !== b, 'each request carries its own req');
+  h.ack({ ok: true, id: 'scout', req: a });
+  assert.equal(h.eng.state().voicePending, true);
+  h.ack({ ok: true, id: 'scout', req: b });
+  assert.equal(h.eng.state().voicePending, false);
+});
+
+test('a console edit back to the voice the phone sent, after its echo, still wins over an unsent pick', () => {
+  const h = kit();
+  const assign = voice => h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, voice }, team: h.team, roster: [], catalog: h.catalog, policy: h.policy } });
+  h.eng.requestVoice('scout'); h.adv(400);       // scout sent
+  assign('scout');                                // its own echo
+  assign('heavy');                                // a console edit
+  h.eng.requestVoice('male');                     // unsent
+  assign('scout');                                // the console sets scout again
+  h.adv(400);
+  assert.deepEqual(h.sent().map(b => b.id), ['scout'], 'the unsent pick was dropped');
+  assert.equal(h.eng.state().voice, 'scout');
 });
 
 test('READY UP sends a voice pick still in its window', () => {

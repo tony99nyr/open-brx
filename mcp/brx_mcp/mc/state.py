@@ -6655,7 +6655,7 @@ class Session:
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
         if slot == "voice":
-            self._on_voice_request(nid, p, rid)
+            self._on_voice_request(nid, p, rid, body.get("req"))
             return
         if rid and slot == "perk" and kind == "perk":
             rid = canonical_perk_id(rid)                # a live client may still say quick_hands / quick_switch
@@ -6716,7 +6716,7 @@ class Session:
                                            **({"dropped": dropped} if dropped else {}), "loadout": p["loadout"]})
         self._changed()
 
-    def _on_voice_request(self, nid: str, p: Player, voice: str | None) -> None:
+    def _on_voice_request(self, nid: str, p: Player, voice: str | None, req: object = None) -> None:
         """Tony 2026-11-22: the player picks their voice on the phone's KIT screen. The pick is the same `Player.voice`
         the console sets, so a later console edit wins, and it is refused on the same terms as a loadout pick: the kit
         locks at START (A30) and it opens only on KIT (loadout.md §4.1). The voice is not a loadout rule: a game that fixes
@@ -6730,6 +6730,9 @@ class Session:
             ok, reason = False, "Mission Control is still setting up the game"
         if ok and voice is not None and voice != p.get("voice"):
             p["voice"] = voice
+            # A15 `voice_slots` name lines of the OLD family (a spawn pick would keep the old voice's spawn line): a
+            # player's own voice change starts the new family on its defaults. The console can pick lines again.
+            p.pop("voice_slots", None)
             self._after_player_change(p)
         # The gun plays one random spawn or kill line of the voice, at the game's head volume so it is as loud as in the
         # match. The same voice again plays a line too: the player asked to hear it. Never after the push (the node's
@@ -6743,9 +6746,11 @@ class Session:
                 frames = []
             if frames:
                 self.net.push(nid, "apply", {"preview": True, "frames": frames})
-        # `id` names the pick this ack answers, so the phone keeps a newer pick on screen while an older ack lands.
+        # `id` (and the phone's `req` counter, when it sent one) name the pick this ack answers, so the phone keeps a newer
+        # pick on screen while an older ack lands, also a second "hear it again" of the same voice.
         self.net.push(nid, "loadout_ack", {"slot": "voice", "ok": ok, **({"reason": reason} if reason else {}),
                                            **({"id": voice} if voice is not None else {}),
+                                           **({"req": req} if isinstance(req, int) and not isinstance(req, bool) else {}),
                                            "loadout": p.get("loadout") or {"weapons": []}})
         self._changed()
 
