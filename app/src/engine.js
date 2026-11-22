@@ -113,6 +113,7 @@ const LINK_STALE_MS = 150000;
 // with the 20-minute two-node soak.
 const LINK_WATCHDOG_ENABLED = false;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
+const VOICE_DEBOUNCE_MS = 400;       // Tony 2026-11-22: each VOICE step on the KIT screen plays a line on the gun; a thumb stepping past five voices sends only the one it stops on
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 export const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the results screen says PENDING for this long; only
                                     // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
@@ -809,6 +810,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   // kit-out, lobby and results
   tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
   browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
+  pendingVoice: 'voice pick awaiting its ack', _voiceDue: 'voice pick debounce: at worst the player picks again', voiceAck: 'MC voice verdict (cleared after ~4 s)',
   kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC states it in `assign` and the welcome (`hydrate`), on only',
   refused: 'diagnostic count', endAck: 'the result screen shows again until OK', _linkedSinceEnd: 'A81: a restart in RECAP may show MC NOT REACHED until the sync track reads RECEIVED again', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
   cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
@@ -999,6 +1001,9 @@ export class Engine {
     this.loadoutAck = null;         // MC's verdict on the last pick: {slot, ok, reason, t} — tick() clears it after ~4 s
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
     this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
+    this.pendingVoice = null;       // Tony 2026-11-22: the voice the KIT screen shows until MC acks it: {id, at}
+    this._voiceDue = null;          // the voice pick waiting out VOICE_DEBOUNCE_MS: {id, at}
+    this.voiceAck = null;           // MC's verdict on the last voice pick: {ok, reason, t}
     this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
     this.kitLockedFor = null;       // F133: the config_id the lock was raised for; a push of another game retires it
     // T2-B item 2 (2026-09-13): STANDBY (M-STANDBY §3): MC benched this player (`assign.standby: true`).
@@ -2616,10 +2621,15 @@ export class Engine {
       case 'control': return this.control(body);
       case 'apply': {
         const fr = body.frames || [];
-        if (this.phase === 'live') return this._write(fr, 'apply');
         // A9.1 preview: sound-only applies may play OFF-live (voice/gamertag preview at the bench) —
-        // restricted to $PLAY/$SFLASH so A6.4's no-state-writes-off-live safety holds.
-        if (body.preview && ['connected', 'kitted', 'lobby'].includes(this.phase) && fr.length && fr.every(f => f.startsWith('$PLAY') || f.startsWith('$SFLASH'))) return this._write(fr, 'apply preview');
+        // restricted to $PLAY/$SFLASH so A6.4's no-state-writes-off-live safety holds. Tony 2026-11-22: a `$VOL` may
+        // ride in front (the KIT voice pick plays at the game's volume). A preview never plays while ARMED or LIVE.
+        if (body.preview) {
+          const sound = f => f.startsWith('$PLAY') || f.startsWith('$SFLASH') || f.startsWith('$VOL,');
+          if (['connected', 'kitted', 'lobby'].includes(this.phase) && fr.length && fr.every(sound)) return this._write(fr, 'apply preview');
+          return undefined;
+        }
+        if (this.phase === 'live') return this._write(fr, 'apply');
         return undefined;
       }
       case 'result': return this.onResultPush(body, 'push');   // A24 — never inferred, only ever pushed
@@ -2992,7 +3002,45 @@ export class Engine {
     this.report('loadout_browse', { player_id: this.player && this.player.player_id, open });
     this._changed();
   }
+  // ---------- Tony 2026-11-22: the player's VOICE, picked on the KIT screen ----------
+  /** The personas MC offers (`assign.catalog.voices`, `[{id, name}]`). Empty from an MC older than the picker: no VOICE row. */
+  voiceList() { const c = this.catalog; return (c && Array.isArray(c.voices)) ? c.voices.filter(v => v && v.id) : []; }
+  /** The voice the KIT screen shows: the pick in flight, else the one MC holds. */
+  shownVoice() { return (this.pendingVoice && this.pendingVoice.id) || (this.player && this.player.voice) || null; }
+  /** Same window as a loadout pick (KITTED, kit open, not benched). The voice is not a loadout rule, so `hud_select` does not gate it. */
+  canPickVoice() { return !!(this.player && this.voiceList().length && this.phase === 'kitted' && !this.ended && !this.standby && this.kitOpen()); }
+  /** Pick a voice. The row changes at once; MC hears only the last pick inside VOICE_DEBOUNCE_MS, sets `Player.voice`
+   *  and plays one random spawn or kill line of it on the gun at the game's volume. The same voice again plays another line. */
+  requestVoice(id) {
+    if (!this.canPickVoice() || !this.voiceList().some(v => v.id === id)) return false;
+    this.pendingVoice = { id, at: this.now() };
+    this._voiceDue = { id, at: this.now() };
+    this.voiceAck = null;
+    this._changed(); return true;
+  }
+  /** Step the voice left (-1) or right (+1) through MC's list, wrapping at the ends. */
+  stepVoice(dir) {
+    const list = this.voiceList(); if (!list.length) return false;
+    const i = list.findIndex(v => v.id === this.shownVoice());
+    const j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + (dir > 0 ? 1 : -1) + list.length) % list.length;
+    return this.requestVoice(list[j].id);
+  }
+  _flushVoice() {
+    const v = this._voiceDue; if (!v) return false;
+    this._voiceDue = null;
+    if (!this.canPickVoice()) { this.pendingVoice = null; this._changed(); return false; }   // the kit closed inside the window
+    if (this.pendingVoice) this.pendingVoice.at = this.now();   // the ack timeout runs from the send
+    this.report('loadout_request', { player_id: this.player && this.player.player_id, slot: 'voice', kind: 'voice', id: v.id });
+    return true;
+  }
   _loadoutAck({ slot, ok, reason, dropped, loadout }) {
+    if (slot === 'voice') {
+      // An ack for an older pick while a newer one waits in the window keeps the newer one on screen.
+      if (!this._voiceDue) this.pendingVoice = null;
+      this.voiceAck = { ok: !!ok, reason: reason || null, t: this.now() };
+      if (!ok) this.log(`voice pick refused: ${reason || ''}`, 'le');
+      this._changed(); return;
+    }
     if (loadout && this.player) {
       // Older MCs omit accessibility overrides from slot-scoped echoes. Keep the
       // current override unless the echo explicitly supplies a replacement.
@@ -4397,6 +4445,9 @@ export class Engine {
     this._checkEcho();
     this._operatorResyncTick(now);   // F287: also cancels outside LIVE, so a phase change cannot strand it
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
+    if (this._voiceDue && now - this._voiceDue.at >= VOICE_DEBOUNCE_MS) this._flushVoice();
+    if (this.pendingVoice && !this._voiceDue && now - this.pendingVoice.at > 6000) { this.pendingVoice = null; this._changed(); }   // MC never answered: show the voice MC holds
+    if (this.voiceAck && now - this.voiceAck.t > 4000) { this.voiceAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
     // F147: past TRYOUT_ARM_MAX_MS with no confirming $ALCD/$LCD, resolve it HONESTLY (polish-loop pass 2)
@@ -8533,6 +8584,7 @@ export class Engine {
       // A10 self-serve kitting
       catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
       canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), canPickPerk: this.canPick('perk'), tryoutSeen: this.tryoutSeen,
+      voices: this.voiceList(), voice: this.shownVoice(), voicePending: !!this.pendingVoice, voiceAck: this.voiceAck, canPickVoice: this.canPickVoice(),
       game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen, kitLocked: this.kitLocked,
       standby: !!this.standby,   // T2-B item 2: benched — the HUD shows SITTING OUT instead of the kit/lobby screen
       // S56 "what hit me": this life's damage taken/dealt breakdown, and the one just finished (kept until

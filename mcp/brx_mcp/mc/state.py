@@ -1375,7 +1375,9 @@ class Session:
         from .views import weapon_views                  # one view builder for HTTP and the wire
         weapons, perks = self._catalog_rows()
         # `bars` need the whole arsenal; htk/ttk need this game's health pool
-        return {"weapons": weapon_views(weapons, self.health_pool(p)), "perks": perks}
+        # Tony 2026-11-22: the KIT screen's VOICE picker reads the same personas the console offers (`GET /api/voices`).
+        voices = [{"id": o["id"], "name": o["name"]} for o in self.compiler.voice_options() if o.get("id")]
+        return {"weapons": weapon_views(weapons, self.health_pool(p)), "perks": perks, "voices": voices}
 
     def kit_open(self) -> bool:
         """A10 §4.1: phones may browse/pick/try only while the host is on KIT and the lobby is not pushed. Before
@@ -1970,24 +1972,34 @@ class Session:
             self._push_voice_preview(p)
         return p
 
-    def _push_voice_preview(self, p: Player) -> None:
+    def _push_voice_preview(self, p: Player, pick: bool = False) -> None:
         """A9.1: best-effort `apply{preview}` of the voice family's INTRO line so a VOICE/gamertag change
         is audible on the bound tagger. One $PLAY frame — the node's preview gate drops anything that
         isn't $PLAY/$SFLASH and ignores a preview once past LOBBY, so this is safe to fire optimistically.
 
         S39 (field 2026-09-12, Tony): the preview used to play the KILL line, which tells the operator
         nothing about the character they just picked. The intro is that character introducing
-        themselves. A family with no intro take falls back to the kill line rather than going silent."""
+        themselves. A family with no intro take falls back to the kill line rather than going silent.
+
+        `pick` (Tony 2026-11-22): the PLAYER picked the voice on the phone's KIT screen. That preview plays one random
+        spawn line or kill confirm (`voice_pick_preview`), after a `$VOL` at the game's head volume, so the line is as
+        loud as it will be in the match. Only a phone with the KIT voice picker sends that pick, and its preview gate
+        accepts the `$VOL`."""
         nid = p.get("node_id")
         if not nid:
             return
         voice, slots = p.get("voice") or "male", p.get("voice_slots")
         try:
-            cue = self.compiler.voice_preview(voice, slots)
+            if pick:
+                cue = self.compiler.voice_pick_preview(voice, slots, self._voice_rng)
+                frames = [f"$VOL,{self.compiler.head_volume(self.config)},0,*", cue] if cue else []
+            else:
+                cue = self.compiler.voice_preview(voice, slots)
+                frames = [cue] if cue else []
         except Exception:
-            cue = None
-        if cue:
-            self.net.push(nid, "apply", {"preview": True, "frames": [cue]})
+            frames = []
+        if frames:
+            self.net.push(nid, "apply", {"preview": True, "frames": frames})
 
     def _voice_ids(self) -> set[str]:
         ids = {"male", "female"}
@@ -6651,6 +6663,9 @@ class Session:
         p = self.players[pid]
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
+        if slot == "voice":
+            self._on_voice_request(nid, p, rid)
+            return
         if rid and slot == "perk" and kind == "perk":
             rid = canonical_perk_id(rid)                # a live client may still say quick_hands / quick_switch
         weapons, perks = self._catalog_rows()
@@ -6708,6 +6723,29 @@ class Session:
                     return
         self.net.push(nid, "loadout_ack", {"slot": slot, "ok": bool(ok), **({"reason": reason} if reason else {}),
                                            **({"dropped": dropped} if dropped else {}), "loadout": p["loadout"]})
+        self._changed()
+
+    def _on_voice_request(self, nid: str, p: Player, voice: str | None) -> None:
+        """Tony 2026-11-22: the player picks their voice on the phone's KIT screen. The pick is the same `Player.voice`
+        the console sets, so a later console edit wins, and it is refused on the same terms as a loadout pick: the kit
+        locks at START (A30) and it opens only on KIT (loadout.md §4.1). The voice is not a loadout rule: a game that fixes
+        the weapons (`hud_select` off) still lets the player pick a voice. The gun plays one random spawn or kill line of the new voice (`_push_voice_preview(pick=True)`). Always acked."""
+        ok, reason = True, None
+        if not isinstance(voice, str) or voice not in self._voice_ids():
+            ok, reason = False, "Unknown voice"
+        elif self.in_play():
+            ok, reason = False, KIT_LOCKED
+        elif not self.lobby_pushed and self.phase != "kit":
+            ok, reason = False, "Mission Control is still setting up the game"
+        if ok and voice != p.get("voice"):
+            p["voice"] = voice
+            self._after_player_change(p)
+        # The same voice again plays a line too: the player asked to hear it. Never after the push (the node's gate
+        # drops a preview once ARMED anyway).
+        if ok and self.phase == "kit" and not self.lobby_pushed:
+            self._push_voice_preview(p, pick=True)
+        self.net.push(nid, "loadout_ack", {"slot": "voice", "ok": ok, **({"reason": reason} if reason else {}),
+                                           "loadout": p.get("loadout") or {"weapons": []}})
         self._changed()
 
     def _kit_volume(self, nid: str) -> bool:

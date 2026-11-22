@@ -650,6 +650,9 @@ Object.assign(hud.h, {
   // what left a lobby READY UP tap doing nothing once the button existed to tap.
   onReady: () => { if (engine.setReady(!engine.ready)) haptic('tap'); },
   // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
+  // Tony 2026-11-22: the VOICE row on the KIT screen. A step picks the next voice; the name plays another line of the same one.
+  onVoiceStep: dir => { if (engine.stepVoice(Number(dir) < 0 ? -1 : 1)) haptic('tap'); },
+  onVoiceHear: () => { if (engine.requestVoice(engine.shownVoice())) haptic('tap'); },
   onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; hud.lo.confirm = null; engine.browse(true); haptic('tap'); },
   // A26: leaving a rack COMMITS the pick sitting in its debounce window — the same rule as CLOSE and READY UP.
   // Without this, tapping a weapon and switching tab inside 400 ms dropped the pick on the floor (review 2026-09-12).

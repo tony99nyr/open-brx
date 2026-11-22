@@ -265,6 +265,8 @@ export class Hud {
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
       !!(st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload),
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length),
+      // Tony 2026-11-22: the KIT screen's VOICE row (a step, its ack, a refusal, MC's list arriving)
+      st.voice, st.voicePending, st.voiceAck && st.voiceAck.t, st.canPickVoice, (st.voices || []).length,
       // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
       // message arriving — nothing else in the signature moves at that moment.

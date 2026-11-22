@@ -119,6 +119,9 @@ class FakeCompiler:
     def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
         return self.cues(voice, slots).get("kill")
 
+    def voice_pick_preview(self, voice: str, slots: dict | None = None, rng=None) -> str | None:
+        return self.voice_preview(voice, slots)
+
     def hit_plan(self, roster: list, rekey: bool = False) -> None:
         return None
 

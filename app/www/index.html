@@ -1367,6 +1367,19 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .plate.slot .s{font-size:11px;letter-spacing:.03em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plate.slot.tap{border-color:var(--glow);box-shadow:0 0 22px -12px var(--glow)}
 .plate.slot.locked{opacity:.75}
+/* Tony 2026-11-22: the VOICE row on the KIT screen. Big targets: a player wears gloves and holds a gun. */
+.lobby .voicerow{flex:0 0 100%;display:flex;align-items:stretch;gap:10px;height:56px;pointer-events:auto}
+.lobby .voicerow .vstep{flex:0 0 72px;font-size:22px;color:var(--glow);background:var(--plate);border:1px solid var(--glow);transform:skewX(-8deg);box-shadow:0 0 22px -12px var(--glow)}
+.lobby .voicerow .vstep:active{background:var(--glow);color:#04111d}
+.lobby .voicerow .vname{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:2px;align-content:center;align-items:center;text-align:left;padding:4px 18px;background:var(--plate);border:1px solid var(--glow);box-shadow:0 0 22px -12px var(--glow);transform:skewX(-8deg)}
+.lobby .voicerow .vname > *{transform:skewX(8deg)}
+.lobby .voicerow .vname .k{grid-row:1/3;font-family:var(--fl);font-size:11px;letter-spacing:.26em;color:var(--mut);font-weight:700;white-space:nowrap}
+.lobby .voicerow .vname .v{font-weight:700;font-size:22px;line-height:1.05;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lobby .voicerow .vname .s{font-family:var(--fl);font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lobby .voicerow .vname.pend{box-shadow:0 0 26px -6px var(--glow)}
+.lobby .voicerow .vname.pend .s{color:var(--glow)}
+.lobby .voicerow .vname.bad .s{color:var(--warn)}
+[data-env="night"] .lobby .voicerow .vstep,[data-env="night"] .lobby .voicerow .vname{background:#0a0303;border-color:var(--mut);box-shadow:none}[data-env="night"] .lobby .voicerow .vstep,[data-env="night"] .lobby .voicerow .vname.pend .s{color:var(--num)}   /* the night kit: no glow, the plate ink (#24) */
 .lobby .platehint{flex:0 0 100%;padding-left:8px;margin-top:-2px;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:700}
 .tryout .tact{flex:0 0 170px;display:flex;flex-direction:column;justify-content:center;gap:8px;pointer-events:auto}
 .tryout .tact .small{line-height:1.4;letter-spacing:.08em}

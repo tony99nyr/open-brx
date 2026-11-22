@@ -2,7 +2,7 @@
 // hardware and no server. Feeds the engine scripted BRX frames and MC messages.
 import golden from '../../mcp/brx_mcp/mc/golden_bundle.json';
 
-import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the server catalog shape (regenerate from weapons.json when it changes)
+import { DEMO_WEAPONS, DEMO_PERKS, DEMO_VOICES, DEMO_VOICE_LINES } from './demo-catalog.js';   // a COPY of the server catalog shape (regenerate from weapons.json when it changes)
 import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
 import { NUS } from './brxlink.js';
 import { locationCheck } from './location.js';   // F340: the stage runs the phone's own Location check
@@ -40,7 +40,7 @@ export function startDemo({ engine, log }) {
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };
   // --- A10: the catalog + this player's slot rights ride along in `assign` (docs/spec/loadout.md §4.1) ---
   const notHeavy = DEMO_WEAPONS.filter(w => !(w.tags || []).includes('heavy')).map(w => w.weapon_id);   // the FFA default: NO HEAVIES
-  const catalog = { weapons: DEMO_WEAPONS, perks: DEMO_PERKS };
+  const catalog = { weapons: DEMO_WEAPONS, perks: DEMO_PERKS, ...(q.has('novoices') ? {} : { voices: DEMO_VOICES }) };   // &novoices: an MC from before the KIT voice picker
   // A14: three rules — the perk is its own slot
   const policy = locked
     ? { hud_select: true, primary: { choice: 'fixed', allowed_ids: ['sniper_rifle'] }, secondary: { choice: 'off', kinds: ['weapon'], allowed_weapon_ids: [] }, perk: { choice: 'fixed', allowed_perk_ids: ['extended_mags'] } }
@@ -68,6 +68,22 @@ export function startDemo({ engine, log }) {
       '$SIR,0,0,,1,0,0,1,,*',
       '$TID,1,*', `$WEAP,0,${w.weapon_id},*`, '$SPAWN,,*', '$PLAYX,0,*', `$AMMO,0,${w.clip},${w.reserve},1,*`, '$BMAP,0,0,,,,,*'] });
   engine.report = (kind, body) => {
+    if (kind === 'loadout_request' && body.slot === 'voice') {
+      // Tony 2026-11-22: as MC's `_on_voice_request`: set the voice, ack, re-assign, then one random spawn or kill line at
+      // the game's head volume (90 outdoors), interrupting the last one.
+      const ok = !reject && DEMO_VOICES.some(v => v.id === body.id), reason = ok ? null : 'Unknown voice';   // the one refusal a KIT screen can see (MC: in play or before KIT, the row is not drawn)
+      setTimeout(() => {
+        engine.onMcMessage({ kind: 'loadout_ack', body: { slot: 'voice', ok, ...(reason ? { reason } : {}), loadout: player.loadout } });
+        if (!ok) return;
+        const changed = player.voice !== body.id;
+        player.voice = body.id;
+        if (changed) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } });
+        const pool = DEMO_VOICE_LINES[body.id] || [];
+        if (pool.length) engine.onMcMessage({ kind: 'apply', body: { preview: true, frames: ['$VOL,90,0,*', `$PLAY,${pool[Math.floor(Math.random() * pool.length)]},4,6,,,,,*`] } });
+      }, ackDelayMs);
+      log(`demo MC ← loadout_request voice ${body.id}`, 'lr');
+      return prevReport ? prevReport(kind, body) : undefined;
+    }
     if (kind === 'loadout_request') {
       const lo = JSON.parse(JSON.stringify(player.loadout));
       let ok = !reject, reason = reject ? 'Host locked this slot' : null;
@@ -653,6 +669,10 @@ export function startDemo({ engine, log }) {
       'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'suppressor')]],
       'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
       'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'fast_hands')]],
+      // Tony 2026-11-22: the VOICE row. `picking` holds MC's ack so the in-flight look can be read; `picked` is after it.
+      'kitted-voice-picking': [...kitted, [400, () => ev.slowAck(60000)], [500, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')]],
+      'kitted-voice-picked':  [...kitted, [400, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')], [600, () => ev.tap('[data-act="onVoiceStep"][data-arg="1"]')]],
+      'kitted-voice-refused': [...kitted, [400, () => ev.tap('[data-act="onVoiceStep"][data-arg="-1"]')]],   // with &reject
       'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
       'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
       // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.
