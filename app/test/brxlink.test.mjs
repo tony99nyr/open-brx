@@ -568,6 +568,31 @@ test('F684: background reconnect also scans after the first timeout', async ctx 
   assert.equal(r.scans, 1);
 });
 
+test('F684 review: a bounded relink whose last attempt times out fails at once, with no release or scan', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig({ relinkAttempts: 1 }); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true; r.keepStale = true;
+  let at = null; const done = r.link.relink().then(v => { at = { scans: r.scans, releases: r.releases }; return v; });
+  assert.ok(await settleUntil(settle, () => at !== null, 1000) >= 0, 'the relink never ended');
+  assert.equal(await done, false);
+  assert.equal(at.scans, 0, 'the failed relink ran a recovery scan before it gave up');
+  assert.equal(at.releases, 1, 'only the forced disconnect released the gun');
+});
+
+test('F684 review: the background loop scans after its first timeout, then every second timeout', async ctx => {
+  const settle = useClock(ctx);
+  const r = staleGattRig(); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.stale = true; r.keepStale = true;   // the gun is off: no scan cures it
+  r.cb();
+  assert.ok(await settleUntil(settle, () => r.calls.length >= 8, 120000) >= 0, 'setup: the loop kept trying');
+  const timeouts = r.calls.length - 2;   // the first connect linked; the last may still be in flight
+  assert.ok(timeouts >= 6, `setup: ${timeouts} timeouts`);
+  assert.ok(r.scans <= 1 + Math.ceil((timeouts - 1) / 2), `${r.scans} scans after ${timeouts} timeouts`);
+  assert.ok(r.scans >= 2, 'it keeps scanning, less often');
+});
+
 test('a normal first connect and relink use no recovery scan', async ctx => {
   const r = staleGattRig(); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');

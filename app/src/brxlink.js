@@ -164,6 +164,10 @@ const RECOVERY_SCAN_MS = 2000;
 // the release and scan after it linked at once: two blind 5 s timeouts cost about 17.4 s with no gun after go-live. So
 // the release and scan run after the FIRST timeout. A fast 133 failure (F297) is not a timeout and keeps its own retry.
 const RECOVERY_TIMEOUTS = 1;
+// F684 review: a background loop (a real drop) can run for minutes against a gun that is off. After its first recovery
+// scan it scans again only every second timeout, the cadence before F684, so the release and scan do not follow every
+// 10 s timeout. A RELINK is bounded (RELINK_ATTEMPTS) and keeps RECOVERY_TIMEOUTS.
+const RECOVERY_TIMEOUTS_AGAIN = 2;
 
 // F293 (bench 2026-09-24, Pixel 5, Tactix-FE30): with the app open while the gun and headset power-cycle, the phone
 // relinked 5-10 s after power-on, before the headset had joined the gun. The gun then dropped the phone every 6-10 s,
@@ -536,7 +540,7 @@ export class BrxLink {
   }
 
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
-    let last, quick133 = 0, timeouts = 0, outTries = 0;   // F297: fast 133 failures of the native connect, in a row
+    let last, quick133 = 0, timeouts = 0, outTries = 0, scans = 0;   // F297: fast 133 failures of the native connect, in a row
     for (let i = 1; ; i++) {
       // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
       // already running reconnected in the middle of the wait. A manual action clears `_flapNextAt` and wakes us.
@@ -549,7 +553,7 @@ export class BrxLink {
         this._relinkRestart = false;
         this._log('relink: queued tap restarting with a fresh scan', 'li');
         id = await this._freshScan(id, gen);
-        timeouts = 0;
+        timeouts = 0; scans++;
       }
       if (gen !== this._gen) return false;
       if (onAttempt) this._hook('onAttempt', `connect attempt ${i}`, onAttempt, [i, attempts], undefined);
@@ -591,11 +595,14 @@ export class BrxLink {
         const keep = relink ? i < attempts : forever ? inMatch || outTries < RECONNECT_GIVE_UP : inMatch || i < attempts;   // F563: the forever loop rests
         timeouts = nativeFail && /Connection timeout/i.test(String(e && e.message || e)) ? timeouts + 1 : 0;
         const restart = this._relinkRestart;
-        if ((relink || forever) && (restart || timeouts >= RECOVERY_TIMEOUTS)) {
+        // F684 review: only a loop that tries again recovers. A bounded relink at its last attempt fails now, not after a
+        // release and a scan; a queued tap stays queued for the loop that takes over (`_relinkRestart`).
+        const due = relink || !scans ? RECOVERY_TIMEOUTS : RECOVERY_TIMEOUTS_AGAIN;
+        if (keep && (relink || forever) && (restart || timeouts >= due)) {
           this._relinkRestart = false;
           this._log(restart ? 'relink: queued tap releasing GATT and scanning now' : `reconnect: ${timeouts} timeouts, releasing GATT and scanning`, 'li');
           id = await this._freshScan(id, gen);
-          timeouts = 0;
+          timeouts = 0; scans++;
         }
         if (gen !== this._gen) return false;
         if (!keep) {
