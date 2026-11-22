@@ -744,21 +744,31 @@ test('F687: the reboot heal silences the gun\'s own spawn sound with a $PLAYX ri
   assert.notEqual(rw[rs + 1], '$PLAYX,0,*', 'no stop after a real respawn\'s $SPAWN');
 });
 
-test('F687 review: the announcer hears of the heal\'s stop when the burst reaches the gun, not when it is built', async () => {
-  const seen = [];
+test('F687 review: on a link that sends later, the announcer hears of the heal\'s stop as the stop frame goes', async () => {
+  const seen = [], held = [];
   const r = await relinked(h => {
-    const ann = h.eng._ann, respawn = ann.respawn.bind(ann);
-    ann.respawn = (now, stopped) => {
-      const w = h.writes, sp = w.lastIndexOf('$SPAWN,,*');
-      seen.push({ stopped, stopSent: sp >= 0 && w[sp + 1] === '$PLAYX,0,*' });
-      return respawn(now, stopped);
+    const ann = h.eng._ann, respawn = ann.respawn.bind(ann), write = h.eng.writer;
+    ann.respawn = (now, stopped) => { seen.push({ stopped, sentSoFar: [...sent] }); return respawn(now, stopped); };
+    const sent = [];
+    h.eng.writer = (frames, why, options) => {
+      if (!frames.includes('$SPAWN,,*')) return write(frames, why, options);
+      return new Promise(resolve => held.push({ frames, options, resolve, sent }));
     };
     h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd);
   });
   await settleAsks(r.h);
   for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
-  assert.ok(reArmedAt30(r.w), 'setup: the heal re-armed the life');
-  assert.deepEqual(seen, [{ stopped: true, stopSent: true }], 'told once, with the stop, after the burst went');
+  assert.equal(held.length, 1, 'setup: the heal burst waits on the link');
+  assert.deepEqual(seen, [], 'not told while the burst waits on the link');
+  const { frames, options, resolve, sent } = held[0];
+  for (const f of frames) { sent.push(f); if (options && options.onFrameSent) options.onFrameSent(f); }
+  resolve(true);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  assert.equal(seen.length, 1, 'told once');
+  assert.equal(seen[0].stopped, true);
+  const w = seen[0].sentSoFar;
+  assert.equal(w.at(-1), '$PLAYX,0,*', `told as the stop went: ${JSON.stringify(w.slice(-3))}`);
+  assert.equal(w.at(-2), '$SPAWN,,*');
 });
 
 test('F532: failed head heals after an unanswered reboot check never book a death', async () => {

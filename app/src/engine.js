@@ -1814,22 +1814,28 @@ export class Engine {
   }
   /** F416: a failed spawn or revive write gets a pool probe, then a weapon query if health is positive.
    *  Only a matching slot and magazine prove the burst landed. Re-send the burst before any play, else repair
-   *  only team, ammo and trigger controls. The check remains open until a query verifies the result. */
-  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null, sirTake = false, onReach = null) {
+   *  only team, ammo and trigger controls. The check remains open until a query verifies the result.
+   *  @param {(() => void) | null} [onStop] F687 review: runs once, as the link sends the burst's first `$PLAYX` */
+  _writeLife(frames, why, life, check = null, frames0 = null, atSend = null, sirTake = false, onStop = null) {
     const at = this.now();
     // F493: the burst can wait in the play queue behind the native death scream (`waitsForGun`). The weapon delay and
     // the protection release must run from when it REACHES the gun, so `_lifeBurstSent` moves them on by the wait.
     // `sent`: the hold is over; `reached`: the burst really went out (r1 L1: it can do so after the cap let go).
     // `sirTake`: the burst carries a `sir_pool` take (a late start's table), claimed when it reaches the gun (`_lifeBurstSent`).
-    // `onReach`: runs once, when the burst reaches the gun, if its life is still this one (F687 review: a heal's stop).
-    const burst = this._lifeBurst = { life, at, sent: false, reached: false, sirTake, onReach };
+    const burst = this._lifeBurst = { life, at, sent: false, reached: false, sirTake };
     // `lifeBurst` (F493 r1): the play queue never stale-drops this job, and a must-hear line never drops it.
     // Bench 2026-11-14: the typed outcome (brxlink.js WriteOutcome). A `code` failure is our own bug, not a lost write.
     /** @type {{ kind: string, error: string | null } | null} */
     let codeFault = null;
     const onOutcome = (/** @type {any} */ o) => { if (o && o.kind === 'code' && !codeFault) codeFault = { kind: 'code', error: o.error || null }; };
-    const r = this._quietWrite(frames, why, { lifeBurst: true, onOutcome, ...(atSend ? { atSend } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
+    // F687 review: `onStop` runs once, as the link sends the burst's first `$PLAYX` (or when the write settles sent, for a
+    // writer that reports no frames), while the life is still this one. A burst that never goes runs nothing.
+    let stopTold = false;
+    const stopSent = () => { if (!onStop || stopTold) return; stopTold = true; if (this._lifeSeq === life) onStop(); };
+    const r = this._quietWrite(frames, why, { lifeBurst: true, onOutcome, ...(atSend ? { atSend } : {}),
+      ...(onStop ? { onFrameSent: (/** @type {any} */ f) => { if (f === PLAYX) stopSent(); } } : {}) }, () => this._lifeBurstSent(burst, 'sent'));   // F416 part 2: no station scan while this write is on the radio
     Promise.resolve(r).then(ok => {
+      if (ok !== false && ok !== null) stopSent();
       if (ok === false && codeFault) { this._lifeBurstSent(burst, 'write failed'); this._writeBugged(life, frames, why, codeFault.error, burst); return; }
       if (!burst.reached) {
         this._lifeBurstSent(burst, ok === false ? 'write failed' : 'never sent');   // F493: a cancelled or failed burst releases the timers too
@@ -1928,7 +1934,6 @@ export class Engine {
       // no take. Claimed at queue time, a burst the play queue held back undid the claim on its send, and the first
       // revive then re-armed the table it had just written (12 redundant rows).
       if (b.sirTake) this._sirLive = true;
-      if (b.onReach) { const f = b.onReach; b.onReach = null; if (b.life === this._lifeSeq) f(); }
       if (this._lifeBurst === b) this._lifeBurst = null;
       this._takeoverLatch();   // ARCH-2: a REDEPLOYED card already over stays over: the send moves its cap
       // F493 r2: a spawn read-back the queue held back runs SPAWN_PROBE_MS from here, the send (`_spawnProbeTick`).
@@ -4000,9 +4005,10 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
-  /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line. */
-  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null, sirTake = false, onReach = null) {
-    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null, sirTake, onReach);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
+  /** X3: a spawn or revive burst, with the fill LAST after the klaxon and spawn line.
+   *  @param {(() => void) | null} [onStop] `_writeLife`'s */
+  _writeSpawnBurst(frames, fill, why, life, tail = [], armed = null, sirTake = false, onStop = null) {
+    this._writeLife([...frames, ...fill, ...tail], why, life, null, armed ? [...armed, ...fill, ...tail] : null, armed ? this._stunArmAtSend(armed) : null, sirTake, onStop);   // F438: `tail` (a self-hit drain) rides last, so an F416 re-send carries it too
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -4650,7 +4656,7 @@ export class Engine {
       : selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
-    // F687 review: a heal's stop cuts the line on air when it reaches the gun, so the announcer hears of it then (`onReach`).
+    // F687 review: a heal's stop cuts the line on air when it reaches the gun, so the announcer hears of it then (`_writeLife` `onStop`).
     if (!quiet && (!selfHit || burst.includes(PLAYX))) this._ann.respawn(this.now(), burst.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
     const pre = [...(ps.frame ? [ps.frame] : []), ...sir], post = sp.frame ? [sp.frame] : [];
     this.activeSlot = 0;   // Codex 2026-11-08: the burst's `$BMAP,0` binds the new life's slot (engine.js `_bindRows`), set before it
