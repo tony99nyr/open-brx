@@ -152,6 +152,7 @@ class GameDriver:
         # gauge is a DISPLAY layer -- it never affects scoring, and a missing $HP simply means no
         # repaint rather than a wrong one.
         self._pools: dict[str, tuple[int, int, int]] = {}
+        self._heal_hp: dict[str, int] = {}   # F685: the health a CLI heal leaves, until the next `$HP` (`execute`)
         self._gauge_until: dict[str, float] = {}
         # In-flight event bursts, one per player. Cancelled and replaced when a new event arrives, so
         # two events never interleave their colours on the same strip.
@@ -239,6 +240,19 @@ class GameDriver:
             elif isinstance(a, Heal):
                 await self._send(a.player_id, f"$LIFE,{a.hp},{a.armor},{a.shield},*")
                 await self._paint_event(a.player_id, "healed")
+                # F685: the CLI `$PSET` ships t15 empty, so the heal line is ours (the default voice's). `$LIFE` is additive and
+                # clamped, so a grant to a player the last `$HP` showed at full health raises nothing and says nothing.
+                # `_heal_hp` is the health this grant leaves, until the next `$HP`: a second grant must not read the old
+                # health again. It stays apart from `_pools`, which the gauge compares the next `$HP` against.
+                last = self._pools.get(a.player_id)
+                known = self._heal_hp.get(a.player_id, last[0] if last is not None else None)
+                if known is not None:
+                    self._heal_hp[a.player_id] = min(self.config.hp, known + max(0, a.hp))
+                if a.hp > 0 and (known is None or known < self.config.hp):
+                    from .. import voices
+                    line = voices.role_id(None, "healed")
+                    if line:
+                        await self._send(a.player_id, voices.play_line_frame(line), reply_window_ms=0)
             elif isinstance(a, SetTeam):
                 await self._send(a.player_id, f"$TID,{a.team},*")
                 # F86 (bench 2026-09-10): a live `$TID` moves hit resolution at once but leaves BOTH the gun
@@ -541,6 +555,7 @@ class GameDriver:
             return None                      # a malformed $HP must not paint a wrong gauge
         before = self._pools.get(pid)
         self._pools[pid] = after
+        self._heal_hp.pop(pid, None)   # the gun's own word replaces the heal estimate
         pool = pg.changed_pool(before, after)
         if pool is None:
             return None
