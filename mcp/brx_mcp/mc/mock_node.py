@@ -504,13 +504,17 @@ class MockNode:
                 self.arm_state = "lobby"
                 self.go_live_t = None
         elif kind == "apply":
-            # Mirror the engine gate (A6.4 + A9.1): a runtime apply is written only when LIVE; a preview
-            # apply may fire pre-live but ONLY if every frame is $PLAY/$SFLASH — it can't smuggle state
-            # writes. Anything else is dropped, so a test can't go green on frames real hardware ignores.
+            # Mirror the engine gate (A6.4 + A9.1 + A91): a runtime apply is written only when LIVE; a preview
+            # apply fires only before the match (never ARMED or LIVE) and ONLY if every frame is $PLAY/$SFLASH/$VOL —
+            # it can't smuggle state writes. Anything else is dropped, so a test can't go green on frames real
+            # hardware ignores.
             frames = body.get("frames", [])
-            preview_ok = body.get("preview") is True and all(
-                f.startswith("$PLAY") or f.startswith("$SFLASH") for f in frames)
-            if self.arm_state == "live" or preview_ok:
+            if body.get("preview"):
+                ok = self.arm_state in ("connected", "kitted", "lobby") and bool(frames) and all(
+                    f.startswith(("$PLAY", "$SFLASH", "$VOL,")) for f in frames)
+            else:
+                ok = self.arm_state == "live"
+            if ok:
                 self.applies.append(body)
                 log.info("apply %d frame(s) (%s)", len(frames), body.get("reason", ""))
             else:

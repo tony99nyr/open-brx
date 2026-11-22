@@ -183,7 +183,7 @@ export function _writeScanRow(el, d) {
  *  volume (MC, `_on_voice_request`). No row when MC sends no list (an older MC) or the kit is closed. */
 export function _voiceRow(st) {
   const list = st.voices || [];
-  if (!list.length || !st.canPickVoice) return '';
+  if (!list.length || !st.canPickVoice || st.wsState === 'rejected') return '';   // MC turned this phone away: it would not hear a pick
   const i = list.findIndex(v => v.id === st.voice);
   const name = i >= 0 ? list[i].name : String(st.voice || 'DEFAULT').replace(/_/g, ' ');
   const ack = st.voiceAck;

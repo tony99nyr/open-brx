@@ -2577,6 +2577,8 @@ KNOWN_UNMIRRORED = {
     "browse", "canPick", "conflictFor", "kitOpen", "loadoutView", "perkRow", "weaponRow", "slotRule",
     "requestLoadout", "_loadoutAck", "dismissTryout", "_tutorial", "setReady", "_loadAmmo",
     "_cancelPick", "_flushPick", "_sendPick",     # A26: the 400 ms tap-to-equip debounce, browser-only
+    # A91: the KIT screen voice picker, HUD only (the stage has no kit; MC's preview reaches it as no `apply`)
+    "voiceList", "shownVoice", "canPickVoice", "requestVoice", "stepVoice", "_flushVoice",
     # briefing / history / roster display
     "openBriefing", "closeBriefing", "historyEntry", "nameOf", "weaponNameOf",
     # lifecycle the stage drives by hand from its own clock

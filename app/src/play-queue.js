@@ -336,6 +336,17 @@ export class PlayQueue extends GunAudio {
     if (w && !w.mustHear && !w.life) { drop(w); this.waiting = null; this.busy = false; }   // its timer finds it cancelled
   }
 
+  /** A91: drop every job named `why` that has not reached the gun (a KIT voice preview once the match is ARMED). Never
+   *  touches a write already on the air. */
+  dropNamed(why) {
+    const drop = job => { job.cancelled = true; this.pending.delete(job); job.resolve(true); this._log(`audio: ${job.why} dropped before it reached the gun`); };
+    const keep = [];
+    for (const job of this.queue) { if (job.why === why) drop(job); else keep.push(job); }
+    this.queue.length = 0; this.queue.push(...keep);
+    const w = this.waiting;
+    if (w && w.why === why) { drop(w); this.waiting = null; this.busy = false; this.drain(); }   // the job behind it goes now
+  }
+
   /** Every job not yet settled is cancelled and resolves true (a death, a link drop, the end). A job already on the
    *  link keeps the queue busy until it settles; the next `$PLAY` keeps the gap behind the last one. True when a
    *  must-hear line was among them. */

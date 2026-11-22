@@ -810,7 +810,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   // kit-out, lobby and results
   tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
   browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
-  pendingVoice: 'voice pick awaiting its ack', _voiceDue: 'voice pick debounce: at worst the player picks again', voiceAck: 'MC voice verdict (cleared after ~4 s)',
+  pendingVoice: 'voice pick awaiting its debounce or its ack', _voiceSent: 'the last voice pick sent: tells its own assign from a console edit', voiceAck: 'MC voice verdict (cleared after ~4 s)',
   kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC states it in `assign` and the welcome (`hydrate`), on only',
   refused: 'diagnostic count', endAck: 'the result screen shows again until OK', _linkedSinceEnd: 'A81: a restart in RECAP may show MC NOT REACHED until the sync track reads RECEIVED again', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
   cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
@@ -1001,8 +1001,8 @@ export class Engine {
     this.loadoutAck = null;         // MC's verdict on the last pick: {slot, ok, reason, t} — tick() clears it after ~4 s
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
     this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
-    this.pendingVoice = null;       // Tony 2026-11-22: the voice the KIT screen shows until MC acks it: {id, at}
-    this._voiceDue = null;          // the voice pick waiting out VOICE_DEBOUNCE_MS: {id, at}
+    this.pendingVoice = null;       // Tony 2026-11-22: the voice the KIT screen shows until MC acks it: {id, at, sent}; `sent` false while it waits out VOICE_DEBOUNCE_MS
+    this._voiceSent = null;         // the id of the last voice pick sent to MC
     this.voiceAck = null;           // MC's verdict on the last voice pick: {ok, reason, t}
     this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
     this.kitLockedFor = null;       // F133: the config_id the lock was raised for; a push of another game retires it
@@ -1349,7 +1349,10 @@ export class Engine {
     if (this.phase === phase) return;
     this.log(`phase ${this.phase} → ${phase}`, 'lk');
     this.phase = phase;
-    if (phase === 'armed' || phase === 'live') this._autoNight();
+    if (phase === 'armed' || phase === 'live') {
+      this._autoNight();
+      if (this._gun) this._gun.dropNamed('apply preview');   // A91: a voice preview still queued on the phone never plays once the match starts
+    }
     this._changed();
   }
 
@@ -2690,6 +2693,10 @@ export class Engine {
   }
 
   _assign({ player, team, roster, catalog, policy, game, standby, recap, match_id }) {
+    // A91: a voice the console set while a phone pick waits in its window wins (a later MC push wins). The assign that
+    // answers this phone's own sent pick names that pick, so it does not count.
+    const pv = this.pendingVoice, was = this.player && this.player.voice;
+    if (pv && !pv.sent && player && player.voice !== was && player.voice !== this._voiceSent) this.pendingVoice = null;
     this.standby = !!standby;
     if (this.standby) {
       // T2-B item 2: benched. No frames, no kit browsing, no ready-up -- just SITTING OUT, wherever the
@@ -3013,8 +3020,7 @@ export class Engine {
    *  and plays one random spawn or kill line of it on the gun at the game's volume. The same voice again plays another line. */
   requestVoice(id) {
     if (!this.canPickVoice() || !this.voiceList().some(v => v.id === id)) return false;
-    this.pendingVoice = { id, at: this.now() };
-    this._voiceDue = { id, at: this.now() };
+    this.pendingVoice = { id, at: this.now(), sent: false };
     this.voiceAck = null;
     this._changed(); return true;
   }
@@ -3026,17 +3032,18 @@ export class Engine {
     return this.requestVoice(list[j].id);
   }
   _flushVoice() {
-    const v = this._voiceDue; if (!v) return false;
-    this._voiceDue = null;
-    if (!this.canPickVoice()) { this.pendingVoice = null; this._changed(); return false; }   // the kit closed inside the window
-    if (this.pendingVoice) this.pendingVoice.at = this.now();   // the ack timeout runs from the send
+    const v = this.pendingVoice; if (!v) return;
+    if (!this.canPickVoice()) { this.pendingVoice = null; this._changed(); return; }   // the kit closed inside the window
+    v.sent = true; v.at = this.now();   // the ack timeout runs from the send
+    this._voiceSent = v.id;
     this.report('loadout_request', { player_id: this.player && this.player.player_id, slot: 'voice', kind: 'voice', id: v.id });
-    return true;
   }
-  _loadoutAck({ slot, ok, reason, dropped, loadout }) {
+  _loadoutAck({ slot, ok, reason, dropped, loadout, id }) {
     if (slot === 'voice') {
-      // An ack for an older pick while a newer one waits in the window keeps the newer one on screen.
-      if (!this._voiceDue) this.pendingVoice = null;
+      // An ack for an older pick keeps a newer one on screen: one still in the window, or one sent after it (MC names
+      // the pick it answers in `id`).
+      const pv = this.pendingVoice;
+      if (pv && pv.sent && (id == null || id === pv.id)) this.pendingVoice = null;
       this.voiceAck = { ok: !!ok, reason: reason || null, t: this.now() };
       if (!ok) this.log(`voice pick refused: ${reason || ''}`, 'le');
       this._changed(); return;
@@ -3104,6 +3111,7 @@ export class Engine {
     if (this.phase !== 'kitted' && !(this.phase === 'lobby' && !this.kitOpen())) return false;
     if (ready && !this.isSynced()) { this.log('cannot ready: clock not synced', 'le'); return false; }
     this.ready = !!ready;
+    if (this.ready && this.pendingVoice && !this.pendingVoice.sent) this._flushVoice();   // A91: READY UP commits a voice pick still in its window
     if (this.ready) { this._flushPick('ready up'); this.browse(false); }   // READY UP commits the kit — a pick still inside the A26 debounce goes now, then the browser closes (loadout.md §4.5)
     this.report('ready', { player_id: this.player && this.player.player_id, ready: this.ready });
     this._changed(); return true;
@@ -4445,8 +4453,8 @@ export class Engine {
     this._checkEcho();
     this._operatorResyncTick(now);   // F287: also cancels outside LIVE, so a phase change cannot strand it
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
-    if (this._voiceDue && now - this._voiceDue.at >= VOICE_DEBOUNCE_MS) this._flushVoice();
-    if (this.pendingVoice && !this._voiceDue && now - this.pendingVoice.at > 6000) { this.pendingVoice = null; this._changed(); }   // MC never answered: show the voice MC holds
+    if (this.pendingVoice && !this.pendingVoice.sent && now - this.pendingVoice.at >= VOICE_DEBOUNCE_MS) this._flushVoice();
+    if (this.pendingVoice && this.pendingVoice.sent && now - this.pendingVoice.at > 6000) { this.pendingVoice = null; this._changed(); }   // MC never answered: show the voice MC holds
     if (this.voiceAck && now - this.voiceAck.t > 4000) { this.voiceAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row

@@ -522,6 +522,7 @@ class Session:
         # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
         # players with the same character do not die with the same scream; inject a seeded Random in tests.
         self._voice_rng = voice_rng or random.Random()
+        self._preview_rng = random.Random()   # the KIT voice-pick preview's draw, apart from the seeded roll above
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.session_id = uuid.uuid4().hex[:8]
         self.phase: Phase = "muster"
@@ -1972,34 +1973,24 @@ class Session:
             self._push_voice_preview(p)
         return p
 
-    def _push_voice_preview(self, p: Player, pick: bool = False) -> None:
+    def _push_voice_preview(self, p: Player) -> None:
         """A9.1: best-effort `apply{preview}` of the voice family's INTRO line so a VOICE/gamertag change
         is audible on the bound tagger. One $PLAY frame — the node's preview gate drops anything that
         isn't $PLAY/$SFLASH and ignores a preview once past LOBBY, so this is safe to fire optimistically.
 
         S39 (field 2026-09-12, Tony): the preview used to play the KILL line, which tells the operator
         nothing about the character they just picked. The intro is that character introducing
-        themselves. A family with no intro take falls back to the kill line rather than going silent.
-
-        `pick` (Tony 2026-11-22): the PLAYER picked the voice on the phone's KIT screen. That preview plays one random
-        spawn line or kill confirm (`voice_pick_preview`), after a `$VOL` at the game's head volume, so the line is as
-        loud as it will be in the match. Only a phone with the KIT voice picker sends that pick, and its preview gate
-        accepts the `$VOL`."""
+        themselves. A family with no intro take falls back to the kill line rather than going silent."""
         nid = p.get("node_id")
         if not nid:
             return
         voice, slots = p.get("voice") or "male", p.get("voice_slots")
         try:
-            if pick:
-                cue = self.compiler.voice_pick_preview(voice, slots, self._voice_rng)
-                frames = [f"$VOL,{self.compiler.head_volume(self.config)},0,*", cue] if cue else []
-            else:
-                cue = self.compiler.voice_preview(voice, slots)
-                frames = [cue] if cue else []
+            cue = self.compiler.voice_preview(voice, slots)
         except Exception:
-            frames = []
-        if frames:
-            self.net.push(nid, "apply", {"preview": True, "frames": frames})
+            cue = None
+        if cue:
+            self.net.push(nid, "apply", {"preview": True, "frames": [cue]})
 
     def _voice_ids(self) -> set[str]:
         ids = {"male", "female"}
@@ -6729,22 +6720,32 @@ class Session:
         """Tony 2026-11-22: the player picks their voice on the phone's KIT screen. The pick is the same `Player.voice`
         the console sets, so a later console edit wins, and it is refused on the same terms as a loadout pick: the kit
         locks at START (A30) and it opens only on KIT (loadout.md §4.1). The voice is not a loadout rule: a game that fixes
-        the weapons (`hud_select` off) still lets the player pick a voice. The gun plays one random spawn or kill line of the new voice (`_push_voice_preview(pick=True)`). Always acked."""
+        the weapons (`hud_select` off) still lets the player pick a voice. Always acked."""
         ok, reason = True, None
-        if not isinstance(voice, str) or voice not in self._voice_ids():
+        if voice is None or voice not in self._voice_ids():
             ok, reason = False, "Unknown voice"
         elif self.in_play():
             ok, reason = False, KIT_LOCKED
         elif not self.lobby_pushed and self.phase != "kit":
             ok, reason = False, "Mission Control is still setting up the game"
-        if ok and voice != p.get("voice"):
+        if ok and voice is not None and voice != p.get("voice"):
             p["voice"] = voice
             self._after_player_change(p)
-        # The same voice again plays a line too: the player asked to hear it. Never after the push (the node's gate
-        # drops a preview once ARMED anyway).
+        # The gun plays one random spawn or kill line of the voice, at the game's head volume so it is as loud as in the
+        # match. The same voice again plays a line too: the player asked to hear it. Never after the push (the node's
+        # gate drops a preview once ARMED anyway).
         if ok and self.phase == "kit" and not self.lobby_pushed:
-            self._push_voice_preview(p, pick=True)
+            try:   # a bad config must never cost the player the ack (as `_kit_volume`)
+                # its own RNG: a preview must not shift the seeded A15.1 $PSET roll that `_voice_rng` drives
+                cue = self.compiler.voice_pick_preview(p.get("voice") or "male", p.get("voice_slots"), self._preview_rng)
+                frames = [f"$VOL,{self.compiler.head_volume(self.config)},0,*", cue] if cue else []
+            except Exception:
+                frames = []
+            if frames:
+                self.net.push(nid, "apply", {"preview": True, "frames": frames})
+        # `id` names the pick this ack answers, so the phone keeps a newer pick on screen while an older ack lands.
         self.net.push(nid, "loadout_ack", {"slot": "voice", "ok": ok, **({"reason": reason} if reason else {}),
+                                           **({"id": voice} if voice is not None else {}),
                                            "loadout": p.get("loadout") or {"weapons": []}})
         self._changed()
 

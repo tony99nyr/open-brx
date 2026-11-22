@@ -12,17 +12,19 @@ const POL = { hud_select: true, kit_open: true, primary: { choice: 'player', all
   secondary: { choice: 'player', kinds: ['weapon'], allowed_weapon_ids: [] }, perk: { choice: 'player', allowed_perk_ids: [] } };
 const PREVIEW = ['$VOL,90,0,*', '$PLAY,V3I,4,6,,,,,*'];
 
-function kit({ voices = VOICES, policy = POL } = {}) {
+function kit({ voices = VOICES, policy = POL, timers = null } = {}) {
   const writes = [], reports = [];
   let clock = 1_000_000;
+  const delay = timers ? (ms, fn) => { timers.push({ at: clock + ms, fn }); } : (ms, fn) => fn();
   const eng = new Engine({ writer: fr => writes.push(...fr), report: (k, b) => reports.push({ k, b }), now: () => clock, synced: () => true,
-    storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
+    storage: mkStorage(), log: () => {}, delay });
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   const catalog = { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 192 }], perks: [], ...(voices ? { voices } : {}) };
   eng.onMcMessage({ kind: 'assign', body: { player, team, roster: [], catalog, policy } });
-  const h = { eng, writes, reports, player, team, catalog, policy, adv: ms => { clock += ms; eng.tick(); },
+  const h = { eng, writes, reports, player, team, catalog, policy,
+    adv: ms => { clock += ms; if (timers) for (const t of timers.splice(0).sort((a, b) => a.at - b.at)) { if (t.at <= clock) t.fn(); else timers.push(t); } eng.tick(); },
     sent: () => reports.filter(r => r.k === 'loadout_request').map(r => r.b),
     ack: body => eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'voice', loadout: player.loadout, ...body } }) };
   return h;
@@ -85,6 +87,38 @@ test('an ack for an older pick keeps a newer pick on screen', () => {
   assert.equal(h.eng.state().voice, 'heavy'); assert.equal(h.eng.state().voicePending, true);
 });
 
+test('an ack that names an older sent pick keeps the newer sent pick on screen', () => {
+  const h = kit();
+  h.eng.stepVoice(1); h.adv(400);                  // scout sent
+  h.eng.stepVoice(1); h.adv(400);                  // heavy sent
+  h.ack({ ok: true, id: 'scout' });
+  assert.equal(h.eng.state().voice, 'heavy'); assert.equal(h.eng.state().voicePending, true);
+  h.ack({ ok: true, id: 'heavy' });
+  assert.equal(h.eng.state().voicePending, false);
+});
+
+test('READY UP sends a voice pick still in its window', () => {
+  const h = kit();
+  h.eng.stepVoice(1);
+  assert.ok(h.eng.setReady(true));
+  assert.deepEqual(h.sent().map(b => b.id), ['scout']);
+});
+
+test('a console voice edit that lands inside the window wins over the unsent phone pick', () => {
+  const h = kit();
+  h.eng.stepVoice(1);                              // scout, unsent
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, voice: 'heavy' }, team: h.team, roster: [], catalog: h.catalog, policy: h.policy } });
+  h.adv(400);
+  assert.deepEqual(h.sent(), []); assert.equal(h.eng.state().voice, 'heavy');
+  // ...but the assign that answers the phone's own sent pick does not cancel the next one
+  const h2 = kit();
+  h2.eng.stepVoice(1); h2.adv(400);                // scout sent
+  h2.eng.stepVoice(1);                             // heavy, unsent
+  h2.eng.onMcMessage({ kind: 'assign', body: { player: { ...h2.player, voice: 'scout' }, team: h2.team, roster: [], catalog: h2.catalog, policy: h2.policy } });
+  h2.adv(400);
+  assert.deepEqual(h2.sent().map(b => b.id), ['scout', 'heavy']);
+});
+
 test('no list from MC (an older MC): no picker and nothing sent', () => {
   const h = kit({ voices: null });
   assert.equal(h.eng.state().canPickVoice, false);
@@ -107,6 +141,17 @@ test('the voice preview plays on the gun with its $VOL before the match', () => 
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: PREVIEW } });
   assert.deepEqual(h.writes, PREVIEW);
+});
+
+test('a preview still queued on the phone when the match is ARMED never reaches the gun', () => {
+  const h = kit({ timers: [] });
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: PREVIEW } });
+  h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: ['$VOL,90,0,*', '$PLAY,V38,4,6,,,,,*'] } });   // waits behind the first
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 1, 'the second line waits on the phone');
+  h.eng._set('armed');
+  for (let i = 0; i < 40; i++) h.adv(250);
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$PLAY')), ['$PLAY,V3I,4,6,,,,,*'], 'the queued preview was dropped at ARMED');
 });
 
 test('a preview with any other frame is dropped whole', () => {

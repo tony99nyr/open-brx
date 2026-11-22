@@ -205,3 +205,14 @@ test('ARCH-3 sendAt: the plan for every queued job is the time it is sent, and s
   const later = h.sent.slice(1).map(s => s.t);
   assert.deepEqual(plans, later, `planned ${plans}, sent ${later}`);
 });
+
+test('A91 dropNamed: a waiting KIT voice preview is dropped at ARMED, and the job behind it goes at once', () => {
+  const h = queueHarness();
+  h.q.enqueue(['$PLAY,A,4,6,,,,,*'], 'first');
+  h.q.enqueue(['$PLAY,B,4,6,,,,,*'], 'apply preview');       // held by the PLAY gap
+  h.q.enqueue(['$PLAY,C,4,6,,,,,*'], 'arm cue');             // behind it
+  assert.equal(h.q.waiting && h.q.waiting.why, 'apply preview', 'setup: the preview is the waiting job');
+  h.q.dropNamed('apply preview');
+  h.to(5000);
+  assert.deepEqual(h.sent.map(s => s.why), ['first', 'arm cue'], 'the preview never reaches the gun; the cue behind it is not stranded');
+});

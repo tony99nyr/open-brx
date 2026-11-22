@@ -41,7 +41,7 @@ def test_a_phone_pick_sets_the_voice_and_plays_a_line_at_head_volume():
     s, net, p = _mk()
     assigns = len(net.pushes("assign", "node0"))
     ack, applies = _pick(net, "medic")
-    assert ack == {"slot": "voice", "ok": True, "loadout": s.players[p["player_id"]]["loadout"]}
+    assert ack == {"slot": "voice", "ok": True, "id": "medic", "loadout": s.players[p["player_id"]]["loadout"]}
     assert s.players[p["player_id"]]["voice"] == "medic"
     assert len(net.pushes("assign", "node0")) > assigns          # the phone learns the new voice from `assign`
     assert net.pushes("assign", "node0")[-1][2]["player"]["voice"] == "medic"
@@ -78,7 +78,7 @@ def test_a_pick_in_play_is_refused_and_nothing_plays():
     s, net, p = _mk()
     s.phase = "live"
     ack, applies = _pick(net, "medic")
-    assert ack == {"slot": "voice", "ok": False, "reason": KIT_LOCKED, "loadout": s.players[p["player_id"]]["loadout"]}
+    assert ack == {"slot": "voice", "ok": False, "reason": KIT_LOCKED, "id": "medic", "loadout": s.players[p["player_id"]]["loadout"]}
     assert not applies and s.players[p["player_id"]]["voice"] != "medic"
 
 
@@ -105,3 +105,19 @@ def test_the_pick_preview_draws_from_spawn_and_kill_confirm_lines():
     assert got == {f"$PLAY,{i},4,6,,,,,*" for i in pool}     # interrupt: a new pick cuts the last line
     # the console's preview is unchanged: the intro line (S39)
     assert c.voice_preview("medic") == V.play_line_frame(V.role_id("medic", "intro"))
+
+
+def test_mocknode_mirrors_the_phone_preview_gate():
+    """A91: the stand-in node takes a preview with its `$VOL` before the match, and drops every preview once ARMED or LIVE."""
+    from brx_mcp.mc.mock_node import MockNode
+    node = MockNode("ws://127.0.0.1:1/ws")
+    preview = {"kind": "apply", "body": {"preview": True, "frames": ["$VOL,90,0,*", "$PLAY,V3I,4,6,,,,,*"]}}
+    for state, kept in (("kitted", 1), ("lobby", 1), ("armed", 0), ("live", 0)):
+        node.applies.clear()
+        node.arm_state = state
+        node._handle(preview)
+        assert len(node.applies) == kept, state
+    node.arm_state = "kitted"
+    node.applies.clear()
+    node._handle({"kind": "apply", "body": {"preview": True, "frames": ["$VOL,90,0,*", "$CLEAR,*"]}})
+    assert not node.applies
