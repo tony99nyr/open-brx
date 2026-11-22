@@ -156,7 +156,7 @@ export class PlayQueue extends GunAudio {
   enqueue(frames, why, { options = undefined, onSent = null, mustHear = false } = {}) {
     const playIndexes = frames.map((f, i) => isPlay(f) ? i : -1).filter(i => i >= 0);
     const now = this._now(), groups = [];
-    const settleRows = !!(options && options.settleRows) && playIndexes[0] > 0;
+    const settleRows = !!(options && /** @type {{settleRows?: boolean}} */ (options).settleRows) && playIndexes[0] > 0;
     let startAt = 0;
     if (settleRows) { groups.push(frames.slice(0, playIndexes[0])); startAt = playIndexes[0]; }
     for (const ix of playIndexes.slice(1)) { groups.push(frames.slice(startAt, ix)); startAt = ix; }

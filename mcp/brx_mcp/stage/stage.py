@@ -2132,6 +2132,7 @@ class GunStage:
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
         play_lock_held = False
         held: asyncio.Lock | None = None
+        play_generation = self._play_generation
 
         def release_play() -> None:
             nonlocal play_lock_held, held
@@ -2141,7 +2142,6 @@ class GunStage:
                 held = None
 
         if play_indexes:
-            play_generation = self._play_generation
             # F463 review (play-queue.js `_jumpIndex`): an interrupt-slot write (a stun's disarm and its clip) never waits
             # behind a sound-only queue-slot cue that waits for the gun (`_passable`), so it does not queue for the play
             # lock that cue holds. It may not pass a write that waits for the lock and carries gun rows or a life burst.
