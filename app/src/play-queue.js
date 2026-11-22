@@ -130,10 +130,10 @@ export class GunAudio {
  * tail: it resolves true, false, or null for a write the link did not send), `clipLen(frame)`, `staleMs`.
  */
 export class PlayQueue extends GunAudio {
-  constructor({ now, delay, log = (/** @type {string} */ _message) => {}, send, clipLen = clipMs, staleMs, gapMs = PLAY_GAP_MS, settleMs = PLAY_SETTLE_MS }) {
+  constructor({ now, delay, log = (/** @type {string} */ _message) => {}, send, clipLen = clipMs, staleMs, gapMs = PLAY_GAP_MS }) {
     super(clipLen);
     this._now = now; this._delay = delay; this._log = log; this._send = send;
-    this.staleMs = staleMs; this.gapMs = gapMs; this.settleMs = settleMs;
+    this.staleMs = staleMs; this.gapMs = gapMs;
     this.nextAt = 0;              // the earliest the next `$PLAY` may go (after `cancelAll`: the gap behind the last one)
     this.holdUntil = 0;           // F678/F681: no `$PLAY` goes before this (`hold`), whatever the queue holds
     this.lastAt = null;           // when the last `$PLAY` reached the link
@@ -152,7 +152,7 @@ export class PlayQueue extends GunAudio {
   /** A write that carries a `$PLAY`: one job per `$PLAY`, each with the frames before the next one. Resolves when every
    *  job has settled: false when any write failed, true otherwise (a dropped or cancelled job counts as true).
    *  `options.settleRows` (F681): the frames before the first `$PLAY` go as a job of their own, and the `$PLAY` waits
-   *  `settleMs` after they settle (`hold`). A stun's disarm: its X17 is never written in the same burst as the `$AMMO`. */
+   *  PLAY_SETTLE_MS after they settle (`hold`). A stun's disarm: its X17 is never written in the same burst as the `$AMMO`. */
   enqueue(frames, why, { options = undefined, onSent = null, mustHear = false } = {}) {
     const playIndexes = frames.map((f, i) => isPlay(f) ? i : -1).filter(i => i >= 0);
     const now = this._now(), groups = [];
@@ -176,9 +176,11 @@ export class PlayQueue extends GunAudio {
     const jumps = !mustHear && !frames.some(isQueueSlotPlay);
     const start = jumps ? this._jumpIndex() : this.queue.length;
     let at = start;
+    const jobs = [];
     const writes = pending.map((group, i) => new Promise(resolve => {
       const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now,
-        settle: settleRows && i === 0 };
+        settle: settleRows && i === 0, rest: settleRows && i === 0 ? jobs : null };
+      jobs.push(job);
       this.pending.add(job);
       this.queue.splice(at++, 0, job);
     }));
@@ -256,7 +258,8 @@ export class PlayQueue extends GunAudio {
         return;
       }
       const finish = ok => {
-        if (job.settle) this.hold(this._now() + this.settleMs);   // F681: the `$PLAY` behind these rows waits for them
+        if (job.settle) this.hold(this._now() + PLAY_SETTLE_MS);   // F681: the `$PLAY` behind these rows waits for them
+        if (job.settle && ok === false) this._dropRest(job);   // review: no stun clip for a disarm that failed
         this.pending.delete(job);
         job.resolve(ok);
         this.inFlight = false;
@@ -298,7 +301,7 @@ export class PlayQueue extends GunAudio {
     const model = this.copy(now);
     let last = this.lastAt, next = this.nextAt || 0, t = now, hold = this.holdUntil;
     const sent = (j, at) => {
-      if (j.settle) hold = Math.max(hold, at + this.settleMs);   // F681: as `finish` holds the `$PLAY` behind the rows
+      if (j.settle) hold = Math.max(hold, at + PLAY_SETTLE_MS);   // F681: as `finish` holds the `$PLAY` behind the rows
       if (!j.group.some(isPlay)) return;
       last = at; next = 0;
       model.stop(j.group.filter(f => f === PLAYX).length, at);
@@ -352,6 +355,16 @@ export class PlayQueue extends GunAudio {
     this.queue.length = 0; this.queue.push(...keep);
     const w = this.waiting;
     if (w && !w.mustHear && !w.life) { drop(w); this.waiting = null; this.busy = false; }   // its timer finds it cancelled
+  }
+
+  /** F681 review: a `settleRows` write whose rows failed drops its `$PLAY` jobs, which have not gone yet. */
+  _dropRest(job) {
+    for (const j of job.rest) {
+      if (j === job || j.cancelled || j.started) continue;
+      j.cancelled = true; this.pending.delete(j); j.resolve(true);
+      const ix = this.queue.indexOf(j); if (ix >= 0) this.queue.splice(ix, 1);
+      this._log(`audio: ${j.why} dropped: the rows before it failed`);
+    }
   }
 
   /** A91: drop every job named `why` that has not reached the gun (a KIT voice preview once the match is ARMED). Never

@@ -53,7 +53,7 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD, timers = false }
   const config = { config_id: golden.config_id, mode: 'ffa', environment: 'outdoor', night: false, time_limit_s: 1800,
     respawn: { type: 'auto', delay_s: 15 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'ROCCO', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new Engine({ writer: fr => { writes.push(...fr); calls.push([clock, [...fr]]); }, emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new Engine({ writer: (fr, _why, o) => { if (o && o.shouldSend && !o.shouldSend()) return null; writes.push(...fr); calls.push([clock, [...fr]]); } /* as BrxLink: `shouldSend` false sends nothing */, emit: () => {}, report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: timers ? (ms, fn) => due.push({ at: clock + ms, fn }) : (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
@@ -419,6 +419,17 @@ test('F681: the stun writes its $AMMO zeros alone, and X17 in a write of its own
   assert.ok(clip, 'X17 is written');
   assert.deepEqual(clip[1], [x17], 'on its own');
   assert.ok(clip[0] - at >= PLAY_SETTLE_MS, `${clip[0] - at} ms after the zeros`);
+});
+
+test('F681 review: a stun that ends inside the settle wait never gets its X17', () => {
+  const t = harness({ shields: true, timers: true });
+  t.f(`$HP,30,0,${MAX_SHIELD},*`);
+  t.eng.config.stun = { duration_s: 10 };
+  const m = t.calls.length;
+  t.eng._stun();
+  t.eng._stunRestore('died');   // a death (or an operator respawn) inside the 300 ms
+  t.adv(PLAY_SETTLE_MS + 200, 50);
+  assert.equal(t.calls.slice(m).some(([, fr]) => fr.includes('$PLAY,X17,4,6,,,,,*')), false, 'no stun clip after the stun');
 });
 
 test('F678: after the stun-expiry stop, no line is written for PLAY_SETTLE_MS (the stop swallowed it on the bench)', () => {

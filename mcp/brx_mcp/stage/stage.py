@@ -2186,7 +2186,7 @@ class GunStage:
                 if waits_gun:
                     now_ms = self._now_ms()
                     wait_s = max(wait_s, (self._gun_audio.free_at(now_ms) - now_ms) / 1000)   # whole ms, as the model keeps them
-                if not job.settle_rows:   # play-queue.js `holdUntil`; a `settle_rows` write sends its rows first, then holds
+                if not (job.settle_rows and play_indexes[0] > 0):   # play-queue.js `holdUntil`; a `settle_rows` write sends its rows first, then holds
                     wait_s = max(wait_s, self._play_hold_until - self.now())
                 if wait_s <= 0:
                     break
@@ -2247,20 +2247,21 @@ class GunStage:
                 release_play()
             self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
-        if job.settle_rows and play_indexes and play_indexes[0] > 0:
-            # play-queue.js `settleRows` (F681): the rows go now, and the `$PLAY` behind them PLAY_SETTLE_S after (`hold`).
-            # The play lock stays held, so no other `$PLAY` and no queued gun rows can come between them.
-            rows, frames = frames[:play_indexes[0]], frames[play_indexes[0]:]
-            await self._note_bind_sent(rows, self._send(rows, gap_ms, on_start=on_start))
-            on_start = None
-            self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
-            await self.sleep(max(0.0, self._play_hold_until - self.now()))
-            if play_generation != self._play_generation or not self.connected:
-                release_play()
-                return None
-        if model:
-            self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
+            if job.settle_rows and play_indexes and play_indexes[0] > 0:
+                # play-queue.js `settleRows` (F681): the rows go now, and the `$PLAY` behind them PLAY_SETTLE_S after (`hold`).
+                # The play lock stays held, so no other `$PLAY` and no queued gun rows can come between them. A link drop on
+                # the rows takes the drop path below, which resends the rows alone: no X17 (play-queue.js `_dropRest`).
+                frames, rest = frames[:play_indexes[0]], frames[play_indexes[0]:]
+                await self._note_bind_sent(frames, self._send(frames, gap_ms, on_start=on_start))
+                frames, on_start = rest, None
+                self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
+                await self.sleep(max(0.0, self._play_hold_until - self.now()))
+                if play_generation != self._play_generation or not self.connected or (job.should_send is not None and not job.should_send()):
+                    release_play()
+                    return None
+            if model:
+                self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
             result = self._send(frames, gap_ms, on_start=on_start)
             if any(f.startswith("$SPAWN,") for f in frames):
                 self._gun_spawn_at = self.now() + GUN_SPAWN_AIR_S   # engine.js `_write`: the gun reads `$SPAWN` after its air time
@@ -2270,6 +2271,9 @@ class GunStage:
                 self._last_play_at = self._last_play_sent_at
                 self._play_sends += 1
                 release_play()
+        except asyncio.CancelledError:
+            release_play()   # review: a cancel inside the settle wait never strands the play lock
+            raise
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
@@ -6785,8 +6789,9 @@ class GunStage:
         self.stunned = {"at": now, "until": now + s, "ammo": live}
         self._note_disarm(list(live))   # engine.js `_stun`: the restore's answers can still carry these zeros
         # F681 (engine.js `_stun`): X17 follows the zeros PLAY_SETTLE_S later, never in the same burst (`settle_rows`)
+        stun = self.stunned   # engine.js `_stun` review: a stun that ended inside the wait gets neither part
         self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60,
-                                    settle_rows=True))
+                                    settle_rows=True, should_send=lambda: self.stunned is stun))
         self._hold_accuracy_writes("stun disarm")   # engine.js `_stun`: a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
         self._moment = ("stunned", now)
         self._event_now("stunned")     # A11 presentation hook: no-op until a profile carries a `stunned` cue/burst

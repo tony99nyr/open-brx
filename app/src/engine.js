@@ -683,9 +683,9 @@ function ammoHost(e) {
 export function zeroAmmoRows(frames) {
   return frames.map(f => typeof f === 'string' && f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f);
 }
-/** F687: a `$PLAYX,0,*` right after the burst's `$SPAWN` when `quiet`, so the gun's own spawn sound is cut. PURE. */
-export function withStopAfterSpawn(frames, quiet) {
-  const i = quiet ? frames.findIndex(f => typeof f === 'string' && f.startsWith('$SPAWN,')) : -1;
+/** F687: a `$PLAYX,0,*` right after the burst's `$SPAWN`, so the gun's own spawn sound is cut. PURE. */
+export function withStopAfterSpawn(frames) {
+  const i = frames.findIndex(f => typeof f === 'string' && f.startsWith('$SPAWN,'));
   return i < 0 ? frames : [...frames.slice(0, i + 1), PLAYX, ...frames.slice(i + 1)];
 }
 
@@ -1521,6 +1521,8 @@ export class Engine {
       // bench 2026-11-14 (P0): a burst can carry `$SPAWN` with only the hold (`$BMAP,0,98`, no stamp), so each stamp is guarded
       const sendOptions = spawnRow || bindAt ? { ...(sendOptions0 || {}), onFrameSent: frame => {
         if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
+        // F687 review: a heal burst's stop sits deep in a long write, so its PLAY_SETTLE_MS hold runs from its send too
+        if (frame === PLAYX && spawnRow && !hasPlay) this._gun.hold(this.now() + PLAY_SETTLE_MS);
         if (bindAt && frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
         if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
       } } : sendOptions0;
@@ -4625,7 +4627,8 @@ export class Engine {
     // head write) gave a player who never died a respawn sound. A `$PLAYX` right after `$SPAWN` silences it (bench
     // 2026-08-25), and no `$PLAY` follows for PLAY_SETTLE_MS (F678: a stop swallows a line written right behind it).
     const quiet = !!(selfHit && selfHit.heal);
-    const burst = withStopAfterSpawn(stunHolds ? zeroAmmoRows(armed) : armed, quiet);
+    const held = stunHolds ? zeroAmmoRows(armed) : armed;
+    const burst = quiet ? withStopAfterSpawn(held) : held;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
@@ -4638,11 +4641,11 @@ export class Engine {
       : selfDrain && selfDrain.some(d => d < 0) ? [`$LIFE,${selfDrain[0]},${selfDrain[1]},${selfDrain[2]},*`] : [];
     // docs/announcer.md: the dead queue ends here. Only my kill confirm and the lead change survive it, and they wait for
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
-    if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
+    if (!selfHit || burst.includes(PLAYX)) this._ann.respawn(this.now(), burst.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
     const pre = [...(ps.frame ? [ps.frame] : []), ...sir], post = sp.frame ? [sp.frame] : [];
     this.activeSlot = 0;   // Codex 2026-11-08: the burst's `$BMAP,0` binds the new life's slot (engine.js `_bindRows`), set before it
     if (quiet) this._gun.hold(this.now() + PLAY_SETTLE_MS);
-    this._writeSpawnBurst([...pre, ...burst, ...post], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain, stunHolds ? [...pre, ...armed, ...post] : null);   // X3: the line before the fill; r1 C1: the armed burst for an F416 re-send
+    this._writeSpawnBurst([...pre, ...burst, ...post], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain, stunHolds ? [...pre, ...(quiet ? withStopAfterSpawn(armed) : armed), ...post] : null);   // X3: the line before the fill; r1 C1: the armed burst for an F416 re-send
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -4806,7 +4809,9 @@ export class Engine {
     // and alone it was. So the zeros go first and X17 follows PLAY_SETTLE_MS after them (`settleRows`), in the play queue's
     // order, so no queued write with gun rows can pass the disarm.
     this.am.noteDisarm(Object.keys(live));   // the restore's answers can still carry these zeros (bench 2026-11-08, SR11)
-    this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`, { settleRows: true });
+    const stun = this.stunned;   // review: a stun that ended inside the wait (a death, an operator respawn) gets neither part
+    this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`,
+      { settleRows: true, shouldSend: () => this.stunned === stun });
     this._holdAccuracyWrites('stun disarm');   // a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
     this.moment = { kind: 'stunned', at: now, data: { ms } };
     this._event('stunned');   // A11 presentation hook: no-op until a profile carries a `stunned` cue/burst

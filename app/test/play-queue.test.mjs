@@ -255,3 +255,14 @@ test('F678: hold() keeps every $PLAY back until it ends, a job planned before th
   r.to(PLAY_SETTLE_MS); assert.equal(r.sent.length, 1, 'the clip waits for the later of the two holds');
   r.to(400); assert.deepEqual(r.sent.map(s => s.t), [0, 400]);
 });
+
+test('F681 review: a settleRows write whose rows fail drops its $PLAY, and the write settles false', async () => {
+  let clock = 0; const timers = [], sent = [];
+  const q = new PlayQueue({ now: () => clock, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), staleMs: PLAY_QUEUE_STALE_MS,
+    send: group => { sent.push(group); return group.some(f => f.startsWith('$PLAY,')) ? true : false; } });
+  const done = q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun', { options: { settleRows: true } });
+  clock = 1000; for (const t of timers.splice(0)) t.fn();
+  assert.deepEqual(sent, [['$AMMO,0,0,0,1,*']], 'the clip never follows a disarm that failed');
+  assert.equal(await done, false);
+  assert.equal(q.holding(), false, 'the queue is free again');
+});
