@@ -68,6 +68,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     PAIN_GAP_MS,
     PAIN_STALE_MS,
     PLAY_GAP_MS,
+    PLAY_SETTLE_MS,
     PLAY_QUEUE_STALE_MS,
     PRESENCE_EXPIRY_MS,
     PRESENCE_SIGHT_WINDOW_MS,
@@ -326,13 +327,14 @@ PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is 
 MELEE_PRESS_S = 0.3                         # ammo.js MELEE_PRESS_MS: a swing's slot-4 `$ALCD` follows its press within this
 MELEE_NOT_READY_DEFAULT = "N92"             # engine.js MELEE_NOT_READY_DEFAULT (F665, Tony kept it at bench MN1)
 PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (types.py PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
+PLAY_SETTLE_S = PLAY_SETTLE_MS / 1000       # F678/F681 (types.py PLAY_SETTLE_MS): no `$PLAY` this soon after a stop or a disarm
 # F264 (PROBE_LIFE, types.py): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
 # REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
 # passes will be a heal. `test_stage_cure.py` asserts the frame the stage writes is byte-exactly this.
 # F341 (engine.js / brxlink.js `PARSER_RESET`): the gun's parser reset (v4.32 code read; screamers A4 is its pending bench proof).
 PARSER_RESET = "$*"
-# F15: STUN_PLAY (types.py, engine tunables) is the cue on the gun that just went dark, sent in the same write as the disarm.
+# F15: STUN_PLAY (types.py, engine tunables) is the cue on the gun that just went dark, sent PLAY_SETTLE_S after the disarm's zeros (F681).
 EVENT_MIN_GAP_S = EVENT_MIN_GAP_MS / 1000          # types.py EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = PAIN_GAP_MS / 1000               # types.py PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 HURT_DEBOUNCE_S = HURT_DEBOUNCE_MS / 1000          # types.py HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
@@ -921,6 +923,7 @@ class _WriteJob:
     model: bool
     life: bool
     should_send: "Callable[[], bool] | None" = None   # engine.js `shouldSend`: asked at the send point, after any wait
+    settle_rows: bool = False   # play-queue.js `settleRows` (F681): the rows go first, the `$PLAY` PLAY_SETTLE_S after them
 
 
 class GunStage:
@@ -1033,6 +1036,7 @@ class GunStage:
         self._op_revive_held = False               # F530 (engine.js `_opReviveHeld`): an operator respawn waiting for the F13 floor
         self._op_revive_floor_ms = None            # F530 (engine.js `_opReviveFloorMs`): a test override of that floor
         self._play_generation = 0
+        self._play_hold_until = 0.0   # play-queue.js `holdUntil` (F678/F681): no `$PLAY` goes before this (self.now() seconds)
         self._play_lock = asyncio.Lock()
         self._play_jump_lock = asyncio.Lock()   # F463 review: interrupt-slot writes that go ahead of a waiting cue
         self._play_lock_blockers = 0   # F463 review: writes waiting for the play lock that a jumping write may not pass
@@ -1960,7 +1964,7 @@ class GunStage:
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                     on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
                     should_send: Callable[[], bool] | None = None,
-                    on_frame_sent: Callable[[str], None] | None = None) -> bool | None:
+                    on_frame_sent: Callable[[str], None] | None = None, settle_rows: bool = False) -> bool | None:
         """engine.js `_write` around the send (F570, milestone review 2026-10-18): a write that carries `$AMMO`/`$WEAP` rows
         holds those rows' echo windows open while it is on the link (at most ECHO_HOLD_MAX_S), because the gun echoes each
         row as it reads it and a real link takes seconds for a head; when it settles they restart, so they close ACC_ECHO_S
@@ -1976,7 +1980,7 @@ class GunStage:
         result: bool | None = False
         try:
             result = await self._write_frames(frames, why, gap_ms, exact, take, on_start, model=model, life=life,
-                                              should_send=should_send)
+                                              should_send=should_send, settle_rows=settle_rows)
             return result
         finally:
             _WRITE_SENDS.reset(token)
@@ -2003,7 +2007,7 @@ class GunStage:
 
     async def _write_frames(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                             on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
-                            should_send: Callable[[], bool] | None = None) -> bool | None:
+                            should_send: Callable[[], bool] | None = None, settle_rows: bool = False) -> bool | None:
         """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
         the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
@@ -2041,7 +2045,8 @@ class GunStage:
         if not frames:
             return
         if any(f.startswith("$PLAY,") for f in frames):
-            return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
+            return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send,
+                                                  settle_rows))
         frames = self._bind_rows(frames)
         return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
 
@@ -2181,6 +2186,8 @@ class GunStage:
                 if waits_gun:
                     now_ms = self._now_ms()
                     wait_s = max(wait_s, (self._gun_audio.free_at(now_ms) - now_ms) / 1000)   # whole ms, as the model keeps them
+                if not job.settle_rows:   # play-queue.js `holdUntil`; a `settle_rows` write sends its rows first, then holds
+                    wait_s = max(wait_s, self._play_hold_until - self.now())
                 if wait_s <= 0:
                     break
                 self._plan_life_send(life, self.now() + wait_s)   # F497 (engine.js `job.sendAt`)
@@ -2240,6 +2247,17 @@ class GunStage:
                 release_play()
             self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
+        if job.settle_rows and play_indexes and play_indexes[0] > 0:
+            # play-queue.js `settleRows` (F681): the rows go now, and the `$PLAY` behind them PLAY_SETTLE_S after (`hold`).
+            # The play lock stays held, so no other `$PLAY` and no queued gun rows can come between them.
+            rows, frames = frames[:play_indexes[0]], frames[play_indexes[0]:]
+            await self._note_bind_sent(rows, self._send(rows, gap_ms, on_start=on_start))
+            on_start = None
+            self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
+            await self.sleep(max(0.0, self._play_hold_until - self.now()))
+            if play_generation != self._play_generation or not self.connected:
+                release_play()
+                return None
         if model:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
@@ -6746,7 +6764,7 @@ class GunStage:
 
     def _stun(self, emp_s: float | None = None) -> None:
         """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot,
-        plus `STUN_PLAY` (engine.js `_stun`, polish review: the disarm carried no cue here), and snapshot the
+        plus `STUN_PLAY` PLAY_SETTLE_S later (engine.js `_stun`, F681), and snapshot the
         LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second word EXTENDS
         `until` and writes nothing. Nothing else moves: fn 24 is a status row, no `$HP` follows."""
         if (emp_s is None and not self.stun_enabled) or not (self.spawned and self.alive):
@@ -6766,7 +6784,9 @@ class GunStage:
             self.reloading["cut"] = True   # engine.js `_stun` (Codex 2026-11-08): the takeover of a cut reload holds no ALT
         self.stunned = {"at": now, "until": now + s, "ammo": live}
         self._note_disarm(list(live))   # engine.js `_stun`: the restore's answers can still carry these zeros
-        self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60))
+        # F681 (engine.js `_stun`): X17 follows the zeros PLAY_SETTLE_S later, never in the same burst (`settle_rows`)
+        self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60,
+                                    settle_rows=True))
         self._hold_accuracy_writes("stun disarm")   # engine.js `_stun`: a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
         self._moment = ("stunned", now)
         self._event_now("stunned")     # A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
@@ -6795,11 +6815,14 @@ class GunStage:
         plays from when it was sent: it still plays when less than its length has passed since then and no
         interrupt-slot clip came after it. A hit sound queues behind it and does not count. The stop carries no `$PLAY`,
         so the play lock never holds it. The test runs again at the send point, after any write ahead of it on the link,
-        and the model drops X17 (`cut_at`) only when the stop goes."""
+        and the model drops X17 (`cut_at`) only when the stop goes. F678 (bench 2026-11-22): no `$PLAY` for PLAY_SETTLE_S
+        after the stop (`_play_hold_until`), from the call and again from the send: the stop swallowed the next line."""
         if not self.connected or self._stun_clip_ix() < 0:
             return
+        self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
 
         def sent(_frame: str) -> None:
+            self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
             ix = self._stun_clip_ix()
             if ix >= 0:
                 self._gun_audio.cut_at(ix, self._now_ms())

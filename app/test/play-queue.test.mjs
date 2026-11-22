@@ -10,6 +10,7 @@ import { mkStorage } from './_helpers.mjs';
 import { PlayQueue, PLAYX as PQ_PLAYX } from '../src/play-queue.js';
 import { PLAYX, PLAY_QUEUE_STALE_MS } from '../src/engine.js';
 import { PLAY_GAP_MS } from '../src/announcer.js';
+import { PLAY_SETTLE_MS } from '../src/transport/contract.gen.js';
 
 /** The bench's gun, as far as four cues can show it: one clip plays; up to TWO wait, played newest first; a third
  *  waiting clip pushes the oldest one out. Fed 1, 2, 3, 4 at 300 ms it plays 1, 4, 3 and drops 2, as Tony heard. */
@@ -215,4 +216,42 @@ test('A91 dropNamed: a waiting KIT voice preview is dropped at ARMED, and the jo
   h.q.dropNamed('apply preview');
   h.to(5000);
   assert.deepEqual(h.sent.map(s => s.why), ['first', 'arm cue'], 'the preview never reaches the gun; the cue behind it is not stranded');
+});
+
+test('F681: a settleRows write sends its rows at once and its $PLAY PLAY_SETTLE_MS after they settle; plain writes do not wait', () => {
+  const h = queueHarness();
+  h.q.enqueue(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun', { options: { settleRows: true } });
+  assert.deepEqual(h.sent.map(s => [s.group, s.t]), [[['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 0]], 'the zeros go alone, at once');
+  h.to(PLAY_SETTLE_MS - 1);
+  assert.equal(h.sent.length, 1, 'the clip waits for the zeros to settle');
+  h.to(PLAY_SETTLE_MS);
+  assert.deepEqual(h.sent.map(s => [s.group, s.t]).slice(1), [[['$PLAY,X17,4,6,,,,,*'], PLAY_SETTLE_MS]], 'then X17, on its own');
+  // CONTROL: the same write without the option is one burst, as before.
+  const c = queueHarness();
+  c.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun');
+  assert.deepEqual(c.sent.map(s => [s.group, s.t]), [[['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 0]]);
+});
+
+test('F678: hold() keeps every $PLAY back until it ends, a job planned before the hold included; sendAt sees it', () => {
+  const h = queueHarness();
+  h.q.enqueue(['$PLAY,A,4,6,,,,,*'], 'first');
+  h.q.enqueue([queued('B')], 'line');              // planned behind A's clip
+  const planned = h.q.waiting.sendAt;
+  h.q.hold(planned + 500);
+  h.to(planned);
+  assert.equal(h.sent.length, 1, 'the planned time is inside the hold: not sent');
+  h.to(planned + 500);
+  assert.deepEqual(h.sent.map(s => [s.why, s.t]).slice(1), [['line', planned + 500]], 'sent when the hold ends');
+  const g = queueHarness();
+  g.q.hold(400);
+  g.q.enqueue(['$PLAY,C,4,6,,,,,*'], 'c');
+  assert.equal(g.q.sendAt(g.q.waiting), 400, 'the plan reads the hold');
+  g.to(400); assert.deepEqual(g.sent.map(s => s.t), [400]);
+  // a write with no $PLAY (gun rows) is not held: holds are about sound
+  const r = queueHarness();
+  r.q.hold(400);
+  r.q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun', { options: { settleRows: true } });
+  assert.deepEqual(r.sent.map(s => s.t), [0], 'the rows go at once');
+  r.to(PLAY_SETTLE_MS); assert.equal(r.sent.length, 1, 'the clip waits for the later of the two holds');
+  r.to(400); assert.deepEqual(r.sent.map(s => s.t), [0, 400]);
 });

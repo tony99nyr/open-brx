@@ -47,7 +47,7 @@ import { perkForHealth } from './health.js';   // the one Shields rule: the cons
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
-import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, SMOKE_PAIR_MS, PRESENCE_SIGHT_WINDOW_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
+import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, PLAY_SETTLE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, SMOKE_PAIR_MS, PRESENCE_SIGHT_WINDOW_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
 // Re-exported so the existing `from './engine.js'` imports keep working.
 export { PROBE_LIFE, PLAY_QUEUE_STALE_MS, TEAM_REPAINT_MS, CONTROL_RECONNECT_MS, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -682,6 +682,11 @@ function ammoHost(e) {
 /** Cross-lane #5: every `$AMMO` row of a burst at 0/0 (a revive inside a stun keeps the gun disarmed). PURE. */
 export function zeroAmmoRows(frames) {
   return frames.map(f => typeof f === 'string' && f.startsWith('$AMMO,') ? f.replace(/^(\$AMMO,\d+),[^,]*,[^,]*,/, '$1,0,0,') : f);
+}
+/** F687: a `$PLAYX,0,*` right after the burst's `$SPAWN` when `quiet`, so the gun's own spawn sound is cut. PURE. */
+export function withStopAfterSpawn(frames, quiet) {
+  const i = quiet ? frames.findIndex(f => typeof f === 'string' && f.startsWith('$SPAWN,')) : -1;
+  return i < 0 ? frames : [...frames.slice(0, i + 1), PLAYX, ...frames.slice(i + 1)];
 }
 
 // ---------- T2: what a restart keeps (maintainability review 2026-10-10) ----------
@@ -4616,7 +4621,11 @@ export class Engine {
     // expiry restore, which writes `stunned.ammo` (and the held heavy's count as it is then). Ending the stun here instead
     // would hand a stunned player a working gun early, purely for having shot themselves.
     const stunHolds = !!(selfHit && this.stunned);
-    const burst = stunHolds ? zeroAmmoRows(armed) : armed;
+    // F687 (bench 2026-11-22, P19): the gun plays its own spawn sound on `$SPAWN`, so a head heal (a rebooted gun, a failed
+    // head write) gave a player who never died a respawn sound. A `$PLAYX` right after `$SPAWN` silences it (bench
+    // 2026-08-25), and no `$PLAY` follows for PLAY_SETTLE_MS (F678: a stop swallows a line written right behind it).
+    const quiet = !!(selfHit && selfHit.heal);
+    const burst = withStopAfterSpawn(stunHolds ? zeroAmmoRows(armed) : armed, quiet);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // F438: the revive leaves full health and armour and the fill's shield; the drain takes back the difference, per pool
@@ -4632,6 +4641,7 @@ export class Engine {
     if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
     const pre = [...(ps.frame ? [ps.frame] : []), ...sir], post = sp.frame ? [sp.frame] : [];
     this.activeSlot = 0;   // Codex 2026-11-08: the burst's `$BMAP,0` binds the new life's slot (engine.js `_bindRows`), set before it
+    if (quiet) this._gun.hold(this.now() + PLAY_SETTLE_MS);
     this._writeSpawnBurst([...pre, ...burst, ...post], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain, stunHolds ? [...pre, ...armed, ...post] : null);   // X3: the line before the fill; r1 C1: the armed burst for an F416 re-send
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
@@ -4791,10 +4801,12 @@ export class Engine {
     this.am.gunOther = null;   // review 2026-11-06 r2: the disarm cuts the gun's own reload, so ALT is no longer held
     if (this.am.reloading) this.am.reloading.cut = true;   // Codex 2026-11-08: and the phone's takeover of it holds no ALT, in the stun or after
     this.stunned = { at: now, until: now + ms, ammo: live };
-    // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
-    // never repeated on an extend above, and never per tick (F274).
+    // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, with the disarm -- never repeated on an extend above,
+    // and never per tick (F274). F681 (bench 2026-11-22): X17 in the same write as the `$AMMO` zeros was never heard (3 of 3),
+    // and alone it was. So the zeros go first and X17 follows PLAY_SETTLE_MS after them (`settleRows`), in the play queue's
+    // order, so no queued write with gun rows can pass the disarm.
     this.am.noteDisarm(Object.keys(live));   // the restore's answers can still carry these zeros (bench 2026-11-08, SR11)
-    this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`);
+    this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`, { settleRows: true });
     this._holdAccuracyWrites('stun disarm');   // a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
     this.moment = { kind: 'stunned', at: now, data: { ms } };
     this._event('stunned');   // A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
@@ -4898,13 +4910,16 @@ export class Engine {
    *  less than its length has passed since it was sent, and no interrupt-slot clip came after it (that one cut it). A
    *  hit sound queues behind it, so it does not count. Never a stop for another clip. The model then drops X17 and the
    *  clip it cut, and the clips still queued play on from now (`cutAt`). The stop goes straight to the link (no `$PLAY`,
-   *  so the play queue never holds it). stage.py `_stop_stun_clip` mirrors it. */
+   *  so the play queue never holds it). stage.py `_stop_stun_clip` mirrors it.
+   *  F678 (bench 2026-11-22, REFUTED as first built): the stop swallowed the "Shields charging" line written a few ms after
+   *  it. So no `$PLAY` goes for PLAY_SETTLE_MS after the stop (`hold`): from the call, and again from when it is sent. */
   _stopStunClip() {
     if (!this.bleUp || this._stunClipIx() < 0) return;
     // Codex review: a `$PLAY` already on the link ahead of the stop can land first and cut X17, so the test runs again at
     // the send point (`shouldSend`), and the model drops X17 only when the stop goes (`onFrameSent`).
     let cut = false;
-    const sent = () => { if (cut) return; cut = true; const ix = this._stunClipIx(); if (ix >= 0) this._gun.cutAt(ix, this.now()); };
+    const sent = () => { if (cut) return; cut = true; this._gun.hold(this.now() + PLAY_SETTLE_MS); const ix = this._stunClipIx(); if (ix >= 0) this._gun.cutAt(ix, this.now()); };
+    this._gun.hold(this.now() + PLAY_SETTLE_MS);   // the restore and the next line are written in this same tick
     this._mustWrite = true;   // the model is kept by `sent`, not by `_audioWrite`'s front-clip stop
     let r;
     try { r = this._write([PLAYX], 'stun over: stop the stun clip X17', { shouldSend: () => this._stunClipIx() >= 0, onFrameSent: sent }); }
@@ -8267,7 +8282,7 @@ export class Engine {
       // Codex review: a retry that settles after a relink must not revive over the reconcile or a resync that owns the gun.
       if (ok === false || this.phase !== 'live' || this._lifeSeq !== life || !this.bleUp || this.rc.ownsRearm || this.resync) return;
       this._headHealTries = 0; this._healPools = null;
-      if (this.alive) this._revive(false, null, false, pools);   // re-arm the life on the fresh head, at its own pools
+      if (this.alive) this._revive(false, null, false, { ...pools, heal: true });   // re-arm the life on the fresh head, at its own pools (F687: silently)
     }, () => {});
   }
   /** F532 (bench A.12, 2026-10-16): the relink reconcile's read came back all zeros. A power-cycled gun does that once the

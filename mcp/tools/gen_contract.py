@@ -89,7 +89,7 @@ _NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "OWNERSHIP_SC
            "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS"}
 # Seams review 2026-10-10 #3: the engine tunables (types.py, "Engine tunables"), read by app/src and the stage. The Stick
 # firmware reads none of them and the MC console reads none of them, so they reach the phone (contract.gen.js and .d.ts) only.
-_ENGINE_TUNABLES = {"QUERY_FRAME", "PROBE_LIFE", "STUN_PLAY", "PLAY_GAP_MS", "ANNOUNCE_DEFAULT_CLIP_MS", "ANNOUNCE_GAP_MS", 
+_ENGINE_TUNABLES = {"QUERY_FRAME", "PROBE_LIFE", "STUN_PLAY", "PLAY_GAP_MS", "PLAY_SETTLE_MS", "ANNOUNCE_DEFAULT_CLIP_MS", "ANNOUNCE_GAP_MS", 
                     "ANNOUNCE_AUDIO_LATE_DEFAULT_MS", "DEAD_QUEUE_TTL_MS", "PAIN_STALE_MS", "DEATH_LATE_WRITE_MS", 
                     "SHIELD_CHARGING_MIN_MS", "PLAY_QUEUE_STALE_MS", "MUST_HEAR_MAX_STOPS", "DEATH_BODY_STOP_MARGIN_MS", 
                     "DEATH_BODY_STOP_MIN_LEFT_MS", "EVENT_MIN_GAP_MS", "PAIN_GAP_MS", "TEAM_REPAINT_MS", "LOW_HEALTH_HP", 

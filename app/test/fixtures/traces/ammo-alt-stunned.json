@@ -108,8 +108,7 @@
       "reports": [],
       "writes": [
         "$AMMO,0,0,0,1,*",
-        "$AMMO,1,0,0,1,*",
-        "$PLAY,X17,4,6,,,,,*"
+        "$AMMO,1,0,0,1,*"
       ]
     },
     {
@@ -134,6 +133,7 @@
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
+        "$PLAY,X17,4,6,,,,,*",
         "$BMAP,0,1,,,,,*",
         "$PLAYX,0,*",
         "$AMMO,0,30,192,1,*",

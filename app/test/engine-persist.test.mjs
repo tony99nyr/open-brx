@@ -727,6 +727,23 @@ test('F532: a lost or failed reboot check keeps the relink pools and heals witho
   }
 });
 
+test('F687: the reboot heal silences the gun\'s own spawn sound with a $PLAYX right after $SPAWN; a death\'s respawn does not', async () => {
+  const r = await relinked(h => { h.frame('$HP,0,0,0,*'); h.frame(POWERED.lcd); });
+  await settleAsks(r.h);
+  for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+  const w = r.w, sp = w.lastIndexOf('$SPAWN,,*');
+  assert.ok(reArmedAt30(w), 'setup: the heal re-armed the life at its pools');
+  assert.equal(w[sp + 1], '$PLAYX,0,*', `the stop rides right behind $SPAWN: ${JSON.stringify(w.slice(sp - 1, sp + 3))}`);
+  // CONTROL: a real death's respawn keeps the gun's spawn audio (and the phone's spawn line).
+  const h = match({ stun: undefined });
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  const n = h.writes.length;
+  for (let t = 0; t < 20000 && !h.eng.alive; t += 250) h.adv(250);
+  const rw = h.writes.slice(n), rs = rw.indexOf('$SPAWN,,*');
+  assert.ok(rs >= 0 && h.eng.alive, 'setup: respawned');
+  assert.notEqual(rw[rs + 1], '$PLAYX,0,*', 'no stop after a real respawn\'s $SPAWN');
+});
+
 test('F532: failed head heals after an unanswered reboot check never book a death', async () => {
   let healWrites = 0;
   const r = await relinked(h => {
