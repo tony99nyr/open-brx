@@ -139,3 +139,15 @@ def test_a_phone_voice_change_drops_the_old_family_line_picks():
     s.players[p["player_id"]]["voice_slots"] = {"spawn": "V8I"}
     _pick(net, "medic")                                    # the same voice again changes nothing
     assert s.players[p["player_id"]]["voice_slots"] == {"spawn": "V8I"}
+
+
+def test_a_console_voice_change_drops_line_picks_unless_it_sends_its_own():
+    s, net, p = _mk()
+    pid = p["player_id"]
+    s.players[pid]["voice_slots"] = {"spawn": "VAI"}
+    s.patch_player(pid, voice="scout")
+    assert "voice_slots" not in s.players[pid]
+    s.patch_player(pid, voice="medic", voice_slots={"spawn": "V8I"})
+    assert s.players[pid]["voice_slots"] == {"spawn": "V8I"}
+    s.patch_player(pid, display="REAPER2")                  # no voice change: the picks stay
+    assert s.players[pid]["voice_slots"] == {"spawn": "V8I"}

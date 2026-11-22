@@ -122,6 +122,30 @@ test('a console edit back to the voice the phone sent, after its echo, still win
   assert.equal(h.eng.state().voice, 'scout');
 });
 
+test('after a hear-again of the held voice, a console edit back to it still wins over an unsent pick', () => {
+  const h = kit();
+  const assign = voice => h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, voice }, team: h.team, roster: [], catalog: h.catalog, policy: h.policy } });
+  h.eng.requestVoice('scout'); h.adv(400); assign('scout');
+  h.eng.requestVoice('scout'); h.adv(400);         // hear it again: MC sends no assign
+  assign('heavy');                                // console
+  h.eng.requestVoice('male');                     // unsent
+  assign('scout');                                // console back to scout
+  h.adv(400);
+  assert.deepEqual(h.sent().map(b => b.id), ['scout', 'scout']);
+  assert.equal(h.eng.state().voice, 'scout');
+});
+
+test('the verdict on screen is the latest request\'s: an older refusal does not replace it, and a lost ack times out', () => {
+  const h = kit();
+  h.eng.stepVoice(1); h.adv(400);                  // scout, req 1
+  h.eng.stepVoice(1); h.adv(400);                  // heavy, req 2
+  h.ack({ ok: false, id: 'scout', req: 1, reason: 'OLD' });
+  assert.equal(h.eng.state().voiceAck, null, 'req 1 is not the pick on screen');
+  assert.equal(h.eng.state().voicePending, true);
+  h.adv(6100);                                     // req 2 is never answered
+  assert.equal(h.eng.state().voicePending, false); assert.equal(h.eng.state().voice, 'male');
+});
+
 test('READY UP sends a voice pick still in its window', () => {
   const h = kit();
   h.eng.stepVoice(1);

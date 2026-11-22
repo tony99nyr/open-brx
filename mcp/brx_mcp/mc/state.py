@@ -1954,6 +1954,10 @@ class Session:
                 p["voice_slots"] = fields["voice_slots"]
             else:
                 p.pop("voice_slots", None)
+        elif p.get("voice") != old_voice:
+            # A91 follow-up: line picks name the OLD voice's lines, so a voice change with no picks of its own drops them
+            # (the phone's pick does the same in `_on_voice_request`).
+            p.pop("voice_slots", None)
         # F631: the scorer is never re-teamed here. A35 refuses a real team change while a match is armed or live, and a
         # team edit in RECAP is for the next match: this match's result stays the roster as played. A display-name edit
         # is cosmetic, so it reaches the roster as played too (honours, the replay and the result all name the player
