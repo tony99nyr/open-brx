@@ -73,7 +73,7 @@ export function startDemo({ engine, log }) {
       // the game's head volume (90 outdoors), interrupting the last one.
       const ok = !reject && DEMO_VOICES.some(v => v.id === body.id), reason = ok ? null : 'Unknown voice';   // the one refusal a KIT screen can see (MC: in play or before KIT, the row is not drawn)
       setTimeout(() => {
-        engine.onMcMessage({ kind: 'loadout_ack', body: { slot: 'voice', ok, ...(reason ? { reason } : {}), id: body.id, loadout: player.loadout } });
+        engine.onMcMessage({ kind: 'loadout_ack', body: { slot: 'voice', ok, ...(reason ? { reason } : {}), id: body.id, ...(body.req != null ? { req: body.req } : {}), loadout: player.loadout } });
         if (!ok) return;
         const changed = player.voice !== body.id;
         player.voice = body.id;

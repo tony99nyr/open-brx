@@ -121,3 +121,33 @@ def test_mocknode_mirrors_the_phone_preview_gate():
     node.applies.clear()
     node._handle({"kind": "apply", "body": {"preview": True, "frames": ["$VOL,90,0,*", "$CLEAR,*"]}})
     assert not node.applies
+
+
+def test_the_ack_echoes_the_phone_request_counter():
+    s, net, p = _mk()
+    body = {"node_id": "node0", "player_id": "x", "slot": "voice", "kind": "voice", "id": "medic", "req": 7}
+    net.simulate_node_message("node0", "loadout_request", body, T0_EPOCH_MS)
+    assert net.pushes("loadout_ack", "node0")[-1][2]["req"] == 7
+
+
+def test_a_phone_voice_change_drops_the_old_family_line_picks():
+    """A `voice_slots` pick names a line of the OLD voice; kept, the new voice would still say the old spawn line."""
+    s, net, p = _mk()
+    s.players[p["player_id"]]["voice_slots"] = {"spawn": "VAI"}
+    _pick(net, "medic")
+    assert "voice_slots" not in s.players[p["player_id"]]
+    s.players[p["player_id"]]["voice_slots"] = {"spawn": "V8I"}
+    _pick(net, "medic")                                    # the same voice again changes nothing
+    assert s.players[p["player_id"]]["voice_slots"] == {"spawn": "V8I"}
+
+
+def test_a_console_voice_change_drops_line_picks_unless_it_sends_its_own():
+    s, net, p = _mk()
+    pid = p["player_id"]
+    s.players[pid]["voice_slots"] = {"spawn": "VAI"}
+    s.patch_player(pid, voice="scout")
+    assert "voice_slots" not in s.players[pid]
+    s.patch_player(pid, voice="medic", voice_slots={"spawn": "V8I"})
+    assert s.players[pid]["voice_slots"] == {"spawn": "V8I"}
+    s.patch_player(pid, display="REAPER2")                  # no voice change: the picks stay
+    assert s.players[pid]["voice_slots"] == {"spawn": "V8I"}
