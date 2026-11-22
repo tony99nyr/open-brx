@@ -6028,7 +6028,8 @@ class GunStage:
                 # `max_shield > 0` is the load-bearing half: with no shield configured, 0 >= 0 would read every
                 # grant as "full".
                 full = self.max_shield > 0 and shield >= self.max_shield
-                if pool == "shield" and full:
+                shield_filled = full and any(g[0] == "shield" for g in gains)   # F685 review: also when another pool rose more
+                if shield_filled:
                     self._shield_charged()
                 # S29: mid-recharge the grants are OURS and `shield_charging` already spoke for them, so they
                 # are silent -- twelve `shield_up` lines over a 4 s refill would cut each other off. A grant
@@ -6036,7 +6037,7 @@ class GunStage:
                 # F685 review (engine.js `_hpGainMoment`): any health rise says `healed`, even when the armour rose more.
                 kind = ("healed" if any(g[0] == "health" for g in gains) else "armour_up" if pool == "armor"
                         else "shield_online" if full else None if self._shield_regen else "shield_up")
-                if kind == "shield_online" or (kind == "healed" and pool == "shield" and full):
+                if kind == "shield_online" or (kind == "healed" and shield_filled):
                     # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights
                     # stay. F685 review: a heal that also fills the shield keeps these lights and says `healed` below.
                     self._log(f"pool rise: shield_online ({pool} +{amount}) -- its lights only, no voice line", "info")

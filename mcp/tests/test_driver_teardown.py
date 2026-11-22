@@ -72,3 +72,9 @@ def test_f685_a_cli_heal_plays_the_heal_line_because_t15_ships_empty():
     sent.clear()
     run(d.execute([Heal("p1", hp=0, armor=20)]))
     assert line not in sent, sent
+    d._pools["p1"] = (d.config.hp, 10, 0)                  # the last `$HP`: health full, armour down
+    run(d.execute([Heal("p1", hp=d.config.hp, armor=d.config.armor)]))
+    assert line not in sent, f"a grant that cannot raise health is not a heal: {sent}"
+    d._pools["p1"] = (d.config.hp - 10, 10, 0)
+    run(d.execute([Heal("p1", hp=d.config.hp, armor=d.config.armor)]))
+    assert sent.count(line) == 1, sent

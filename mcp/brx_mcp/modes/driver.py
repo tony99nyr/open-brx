@@ -239,7 +239,10 @@ class GameDriver:
             elif isinstance(a, Heal):
                 await self._send(a.player_id, f"$LIFE,{a.hp},{a.armor},{a.shield},*")
                 await self._paint_event(a.player_id, "healed")
-                if a.hp > 0:   # F685: the CLI `$PSET` ships t15 empty, so the heal line is ours (the default voice's)
+                # F685: the CLI `$PSET` ships t15 empty, so the heal line is ours (the default voice's). `$LIFE` is additive and
+                # clamped, so a grant to a player the last `$HP` showed at full health raises nothing and says nothing.
+                known = self._pools.get(a.player_id)
+                if a.hp > 0 and (known is None or known[0] < self.config.hp):
                     from .. import voices
                     line = voices.role_id(None, "healed")
                     if line:
