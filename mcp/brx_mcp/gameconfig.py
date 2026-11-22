@@ -197,7 +197,8 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
     puts a firmware cry back. A15.3 (same bench): the meleeGrunt / shortPain / longPain tokens are EMPTY too --
     a `$PSET` with the voice fields empty still registers hits -- and the node plays the pain by damage
     (`cues.pain_short` / `pain_long` / `pain_melee`); the death scream stays the firmware's, rolled per spawn
-    through `pset_frames`."""
+    through `pset_frames`. F685 (2026-11-22): the painRelief token is EMPTY too, always; the node says the
+    heal line (`voices.role_ids(..., "healed")`)."""
     from .voices import pset_ids, PSET_ROLES          # local: voices imports this module
     ids = pset_ids(voice, slots)
     return [ids[r] for r in PSET_ROLES]

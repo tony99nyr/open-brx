@@ -6036,11 +6036,12 @@ class GunStage:
                 # F685 review (engine.js `_hpGainMoment`): any health rise says `healed`, even when the armour rose more.
                 kind = ("healed" if any(g[0] == "health" for g in gains) else "armour_up" if pool == "armor"
                         else "shield_online" if full else None if self._shield_regen else "shield_up")
-                if kind == "shield_online":
-                    # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights stay
+                if kind == "shield_online" or (kind == "healed" and pool == "shield" and full):
+                    # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights
+                    # stay. F685 review: a heal that also fills the shield keeps these lights and says `healed` below.
                     self._log(f"pool rise: shield_online ({pool} +{amount}) -- its lights only, no voice line", "info")
-                    self._event_now(kind, sound=False)
-                elif kind:
+                    self._event_now("shield_online", sound=False)
+                if kind and kind != "shield_online":
                     self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone queues this pool line here", "info")
                     self._announce_status(kind)   # F478 (engine.js `_announceStatus`): a pool voice line waits its turn
         # A16 §3.1/§5 (readout) / A11.7 legacy (health bands): a hit does not clear a held paint, only

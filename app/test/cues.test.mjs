@@ -568,3 +568,17 @@ test('DRY #3 r1: _shieldTick stands down on exactly GATE.shieldRegen, and state(
   }
   assert.ok(held >= 8 && ran >= 1, `the walk covered ${held} gated and ${ran} ungated names`);
 });
+
+test('F685 review: a heal that also fills the shield says healed AND keeps the shield-online lights', () => {
+  const h = harness();
+  const leds = [], said = [];
+  const el = h.eng._eventLeds.bind(h.eng), an = h.eng._announceStatus.bind(h.eng);
+  h.eng._eventLeds = k => { leds.push(k); return el(k); };
+  h.eng._announceStatus = k => { said.push(k); return an(k); };
+  h.f('$HP,45,70,40,*').adv(1000);
+  h.f('$HIR,0,0,19,2,10,0,0,*').f('$HP,35,70,40,*').adv(3000);   // a 10 health hit
+  leds.length = 0; said.length = 0;
+  h.f(`$HP,40,70,${MAX_SHIELD},*`);                                 // +5 health and the shield full in one frame
+  assert.deepEqual(said, ['healed']);
+  assert.ok(leds.includes('shield_online'), `the shield-online lights stay: ${leds}`);
+});

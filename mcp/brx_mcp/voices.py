@@ -29,6 +29,10 @@ The three pain fields (meleeGrunt / shortPain / longPain) ship EMPTY and the nod
 `$HIR`, choosing the pool by DAMAGE: "A big sniper shot -> long pain. A normal round -> short pain" (`pain_long`
 at or above `PAIN_LONG_MIN_DAMAGE`, else `pain_short`; a melee word -> `pain_melee`).
 
+F685 THE HEAL LINE IS OURS (Tony, 2026-11-22, after the gun played painRelief on a heal and once after a death):
+the painRelief field ships EMPTY, and the node says `healed` on any health rise. A `pain_relief` pick never goes
+back into `$PSET`: it picks the node's `healed` line instead.
+
 Not here: the family -> name table (`gameconfig.VOICE_PACKS`, so the `$PSET` builder and this module agree)
 and the frame shape (`presentation.play_frame`).
 """
