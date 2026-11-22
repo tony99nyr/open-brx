@@ -390,10 +390,11 @@ export class Hud {
         if (st.ended && this.view === 'history') return this._history(st);
         if (st.ended && (!st.endAck || this.view === 'result')) return this._result(st);
         if (!st.ended && !st.kitOpen) return this._lobby(st, 'setup');            // §4.1: MC is still picking the game
-        if (!st.ended && !st.briefSeen && !this._tryoutShown(st)) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
-        if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
+        const panelFree = !st.ended && !this._tryoutShown(st);   // nothing over the kit: no result, no try-out panel
+        if (panelFree && !st.briefSeen) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
+        if (panelFree && st.browsing) return this._loadout(st);
         if (!st.canPickVoice) this.vg = false;   // the kit closed under it: the next match opens on the kit, not the grid
-        if (!st.ended && this.vg && st.canPickVoice && st.wsState !== 'rejected' && !this._tryoutShown(st)) return this._voiceGrid(st);   // A91: every voice at once
+        if (panelFree && this.vg && st.wsState !== 'rejected') return Lobby._voiceGrid.call(this, st);   // A91: every voice at once
         return this._lobby(st, st.ended ? 'over' : 'kitted');
       case 'lobby':
         // T2 INTEGRATION (A38 x A39): the same override the 'kitted' arm above makes, stated for the
