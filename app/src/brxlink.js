@@ -160,7 +160,10 @@ const RELINK_CONNECT_MS = 5000;
 const RELINK_GAP_MS = 250;
 const RELINK_ATTEMPTS = 9;
 const RECOVERY_SCAN_MS = 2000;
-const RECOVERY_TIMEOUTS = 2;
+// F684 (bench 2026-11-22, step 20): in 4 of 4 slow relinks the connect right after a first timeout timed out too, and
+// the release and scan after it linked at once: two blind 5 s timeouts cost about 17.4 s with no gun after go-live. So
+// the release and scan run after the FIRST timeout. A fast 133 failure (F297) is not a timeout and keeps its own retry.
+const RECOVERY_TIMEOUTS = 1;
 
 // F293 (bench 2026-09-24, Pixel 5, Tactix-FE30): with the app open while the gun and headset power-cycle, the phone
 // relinked 5-10 s after power-on, before the headset had joined the gun. The gun then dropped the phone every 6-10 s,

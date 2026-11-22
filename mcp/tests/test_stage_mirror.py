@@ -1358,6 +1358,33 @@ def mk_stun(stun=10, **profile):
     return st, mgr, clock
 
 
+def test_the_stun_expiry_stop_holds_the_next_line_back_play_settle_s():
+    """engine.js `_stopStunClip` (F678, bench 2026-11-22: the stop swallowed the "Shields charging" line written right
+    behind it): after the stop no `$PLAY` goes for PLAY_SETTLE_S (cues.test.mjs, the same case on the phone)."""
+    async def go():
+        clock = StageClock()
+        mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
+        on = {"clock": False}
+        async def sleep(s):   # the holds run on the test clock once the setup is done
+            if on["clock"] and s > 0:
+                clock.advance(s)
+        st = GunStage(mgr, None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.set_profile(stun=1)
+        await live(st)
+        on["clock"] = True
+        st._stun(); await settle(st)
+        assert "$PLAY,X17,4,6,,,,,*" in since(mgr, 0), "setup: X17 went out"
+        clock.advance(0.5)
+        n = mark(mgr)
+        st._stun_restore("expired"); await settle(st)
+        assert S.PLAYX in since(mgr, n), f"setup: X17 still played, so the expiry stops it: {since(mgr, n)}"
+        t_stop = clock.t
+        await st.write(["$PLAY,,4,6,N102,,,,*"], "the next line")
+        assert "$PLAY,,4,6,N102,,,,*" in since(mgr, n)
+        assert clock.t - t_stop >= S.PLAY_SETTLE_S - 1e-9, f"the line went {clock.t - t_stop:.3f} s after the stop"
+    asyncio.run(go())
+
+
 def ammo_writes(mgr, n) -> list[str]:
     return [f for f in since(mgr, n) if f.startswith("$AMMO,")]
 
@@ -1393,8 +1420,8 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         n = mark(mgr); k = len(st.log)
         await st.ir("emp"); st.poll(); await settle(st)
         assert ammo_writes(mgr, n) == ["$AMMO,0,0,0,1,*", "$AMMO,1,0,0,1,*"], ammo_writes(mgr, n)
-        # Polish review: engine.js's disarm carries STUN_PLAY, the cue on the gun that just went dark
-        # (`$PLAY,X17,4,6,,,,,*`), in the SAME write as the $AMMO frames -- the stage must too.
+        # engine.js's disarm is followed by STUN_PLAY (`$PLAY,X17,4,6,,,,,*`), the cue on the gun that just went dark,
+        # PLAY_SETTLE_S after the zeros (F681; the golden stun traces pin the timing) -- the stage must send it too.
         assert "$PLAY,X17,4,6,,,,,*" in since(mgr, n), f"the disarm must carry the stun cue: {since(mgr, n)}"
         assert st.stunned and st.stunned["until"] == clock.t + 10.0 and st.stunned["ammo"] == {0: [25, 80], 1: spawn[1]}
         assert st.hp == 45, "a stun is not damage"

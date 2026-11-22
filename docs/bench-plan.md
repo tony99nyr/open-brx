@@ -17,7 +17,7 @@ Build everything from current main: the F645 and F650 fixes are merged, so one A
 About 3 h 48 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 23 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then step 108 (F678) again once its new fix is on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
+**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then steps 108 (F681 and F678), 109 (F687) and 110 (F684), once their fixes from brx-desk-1122 are on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
 
 Done on 2026-11-22 (phones on a local 0.4.46, main `192d7b326`; results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-22): steps 16, 17, 18, 20 (F541's tap half), 26, 27, 28 and 29, P19, step 108 (F678 REFUTED), SR5 part 3 and the SR23 tap cases. The IR rig emitter now runs main's `ir_emit.ino`.
 
@@ -42,7 +42,7 @@ procedure. The minutes come from those steps. The total is about 27 h, so it tak
 4. **One gun, its phone, MC and the rig emitter (about 110 min).** Done 2026-11-22: SR5 part 3 and the SR23 tap cases
    (F650), P19 (F640), step 20's F541 tap half, 26 (F511), 27 (F50), 28 (F545), 29 (F3) and 108 (F678, REFUTED).
    Open: SR13 (F650), step 20 for F533 and F416 (a spawn write that fails in flight), 25 (F277), 30 (F340),
-   31 (F293), 108 again after F678's new fix, with step 32 (F563) beside them. P22 (F682, the KIT voice pick,
+   31 (F293), 108 to 110 (F681, F678, F687, F684), with step 32 (F563) beside them. P22 (F682, the KIT voice pick,
    5 min). P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 110 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
    107 (F641). F322's two-gun check (5 min, its row). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
@@ -502,8 +502,27 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-108. **F678**: run 2026-11-22, REFUTED: the `$PLAYX` stop swallows "Shields charging" (log). Run the A/B/A
-   again (10 s, 4 s, 10 s stun; pass: the line plays in every run) once the new fix is on main. (FOLLOWUPS F678)
+108. **F681 and F678**, the stun clip X17 and "Shields charging" after a stun (30 min). Run 2026-11-22 REFUTED the
+   first F678 fix. The new build writes X17 on its own 300 ms after the `$AMMO` zeros, and holds every line 300 ms after
+   the expiry stop (`PLAY_SETTLE_MS`). `--bench-volume 90`, a Shields TDM with `config.stun`.
+   - Part 1, the cause of F681, on the laptop MCP with the phone unlinked (10 min). Control: `$PLAY,X17,4,6,,,,,*`
+     alone (heard on 2026-11-22). A: `$AMMO,0,0,0,1,*`, `$AMMO,1,0,0,1,*` and the X17 frame in ONE write. B: the two
+     `$AMMO` rows, then X17 300 ms later. A again. Each by ear: X17 heard or not. A not heard and B heard: the
+     `$AMMO` write cuts the clip. Both heard: the hit, not the write, cuts it (then part 2 decides).
+   - Part 2, the phone build. A/B/A 10 s / 4 s / 10 s stun, six shield hits each, as on 2026-11-22. Pass: X17 heard
+     in every stun, and "Shields charging" heard after every stun. Log: `stun over: stop the stun clip X17`, then the
+     `shield_charging` write at least 300 ms after it. Reopens F681: X17 still not heard in B runs. Reopens F678:
+     the 4 s stun loses the line again. (FOLLOWUPS F681, F678)
+109. **F687**, a silent reboot heal (10 min, P19's setup). A TDM match, a few rounds and one hit. Power-cycle the gun
+   and wait for the relink. Pass: no respawn or cocking sound at the heal, the pools and magazines kept, no death.
+   Control: a real death and its timed respawn still play the spawn sound and line. Log: the revive write shows
+   `$PLAYX,0,*` right after `$SPAWN,,*`. Reopens: the sound still plays (then the stop does not cut the gun's own
+   `$SPAWN` audio, and the heal needs another path). (FOLLOWUPS F687)
+110. **F684**, the relink ladder near go-live (25 min, step 20's setup and `cycle.sh`). Four forced relinks at
+   go-live minus 1 s. Pass: no gap longer than about 12 s (it was 17.4 s on 2026-11-22), and no flap (a link that
+   drops again within 20 s). Log per slow run: `reconnect: 1 timeouts, releasing GATT and scanning`, then
+   `fresh advert heard` or `no fresh gun advert`. Read: a slow run that heard no fresh advert means the gun was not
+   advertising yet, and the wait is the gun's, not the phone's. (FOLLOWUPS F684)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old

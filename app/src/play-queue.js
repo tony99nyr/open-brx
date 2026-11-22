@@ -8,7 +8,7 @@
 // Time-driven like the announcer: the clock and the timer are the engine's (`now`, `delay`), so a test moves a mock
 // clock. app/test/fixtures/play-queue-cases.json pins the send times and drops; gen-play-queue-cases.mjs writes it.
 import { clipId, clipMs } from './announcer.js';
-import { PLAY_GAP_MS, PLAY_FILLER_IDS } from './transport/contract.gen.js';
+import { PLAY_GAP_MS, PLAY_SETTLE_MS, PLAY_FILLER_IDS } from './transport/contract.gen.js';
 
 /** The one bench-proven stop-playback frame (engine.js `PLAYX` is the same literal; play-queue.test.mjs checks it). */
 export const PLAYX = '$PLAYX,0,*';
@@ -135,6 +135,7 @@ export class PlayQueue extends GunAudio {
     this._now = now; this._delay = delay; this._log = log; this._send = send;
     this.staleMs = staleMs; this.gapMs = gapMs;
     this.nextAt = 0;              // the earliest the next `$PLAY` may go (after `cancelAll`: the gap behind the last one)
+    this.holdUntil = 0;           // F678/F681: no `$PLAY` goes before this (`hold`), whatever the queue holds
     this.lastAt = null;           // when the last `$PLAY` reached the link
     this.pending = new Set();     // every job not yet settled: queued, waiting on its timer, or on the link
     this.queue = [];              // the jobs not yet planned, in order
@@ -144,17 +145,26 @@ export class PlayQueue extends GunAudio {
     this.gen = 0;                 // `cancelAll` moves it on: a timer or a link reply of an older generation is void
   }
 
+  /** F678/F681 (bench 2026-11-22): a gun write that can cut audio (a lone `$PLAYX`, a stun's `$AMMO` disarm) swallowed
+   *  the `$PLAY` sent right behind it. No `$PLAY` goes before `until`. A job planned earlier waits again (`drain`). */
+  hold(until) { if (until > this.holdUntil) this.holdUntil = until; }
+
   /** A write that carries a `$PLAY`: one job per `$PLAY`, each with the frames before the next one. Resolves when every
-   *  job has settled: false when any write failed, true otherwise (a dropped or cancelled job counts as true). */
+   *  job has settled: false when any write failed, true otherwise (a dropped or cancelled job counts as true).
+   *  `options.settleRows` (F681): the frames before the first `$PLAY` go as a job of their own, and the `$PLAY` waits
+   *  PLAY_SETTLE_MS after they settle (`hold`). A stun's disarm: its X17 is never written in the same burst as the `$AMMO`. */
   enqueue(frames, why, { options = undefined, onSent = null, mustHear = false } = {}) {
     const playIndexes = frames.map((f, i) => isPlay(f) ? i : -1).filter(i => i >= 0);
     const now = this._now(), groups = [];
+    const settleRows = !!(options && /** @type {{settleRows?: boolean}} */ (options).settleRows) && playIndexes[0] > 0;
     let startAt = 0;
+    if (settleRows) { groups.push(frames.slice(0, playIndexes[0])); startAt = playIndexes[0]; }
     for (const ix of playIndexes.slice(1)) { groups.push(frames.slice(startAt, ix)); startAt = ix; }
     groups.push(frames.slice(startAt));
     groups.forEach((group, i) => {
       const sound = group.find(isPlay);
-      const delayed = i > 0 || this.busy || this.queue.length || (this.nextAt || 0) > now || (this.lastAt != null && this.lastAt + this.gapMs > now);
+      if (!sound) return;   // F681: the rows a `settleRows` write sends first carry no sound
+      const delayed = i > (settleRows ? 1 : 0) || this.busy || this.queue.length || (this.nextAt || 0) > now || (this.lastAt != null && this.lastAt + this.gapMs > now);
       if (delayed && FILLER_IDS.has(clipId(sound))) {
         this._log(`audio: ${why}: filler dropped inside the ${this.gapMs} ms PLAY gap`);
         group.splice(group.indexOf(sound), 1);
@@ -166,8 +176,11 @@ export class PlayQueue extends GunAudio {
     const jumps = !mustHear && !frames.some(isQueueSlotPlay);
     const start = jumps ? this._jumpIndex() : this.queue.length;
     let at = start;
+    const jobs = [];
     const writes = pending.map((group, i) => new Promise(resolve => {
-      const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now };
+      const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, life: !!(options && options.lifeBurst), resolve, cancelled: false, queuedAt: now,
+        settle: settleRows && i === 0, rest: settleRows && i === 0 ? jobs : null };
+      jobs.push(job);
       this.pending.add(job);
       this.queue.splice(at++, 0, job);
     }));
@@ -185,9 +198,9 @@ export class PlayQueue extends GunAudio {
    *  queue-slot cue goes only once the clip the phone models on the gun has ended (`freeAt`). The INTERRUPT slot
    *  (token 1) cuts the playing clip by design and keeps the plain PLAY_GAP_MS; a must-hear line, and any write that
    *  carries its own `$PLAYX` (the hill callout's preempt), stops the clip itself and must not wait for it to end. */
-  _step(job, { t, next, last, model }) {
-    const waits = this._waitsForGun(job);
-    return { waits, at: Math.max(t, next || 0, last == null ? 0 : last + this.gapMs, waits ? model.freeAt(t) : 0) };
+  _step(job, { t, next, last, model, hold = 0 }) {
+    const waits = this._waitsForGun(job), sound = job.group.some(isPlay);
+    return { waits, at: Math.max(t, next || 0, last == null ? 0 : last + this.gapMs, waits ? model.freeAt(t) : 0, sound ? hold : 0) };
   }
   /** A job that waits for the gun's clip to end before it goes (F419): a queue-slot cue that is not must-hear and carries
    *  no `$PLAYX` of its own. PURE. */
@@ -229,11 +242,15 @@ export class PlayQueue extends GunAudio {
     const job = this.queue.shift(), generation = this.gen, plan = job.plan = (job.plan || 0) + 1;
     this.busy = true;
     const now = this._now();
-    const { waits, at } = this._step(job, { t: now, next: this.nextAt, last: this.lastAt, model: this });
+    const { waits, at } = this._step(job, { t: now, next: this.nextAt, last: this.lastAt, model: this, hold: this.holdUntil });
     const send = () => {
       if (job.plan !== plan) return;   // `_replanWaiting` put it back in the queue: a later drain plans it again
       if (this.waiting === job) this.waiting = null;
       if (job.cancelled || generation !== this.gen) return;
+      // F678: a hold that began after this job was planned (a stun-expiry stop) moves it on, once per move of the hold
+      if (job.group.some(isPlay) && this.holdUntil > job.sendAt && this.holdUntil > this._now()) {
+        this.waiting = job; job.sendAt = this.holdUntil; job.timer = this._delay(this.holdUntil - this._now(), send); return;
+      }
       this.nextAt = 0;
       if (this._stale(job, waits, this._now())) {
         this._log(`audio: ${job.why} dropped: it waited ${this._now() - job.queuedAt} ms for the gun (stale past ${this.staleMs} ms)`);
@@ -241,6 +258,8 @@ export class PlayQueue extends GunAudio {
         return;
       }
       const finish = ok => {
+        if (job.settle) this.hold(this._now() + PLAY_SETTLE_MS);   // F681: the `$PLAY` behind these rows waits for them
+        if (job.settle && ok === false) this._dropRest(job);   // review: no stun clip for a disarm that failed
         this.pending.delete(job);
         job.resolve(ok);
         this.inFlight = false;
@@ -280,8 +299,10 @@ export class PlayQueue extends GunAudio {
     const ix = this.queue.indexOf(job);
     if (ix < 0) return null;
     const model = this.copy(now);
-    let last = this.lastAt, next = this.nextAt || 0, t = now;
+    let last = this.lastAt, next = this.nextAt || 0, t = now, hold = this.holdUntil;
     const sent = (j, at) => {
+      if (j.settle) hold = Math.max(hold, at + PLAY_SETTLE_MS);   // F681: as `finish` holds the `$PLAY` behind the rows
+      if (!j.group.some(isPlay)) return;
       last = at; next = 0;
       model.stop(j.group.filter(f => f === PLAYX).length, at);
       for (const f of j.group) model.addPlay(f, j.why, at);
@@ -289,7 +310,7 @@ export class PlayQueue extends GunAudio {
     if (w && !w.cancelled && w.sendAt != null) { sent(w, w.sendAt); t = w.sendAt; }
     for (const j of [...this.queue.slice(0, ix), job]) {
       if (j.cancelled) continue;
-      const { waits, at } = this._step(j, { t, next, last, model });
+      const { waits, at } = this._step(j, { t, next, last, model, hold });
       if (j === job) return at;
       t = at;
       if (this._stale(j, waits, at)) continue;   // dropped stale
@@ -334,6 +355,16 @@ export class PlayQueue extends GunAudio {
     this.queue.length = 0; this.queue.push(...keep);
     const w = this.waiting;
     if (w && !w.mustHear && !w.life) { drop(w); this.waiting = null; this.busy = false; }   // its timer finds it cancelled
+  }
+
+  /** F681 review: a `settleRows` write whose rows failed drops its `$PLAY` jobs, which have not gone yet. */
+  _dropRest(job) {
+    for (const j of job.rest) {
+      if (j === job || j.cancelled || j.started) continue;
+      j.cancelled = true; this.pending.delete(j); j.resolve(true);
+      const ix = this.queue.indexOf(j); if (ix >= 0) this.queue.splice(ix, 1);
+      this._log(`audio: ${j.why} dropped: the rows before it failed`);
+    }
   }
 
   /** A91: drop every job named `why` that has not reached the gun (a KIT voice preview once the match is ARMED). Never

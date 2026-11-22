@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET, STAND_DOWN_NAMES, GATE } from '../src/engine.js';
 import { mkStorage } from './_helpers.mjs';
+import { PLAY_SETTLE_MS } from '../src/transport/contract.gen.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
@@ -30,9 +31,10 @@ const MAX_SHIELD = 70;                          // `harness()`'s own default shi
 const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;
 const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F349: one recharge grant   // F348: the spawn fill a shields life ends its burst with
 
-function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
+function harness({ shields = false, shieldCeiling = MAX_SHIELD, timers = false } = {}) {
   let clock = 1_000_000;
-  const writes = [];
+  const writes = [], calls = [], due = [];   // `calls`: [time, frames] per writer call; `due`: the `timers` option's delays
+  const fire = () => { for (;;) { due.sort((a, b) => a.at - b.at); if (!due.length || due[0].at > clock) return; due.shift().fn(); } };
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }];
   // `shields` is S45's preset shape: armour 0, which is what `is_shields_preset`/`shieldRegenOn` key the
   // recharge on. `shieldCeiling` (S45: `health.max_shield` is a real host field now) defaults to MAX_SHIELD
@@ -51,16 +53,16 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   const config = { config_id: golden.config_id, mode: 'ffa', environment: 'outdoor', night: false, time_limit_s: 1800,
     respawn: { type: 'auto', delay_s: 15 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'ROCCO', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock,
-    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  const eng = new Engine({ writer: (fr, _why, o) => { if (o && o.shouldSend && !o.shouldSend()) return null; writes.push(...fr); calls.push([clock, [...fr]]); } /* as BrxLink: `shouldSend` false sends nothing */, emit: () => {}, report: () => {}, now: () => clock,
+    synced: () => true, storage: mkStorage(), log: () => {}, delay: timers ? (ms, fn) => due.push({ at: clock + ms, fn }) : (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   eng._gun.clear();   // docs/announcer.md: the cue tests start on a quiet gun (the go-live klaxon and spawn line are not what they measure)
   const h = {
-    eng, writes,
-    adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); } return h; },
+    eng, writes, calls, now: () => clock,
+    adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); fire(); eng.tick(); } return h; },
     f(fr) { eng.feedFrame(fr); return h; },
     pull() { return h.f('$BUT,0,1,*').adv(200).f('$BUT,0,0,*').adv(200); },
     count(frame) { return writes.filter(w => w === frame).length; },
@@ -76,7 +78,7 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
       const end = clock + ms;
       let seen = h.grants(), asked = writes.filter(isPoolProbe).length;
       while (clock < end) {
-        clock = Math.min(end, clock + 50); eng.tick();
+        clock = Math.min(end, clock + 50); fire(); eng.tick();
         // `probes`: a live gun that ignores the grants still answers the liveness probe (F272), with its unchanged pool
         if (probes && writes.filter(isPoolProbe).length > asked) { asked = writes.filter(isPoolProbe).length; h.f(`$HP,${hp},${armor},${eng.shield},*`); }
         if (echo && h.grants() > seen) {
@@ -393,6 +395,59 @@ test('F678: a stun expiry stops only the stun clip, and only while it plays', ()
   c.eng._stunRestore('expired');
   assert.equal(c.count(PLAYX), cStops + 1, 'X17 playing at the expiry is stopped with one $PLAYX');
   assert.equal(c.eng._gun.outstanding(c.eng.now()), 0, 'and the gun model is quiet');
+});
+
+test('F681: the stun writes its $AMMO zeros alone, and X17 in a write of its own PLAY_SETTLE_MS later', () => {
+  // Bench 2026-11-22 (step 108): X17 in the same write as the zeros was never heard (3 of 3); written alone it was.
+  const h = shielded(), x17 = '$PLAY,X17,4,6,,,,,*';
+  h.eng.config.stun = { duration_s: 10 };
+  const n = h.calls.length;
+  h.eng._stun();
+  const zeros = h.calls.slice(n).find(([, fr]) => fr.some(f => f.startsWith('$AMMO,') && f.includes(',0,0,1,')));
+  assert.ok(zeros, 'the disarm is written');
+  assert.equal(zeros[1].includes(x17), false, 'X17 never rides the disarm write');
+  const t = harness({ shields: true, timers: true });
+  t.f(`$HP,30,0,${MAX_SHIELD},*`);
+  t.eng.config.stun = { duration_s: 10 };
+  const m = t.calls.length, at = t.now();
+  t.eng._stun();
+  assert.equal(t.calls.slice(m).some(([, fr]) => fr.includes(x17)), false, 'not with the zeros');
+  t.adv(PLAY_SETTLE_MS - 50, 50);
+  assert.equal(t.calls.slice(m).some(([, fr]) => fr.includes(x17)), false, 'not before the zeros have settled');
+  t.adv(100, 50);
+  const clip = t.calls.slice(m).find(([, fr]) => fr.includes(x17));
+  assert.ok(clip, 'X17 is written');
+  assert.deepEqual(clip[1], [x17], 'on its own');
+  assert.ok(clip[0] - at >= PLAY_SETTLE_MS, `${clip[0] - at} ms after the zeros`);
+});
+
+test('F681 review: a stun that ends inside the settle wait never gets its X17', () => {
+  const t = harness({ shields: true, timers: true });
+  t.f(`$HP,30,0,${MAX_SHIELD},*`);
+  t.eng.config.stun = { duration_s: 10 };
+  const m = t.calls.length;
+  t.eng._stun();
+  t.eng._stunRestore('died');   // a death (or an operator respawn) inside the 300 ms
+  t.adv(PLAY_SETTLE_MS + 200, 50);
+  assert.equal(t.calls.slice(m).some(([, fr]) => fr.includes('$PLAY,X17,4,6,,,,,*')), false, 'no stun clip after the stun');
+});
+
+test('F678: after the stun-expiry stop, no line is written for PLAY_SETTLE_MS (the stop swallowed it on the bench)', () => {
+  const h = harness({ shields: true, timers: true });
+  h.f(`$HP,30,0,${MAX_SHIELD},*`);
+  h.eng.config.stun = { duration_s: 1 };
+  h.eng._stun();
+  h.adv(500, 50);   // X17 is on the gun
+  const n = h.calls.length;
+  h.eng._stunRestore('expired');
+  h.eng._announceStatus('shield_charging');   // the refill's line, written in the same tick as the expiry
+  const stop = h.calls.slice(n).find(([, fr]) => fr.includes(PLAYX));
+  assert.ok(stop, 'setup: X17 still played, so the expiry stops it');
+  assert.equal(h.calls.slice(n).some(([, fr]) => fr.includes(CHARGING)), false, 'the line does not follow the stop at once');
+  h.adv(PLAY_SETTLE_MS + 100, 50);
+  const line = h.calls.slice(n).find(([, fr]) => fr.includes(CHARGING));
+  assert.ok(line, 'the line is said');
+  assert.ok(line[0] - stop[0] >= PLAY_SETTLE_MS, `${line[0] - stop[0]} ms after the stop`);
 });
 
 test('S29: a gun that never answers stops the heartbeat too, not just the grants', () => {

@@ -480,7 +480,7 @@ function staleGattRig(opts = {}) {
   const ble = {
     initialize: async () => {},
     disconnect: async () => { r.releases++; r.events.push('release'); },
-    requestLEScan: async (options, cb) => { r.scans++; r.events.push('scan'); r.scanOpen = true; r.stale = false; cb({ device: { deviceId: r.scanId, name: 'GUN-A-1111' } }); },
+    requestLEScan: async (options, cb) => { r.scans++; r.events.push('scan'); r.scanOpen = true; if (!r.keepStale) r.stale = false; cb({ device: { deviceId: r.scanId, name: 'GUN-A-1111' } }); },
     stopLEScan: async () => { r.stops++; r.scanOpen = false; },
     connect: (id, cb, options) => new Promise((resolve, reject) => {
       if (r.onConnect) r.onConnect();
@@ -508,7 +508,7 @@ test('relink timeouts release GATT and recover from a fresh scan within the atte
   assert.equal(r.link.deviceId, 'A', 'the gun is matched on its device id and never switched');
   assert.equal(r.calls.at(-1).id, 'A');
   assert.ok(r.releases >= 2, 'the stale client is released before the scan');
-  assert.deepEqual(r.events.slice(1, 7), ['release', 'connect', 'connect', 'release', 'scan', 'connect']);
+  assert.deepEqual(r.events.slice(1, 6), ['release', 'connect', 'release', 'scan', 'connect'], 'F684: the scan follows the first timeout');
   assert.ok(r.calls.length - 1 <= r.link.relinkAttempts, 'recovery stays inside the relink attempt limit');
 });
 
@@ -531,15 +531,17 @@ test('a tap during relink backoff ends the wait and scans at once', async ctx =>
   const settle = useClock(ctx);
   const r = staleGattRig({ relinkGapMs: 1000 }); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
-  r.stale = true;
+  r.stale = true; r.keepStale = true;   // F684: the scan after the first timeout does not cure it, so the backoff runs
   const done = r.link.relink();
-  assert.ok(await settleUntil(settle, () => !!r.link._wake, 200) >= 0);
+  assert.ok(await settleUntil(settle, () => !!r.link._wake, 400) >= 0);
+  assert.equal(r.scans, 1, 'setup: the first timeout already scanned');
+  r.keepStale = false;
   const at = Date.now();
   assert.equal(await r.link.relink(), true);
   assert.ok(await settleUntil(settle, () => r.link.connected, 100) >= 0);
   assert.ok(Date.now() - at < 100, 'the tap skips the remaining backoff');
   assert.equal(await done, true);
-  assert.equal(r.scans, 1);
+  assert.equal(r.scans, 2, 'and scans again at once');
 });
 
 test('a tap during the final bounded attempt scans before normal reconnect takes over', async ctx => {
@@ -556,7 +558,7 @@ test('a tap during the final bounded attempt scans before normal reconnect takes
   assert.deepEqual(r.events.slice(1, 5), ['release', 'connect', 'release', 'scan']);
 });
 
-test('background reconnect also scans after two consecutive timeouts', async ctx => {
+test('F684: background reconnect also scans after the first timeout', async ctx => {
   const settle = useClock(ctx);
   const r = staleGattRig(); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
@@ -1159,7 +1161,7 @@ test('F541: recovery releases BeaconWatch before connecting, then Presence resum
   r.stale = false;
   assert.ok(await settleUntil(settle, () => r.link.connected && r.calls.length > 1, 30000) >= 0);
   assert.equal(await done, true);
-  assert.ok(attempts.length >= 3, 'the relink reached recovery after two timeouts');
+  assert.ok(attempts.length >= 2, 'the relink reached recovery after its first timeout');
   assert.ok(attempts.every(a => !a.scanOpen && !a.watchOpen && !a.listening && a.paused),
     'every native connect needs a stopped scan and paused Presence');
   assert.equal(presence.paused, true);

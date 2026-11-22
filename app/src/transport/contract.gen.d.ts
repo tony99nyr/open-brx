@@ -382,10 +382,16 @@ export declare const PROBE_LIFE: '$LIFE,0,0,0,*';
  *  `X17` is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s, community label
  *  "concussion grenade"). Token 1 (interrupt), matching the protocol's rule for hit-path/urgent sounds
  *  (`brx-protocol.md` $PLAY row) -- the stun should cut off whatever was playing, the same as a hit. Sent
- *  once, in the SAME write as the disarm, never on an extend (F274: one write per hit, not per tick). */
+ *  once with the disarm, never on an extend (F274: one write per hit, not per tick). F681 (bench 2026-11-22): it goes in
+ *  a write of its own PLAY_SETTLE_MS after the `$AMMO` zeros; in the same write it was never heard. */
 export declare const STUN_PLAY: '$PLAY,X17,4,6,,,,,*';
 /** Minimum gap between phone-written `$PLAY` frames. Bench 2026-09-25: a zero-gap burst dropped a clip. */
 export declare const PLAY_GAP_MS: 150;
+/** F678/F681 (bench 2026-11-22): a gun write that can cut audio swallowed the `$PLAY` sent right behind it. A stun's
+ *  `$AMMO` disarm carried X17 in the same write, and X17 was never heard (3 of 3); a lone `$PLAYX` stop at a short stun's
+ *  end swallowed the "Shields charging" line written a few ms after it. A line 120-200 ms after a lone stop played in
+ *  full (bench 2026-09-25, F347 step 4). So after such a write the phone sends no `$PLAY` for this long. */
+export declare const PLAY_SETTLE_MS: 300;
 /** a clip not in CLIP_MS: the announcer lines run 0.6-3.0 s */
 export declare const ANNOUNCE_DEFAULT_CLIP_MS: 2500;
 /** silence between two lines, so the second is not heard as the tail of the first */

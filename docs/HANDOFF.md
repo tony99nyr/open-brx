@@ -21,8 +21,9 @@ F449, F541, F50, F3, F511. PASS: P19 (F640 (2)(3)), SR5 part 3, the SR23 tap cas
 (the victim sends a second word), F264's code read. F678's fix is REFUTED on hardware (the X17 stop swallows
 "Shields charging"), so F678 is back at the desk. F545 waits on Tony (brx1 recommends no warning). New rows: F681 and
 F683 to F687 (F682 was taken by the voice pick).
-**Next:** route the desk rows (F678, F681, F683 to F685, F687). Then the next sitting: APK and Stick reflash, item 4's open steps,
-F322's two-gun check, step 108 after F678's new fix.
+brx-desk-1122 built F681, F678, F687 and F684 (now bench rows, steps 108 to 110) and closed F683 (a recorder artefact).
+**Next:** F685 is Tony's call. Then the next sitting: APK and Stick reflash, item 4's open steps, steps 108 to 110,
+F322's two-gun check.
 **Blocked:** F533 and F416 need a spawn write that fails in flight; B21 on the MacBook; publishing waits for Tony.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure

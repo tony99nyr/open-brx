@@ -32,12 +32,12 @@ function timedProtect(ms) {
     revive: protectedList(RP.revive) } };   // the T-0 spawn never carries t8
 }
 
-function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0, overrides = undefined } = {}) {
+function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0, overrides = undefined, weapons = [{ weapon_id: 'assault_rifle' }] } = {}) {
   const writes = []; const facts = []; const timed = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: respawn, delay_s: 8 }, ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}), scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
-  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], ...(overrides ? { overrides } : {}) }, voice: 'male' };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   const eng = new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) timed.push([clock, f]); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -662,4 +662,23 @@ test('part 4 review: a code-faulted retry closes an earlier F416 check, so it ca
   assert.equal(h.eng._spawnCheck, null, 'the check is closed');
   for (let i = 0; i < 40; i++) { h.adv(250); h.frame('$LCD,45,70,0,1,3,24,*'); await new Promise(r => setImmediate(r)); }
   assert.equal(n, 2, 'no further re-send');
+});
+
+test('F683: one early ALT inside the weapon delay writes its swap sound ONCE to the gun', () => {
+  // Bench 2026-11-22 (SR23 tap cases): a recorder that wrapped `Engine._write` saw D06 twice, 1 ms apart. A `$PLAY` write
+  // goes to the play queue and comes back through `_write` when it is sent (`playScheduled`), so such a wrapper counts
+  // each sound twice. The gun (the writer) gets it once.
+  const h = liveArmed({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }] });
+  const swap = golden.head.find(f => f.startsWith('$WEAP,1,')).split(',')[34];
+  const sound = `$PLAY,,4,6,${swap},,,,*`;
+  const calls = [], write = h.eng._write.bind(h.eng);
+  h.eng._write = (frames, why, ...rest) => { if (frames.includes(sound)) calls.push(why); return write(frames, why, ...rest); };
+  revived(h);
+  h.adv(1180);
+  assert.ok(h.eng._triggerPending, 'setup: inside the weapon delay');
+  const n = h.mark();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(1000);
+  assert.equal(h.since(n).filter(f => f === sound).length, 1, 'the gun gets one swap sound');
+  assert.equal(calls.length, 2, 'CONTROL: a wrapper on _write sees it twice, on the way in and on the way out of the queue');
 });

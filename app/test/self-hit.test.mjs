@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, isPoolProbe } from '../src/engine.js';
 import { mkStorage } from './_helpers.mjs';
+import { PLAY_SETTLE_MS } from '../src/transport/contract.gen.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -350,7 +351,7 @@ test('cross-lane r2 C1: an F416 re-send built while stunned, but held in the pla
   h.adv(3000);
   h.frame('$ALCD,30,100,0,192,0,*');
   h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP at t0: stunned until t0 + 10 s
-  h.adv(8000);                          // the EMP's 7.9 s clip (F463) has ended, so the revive goes out at once
+  h.adv(8000 + PLAY_SETTLE_MS);         // the EMP's 7.9 s clip (F463), sent PLAY_SETTLE_MS after the zeros (F681), has ended, so the revive goes out at once
   h.failing.add('revive');
   h.frame(SELF).frame('$HP,0,0,0,*');
   await new Promise(r => setImmediate(r));
