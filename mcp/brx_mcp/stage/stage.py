@@ -8554,7 +8554,12 @@ class GunStage:
                 # chosen by damage) -- both [] for a pre-A15.3 bundle, so the page falls back to the old pickers.
                 "pset_pool": [{"id": i, "words": _snd.describe(i)} for i in (bv.get("pset_pool") or [])],
                 "pain": {"short": self._role_takes("pain_short"), "long": self._role_takes("pain_long"),
-                         "melee": self._role_takes("pain_melee"), "long_min": bv.get("pain_long_min", _voices.PAIN_LONG_MIN_DAMAGE)}}
+                         "melee": self._role_takes("pain_melee"), "long_min": bv.get("pain_long_min", _voices.PAIN_LONG_MIN_DAMAGE)},
+                # F685: the $PSET t15 painRelief field ships empty and the node plays the `healed` line on a health
+                # rise. `heal` is what the bundle will play (`cues.healed`, [] when the profile has no heal line);
+                # `heal_line` is what `voice:healed` resolves to for this voice (a `pain_relief` pick included).
+                "heal": self._role_takes("healed"),
+                "heal_line": [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, "healed", slots)]}
 
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`

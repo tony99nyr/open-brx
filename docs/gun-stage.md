@@ -95,10 +95,12 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    game voice (**USE AS THE GAME VOICE** copies it to section 2), **PLAY ALL** (every line in slot order, its
    duration + 0.5 s apart, the playing line highlighted; **STOP** cancels) and, per line, **✓ / ✗** verdicts that
    append to `~/.brx-mcp/voice-verdicts.jsonl` (the walkthrough note box is the note) and colour the line; the
-   header pill counts `<n> CHECKED · <m> WRONG` for the board's character. **THE GUN'S ONE (+ KILL + SPAWN LINE)** stays
-   tied to the GAME voice: `painRelief` is the only `$PSET` voice field still open to a pick (the event it
-   plays on is `healed`). Since F685 (2026-11-22) it ships EMPTY and the node plays the `healed` line itself, so the
-   picker lists no candidates. The card also holds the bundle's kill cue, and a
+   header pill counts `<n> CHECKED · <m> WRONG` for the board's character. The gun's voice cards stay
+   tied to the GAME voice. The KILL picker holds the bundle's kill cue. A **HEAL LINE** card (F685, 2026-11-22)
+   replaces the old PAIN RELIEF picker: the `$PSET` painRelief field ships EMPTY, and the node plays the `healed` line
+   on a health rise. The card lists the takes from the bundle's `cues.healed` (Male player: VA7 "Ugh, that's
+   better."). A profile with no heal cue shows OFF and names the voice's line (`voices.role_ids(voice, "healed")`). A
+   `pain_relief` pick picks this line, never t15, and the card title says PICKED. The section also holds a
    **SPAWN LINE** card (A15.2, Tony 2026-09-06: "what if we dont rely on the firmware to make the sound on spawn and we
    just control it" -- bench-verified on the bench gun): the `$PSET` battleRespawnCry field is written EMPTY, so the firmware
    says nothing at `$SPAWN`, and the stage (like the phone) appends one take of the spawn pool to the spawn write and
