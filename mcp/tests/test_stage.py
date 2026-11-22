@@ -834,12 +834,12 @@ def test_the_voice_pick_drives_the_pset_tail_and_the_kill_cue():
     st, _ = mk_stage()
     assert st.profile["voice"] == "male" and st.state()["voice"]["speaker"] == "Male player"
     st.set_profile(voice="heavy")
-    assert ",V33,,,,,V37," in _pset(st)          # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
+    assert ",V33,,,,,," in _pset(st)          # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
     assert st.bundle["cues"]["kill"] == "$PLAY,,4,6,V3A,,,,*"
     assert st.log[-1]["kind"] == "warn" and "re-ARM" in st.log[-1]["text"]
     v = st.state()["voice"]
     assert v["id"] == "heavy" and v["family"] == "V3" and v["speaker"] == "Heavy" and v["kill"] == "V3A"
-    assert v["pset"] == {"death_scream": "V33", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": "V37"}
+    assert v["pset"] == {"death_scream": "V33", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": ""}
     lines = {l["id"]: l for l in v["lines"]}
     assert "pset:death_scream" in lines["V33"]["uses"] and "cue:kill" in lines["V3A"]["uses"]
     assert lines["V31"]["group"] == "personality" and lines["V3C"]["group"] == "hit"
@@ -857,13 +857,13 @@ def test_the_voice_pick_drives_the_pset_tail_and_the_kill_cue():
 def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_clears_it():
     st, _ = mk_stage(voice="heavy")
     st.set_voice_slot("death_scream", "V34")
-    assert ",V34,,,,,V37," in _pset(st), _pset(st)          # needs compile() to honour player["voice_slots"] (voice-core)
+    assert ",V34,,,,,," in _pset(st), _pset(st)          # needs compile() to honour player["voice_slots"] (voice-core)
     assert st.state()["voice"]["pset"]["death_scream"] == "V34"
     st.set_voice_slot("kill", "V38")
     assert st.bundle["cues"]["kill"] == "$PLAY,,4,6,V38,,,,*"   # needs cues(voice, slots) (voice-core)
     assert st.state()["voice"]["kill"] == "V38"
     st.set_voice_slot("death_scream", None)
-    assert ",V33,,,,,V37," in _pset(st)
+    assert ",V33,,,,,," in _pset(st)
     st.set_profile(voice="medic")
     assert st.profile["voice_slots"] == {} and st.state()["voice"]["kill"] == "V8S"
     try:
@@ -899,7 +899,7 @@ def test_the_event_catalog_says_which_events_the_voice_drives():
     # A15.3: the three pain fields now ship EMPTY (the node plays pain_short/pain_long/pain_melee itself by
     # damage), so hit_taken carries no $PSET firmware reaction at all any more -- same shape as respawned since A15.2
     assert "firmware" not in rows["hit_taken"]
-    assert rows["healed"]["firmware"][0]["id"] == "V37"
+    assert "firmware" not in rows["healed"] and rows["healed"]["voice_id"] == "V37"   # F685: t15 ships empty; the node plays the healed line
     assert "firmware" not in rows["respawned"] and rows["respawned"]["voice_id"] == "V3I"   # A15.2: the firmware plays nothing at spawn; the line is voice:spawn
     assert "firmware" not in rows["first_blood"]
 
@@ -918,7 +918,7 @@ def test_the_board_picks_any_character_without_touching_the_game_voice():
     st.voice_board("scout")
     b = st.state()["board"]
     assert b["voice"] == "scout" and b["family"] == "VB" and b["speaker"] == "Scout (female)" and b["is_game_voice"] is False
-    assert len(b["lines"]) == 22 and st.profile["voice"] == "heavy" and ",V33,,,,,V37," in _pset(st)
+    assert len(b["lines"]) == 22 and st.profile["voice"] == "heavy" and ",V33,,,,,," in _pset(st)
     assert any("pset:death_scream" in l["uses"] for l in b["lines"])      # badges = the family's default for each $PSET field
     st.set_profile(voice="scout")
     assert st.state()["board"]["is_game_voice"] and any("cue:kill" in l["uses"] for l in st.state()["board"]["lines"])

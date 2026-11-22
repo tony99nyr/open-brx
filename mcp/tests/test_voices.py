@@ -22,7 +22,7 @@ def test_heavy_lines_carry_the_pset_fields_and_the_kill_cue():
     # A15.3: the three pain fields ship EMPTY (the node plays pain_short/pain_long/pain_melee itself),
     # so these ids now carry only the node's pain pools, never a pset: use
     assert ls["V3C"]["uses"] == ["pool:pain_short", "pool:pain_melee"] and ls["V3G"]["uses"] == ["pool:pain_short"] and ls["V3E"]["uses"] == ["pool:pain_long"]
-    assert ls["V37"]["uses"] == ["pset:pain_relief"] and ls["V37"]["role"] == "healed"
+    assert ls["V37"]["uses"] == [] and ls["V37"]["role"] == "healed"   # F685: t15 ships empty; the node plays `voice:healed`
     assert ls["V3A"]["uses"] == ["cue:kill", "pool:kill"] and ls["V3A"]["role"] == "kill_confirm" and ls["V3A"]["group"] == "personality"
     assert ls["V3K"]["uses"] == ["pool:kill"] and ls["V38"]["uses"] == ["pool:kill"]
     assert ls["V3K"]["role"] == "taunt" and ls["V31"]["role"] == "intro" and ls["V3M"]["role"] == "name"
@@ -32,7 +32,7 @@ def test_heavy_lines_carry_the_pset_fields_and_the_kill_cue():
 def test_male_default_family_is_the_18_slot_player_pack_plus_the_announcer_grunts():
     ls = {l["id"]: l for l in V.lines("male")}
     assert "VAA" in ls and ls["VAA"]["uses"] == ["cue:kill", "pool:kill"] and ls["VAA"]["words"] == "Kill."
-    assert ls["VA3"]["uses"] == ["pset:death_scream", "pool:death_scream"] and ls["VA7"]["uses"] == ["pset:pain_relief"]   # what $PSET ships today
+    assert ls["VA3"]["uses"] == ["pset:death_scream", "pool:death_scream"] and ls["VA7"]["uses"] == []   # F685: the pain relief ships empty
     assert ls["VAI"]["words"] == "There's nowhere for you to hide."
     # A15.2: the Male player's spawn pool is VAI / VAN / VAO ("all good at spawn picked randomly")
     assert ls["VAI"]["uses"] == ["pool:spawn"] and ls["VAN"]["uses"] == ["pool:spawn"] and ls["VAO"]["uses"] == ["pool:spawn"]
@@ -60,7 +60,7 @@ def test_check_slots_rejects_a_bad_role_and_an_off_gun_id_and_normalises_case():
 def test_pset_ids_and_role_id_honour_the_override():
     d = V.pset_ids("heavy")
     # A15.3: melee_grunt / short_pain / long_pain ship EMPTY too now (the node plays them by damage)
-    assert d == {"death_scream": "V33", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": "V37"}
+    assert d == {"death_scream": "V33", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": ""}   # F685: the pain relief too
     o = V.pset_ids("heavy", {"death_scream": "V35", "kill": "V38"})     # kill is not a $PSET field
     assert o["death_scream"] == "V35" and "kill" not in o and o["respawn_cry"] == "" and o["short_pain"] == ""
     assert V.pset_ids("heavy", {"respawn_cry": "V3I"})["respawn_cry"] == "V3I"    # the escape hatch: a pick puts a firmware cry back
@@ -71,10 +71,12 @@ def test_pset_ids_and_role_id_honour_the_override():
     assert V.role_id("heavy", "dance") is None
     ls = {l["id"]: l for l in V.lines("heavy", {"death_scream": "V35", "kill": "V38"})}
     assert ls["V35"]["uses"] == ["pset:death_scream"] and ls["V33"]["uses"] == [] and ls["V38"]["uses"] == ["cue:kill"]
-    assert voice_tail("heavy", {"death_scream": "V35"}) == ["V35", "", "", "", "", "V37"]   # A15.3: cry + all three pains empty
+    assert voice_tail("heavy", {"death_scream": "V35"}) == ["V35", "", "", "", "", ""]   # A15.3: cry + all three pains empty; F685: relief too
     # a pick from OUTSIDE the family still appears in the list, flagged
+    # F685 review: a pain relief pick never goes back into t15; it picks the phone's heal line instead
+    assert V.pset_ids("heavy", {"pain_relief": "V87"})["pain_relief"] == "" and V.role_ids("heavy", "healed", {"pain_relief": "V87"}) == ["V87"]
     ls = {l["id"]: l for l in V.lines("heavy", {"pain_relief": "V87"})}
-    assert ls["V87"]["role_words"] == "outside the family" and ls["V87"]["uses"] == ["pset:pain_relief"]
+    assert "V87" not in ls
 
 
 def test_hurt_loop_is_playable_and_long_death_is_retired():
@@ -96,7 +98,7 @@ def test_options_cover_every_player_family_and_no_commander():
     assert opts["heavy"]["verified"] is True and opts["heavy"]["lines"] == 22 and opts["medic"]["verified"] is False
     assert not {o["family"] for o in opts.values()} & {"VQ", "VR", "VS"}
     c = V.candidates("heavy")
-    assert c["death_scream"][0] == "V33" and c["kill"][0] == "V3A" and c["pain_relief"] == ["V37"]
+    assert c["death_scream"][0] == "V33" and c["kill"][0] == "V3A" and c["pain_relief"] == []
     assert V.play_line_frame("V3K") == "$PLAY,,4,6,V3K,,,,*"
 
 
@@ -136,13 +138,13 @@ def test_pset_fields_roll_from_curated_pools_and_explicit_picks_win():
     assert V.roll_pool("heavy", "death_scream") == ["V33", "V34", "V35"]
     # A15.3: the pain fields ship EMPTY and are no longer rolled at all (was: short_pain/long_pain had curated pools)
     assert V.roll_pool("heavy", "short_pain") == [] and V.roll_pool("heavy", "long_pain") == [] and V.roll_pool("heavy", "melee_grunt") == []
-    assert V.roll_pool("heavy", "pain_relief") == ["V37"]
+    assert V.roll_pool("heavy", "pain_relief") == []   # F685: ships empty, never rolled
     seen = set()
     for seed in range(12):
         r = V.roll_pset("male", None, random.Random(seed))
         assert r == V.roll_pset("male", None, random.Random(seed))       # deterministic
         assert r["death_scream"] in ("VA3", "VA4", "VA5") and r["respawn_cry"] == ""
-        assert r["short_pain"] == "" and r["long_pain"] == "" and r["melee_grunt"] == "" and r["pain_relief"] == "VA7"
+        assert r["short_pain"] == "" and r["long_pain"] == "" and r["melee_grunt"] == "" and r["pain_relief"] == ""
         seen.add(r["death_scream"])
     assert len(seen) > 1, "twelve seeds never varied: the roll is not rolling"
     fixed = V.roll_pset("male", {"death_scream": "VA4", "respawn_cry": "VAO"}, random.Random(0))
@@ -154,5 +156,5 @@ def test_the_spawn_line_is_ours_a15_2():
     board marks the pool members. A15.3 empties the three pain fields the same way."""
     assert "spawn" in V.SOUND_ROLES and V.role_id("male", "spawn") == "VAI" and V.role_id("scout", "spawn") == "VBI"
     assert V.role_ids("male", "spawn", {"spawn": "VAO"}) == ["VAO"]      # an explicit pick is the whole pool
-    assert voice_tail("male") == ["VA3", "", "", "", "", "VA7"]
-    assert voice_tail("male", {"respawn_cry": "VAN"}) == ["VA3", "VAN", "", "", "", "VA7"]
+    assert voice_tail("male") == ["VA3", "", "", "", "", ""]
+    assert voice_tail("male", {"respawn_cry": "VAN"}) == ["VA3", "VAN", "", "", "", ""]

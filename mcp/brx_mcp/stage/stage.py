@@ -6033,7 +6033,8 @@ class GunStage:
                 # S29: mid-recharge the grants are OURS and `shield_charging` already spoke for them, so they
                 # are silent -- twelve `shield_up` lines over a 4 s refill would cut each other off. A grant
                 # that is NOT our recharge (an IR pickup, a host grant) still says `shield_up`.
-                kind = ("healed" if pool == "health" else "armour_up" if pool == "armor"
+                # F685 review (engine.js `_hpGainMoment`): any health rise says `healed`, even when the armour rose more.
+                kind = ("healed" if any(g[0] == "health" for g in gains) else "armour_up" if pool == "armor"
                         else "shield_online" if full else None if self._shield_regen else "shield_up")
                 if kind == "shield_online":
                     # Tony 2026-09-24 (engine.js `_hpGainMoment`): no voice line when the shield comes back online; its lights stay

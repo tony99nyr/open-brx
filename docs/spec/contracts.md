@@ -90,6 +90,7 @@ Player {
                              //   short_pain, long_pain, pain_relief) + `kill`; every id must be ON the gun (400 otherwise). Made on the
                              //   gun stage's soundboard. [A15.1] a field without a pick is ROLLED by MC from the family's pool on every push.
                              //   [A15.2] `respawn_cry` ships EMPTY (the firmware says nothing on $SPAWN); a pick here puts a firmware cry back.
+                             //   [F685] `pain_relief` ships EMPTY too; a pick there never goes into $PSET: it picks the node's `healed` line.
                              //   [A15.3] so do `melee_grunt` / `short_pain` / `long_pain` (the node plays the pain by damage); a pick puts a
                              //   firmware pain back. `death_scream` stays the firmware's and is re-rolled per spawn (`pset_pool`) unless picked.
   ready:       boolean

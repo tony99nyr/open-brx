@@ -1638,8 +1638,8 @@ def test_voice_slot_roles_hold_across_every_family():
     lens = {s["id"]: s["duration_s"] for s in json.loads(bank_path.read_text())["sounds"]}
     for v in VOICE_PACKS:
         tail = voice_tail(v)                       # death, respawnCry, meleeGrunt, shortPain, longPain, painRelief
-        assert tail[1] == tail[2] == tail[3] == tail[4] == "", v    # A15.3: cry + all three pains ship EMPTY
-        death, relief = tail[0], tail[5]
+        assert tail[1] == tail[2] == tail[3] == tail[4] == tail[5] == "", v    # A15.3: cry + all three pains ship EMPTY; F685: the pain relief too
+        death, relief = tail[0], V.role_id(v, "healed")   # F685: the node plays the healed line itself
         melee, short_id, long_id = V.role_id(v, "pain_melee"), V.role_id(v, "pain_short"), V.role_id(v, "pain_long")
         ids = [death, melee, short_id, long_id, relief]
         assert all(i in lens for i in ids), v
@@ -1658,8 +1658,8 @@ def test_the_voice_pack_is_per_player_not_hardcoded():
     hp = next(f for f in C.compile(_cfg(), dict(_player(), voice="heavy"), TEAMS)["head"] if f.startswith("$PSET,"))
     mp = next(f for f in C.compile(_cfg(), dict(_player(), voice="medic"), TEAMS)["head"] if f.startswith("$PSET,"))
     assert hp != mp, "the voice pack must follow the player"
-    assert ",V33,,,,,V37," in hp      # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
-    assert ",V83,,,,,V87," in mp
+    assert ",V33,,,,,," in hp      # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
+    assert ",V83,,,,,," in mp
     # an unknown name falls back rather than emitting a bad family
     assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), TEAMS)["head"] if f.startswith("$PSET,"))
 
@@ -1669,13 +1669,13 @@ def test_voice_slots_pick_which_line_of_the_family_the_gun_holds():
     the bundle reports what the gun holds in `voice`. An off-gun id or an unknown role is refused."""
     b = C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots={"death_scream": "V34", "kill": "V38"}), TEAMS)
     pset = next(f for f in b["head"] if f.startswith("$PSET,"))
-    assert ",V34,,,,,V37," in pset      # A15.3: melee_grunt / short_pain / long_pain still ship EMPTY -- only death_scream was picked
+    assert ",V34,,,,,," in pset      # A15.3: melee_grunt / short_pain / long_pain still ship EMPTY -- only death_scream was picked
     assert b["cues"]["kill"] == "$PLAY,,4,6,V38,,,,*"
     assert {k: b["voice"][k] for k in ("id", "family", "kill", "pset")} == {"id": "heavy", "family": "V3", "kill": "V38",
-                          "pset": {"death_scream": "V34", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": "V37"}}
+                          "pset": {"death_scream": "V34", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": ""}}
     assert b["voice"]["rolled"] == {} and b["voice"]["pools"]["death_scream"] == ["V33", "V34", "V35"]   # A15.1: no roll without `roll=`
     plain = C.compile(_cfg(), dict(_player(), voice="heavy"), TEAMS)
-    assert plain["voice"]["kill"] == "V3A" and ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,"))
+    assert plain["voice"]["kill"] == "V3A" and ",V33,,,,,," in next(f for f in plain["head"] if f.startswith("$PSET,"))
     for bad in ({"dance": "V34"}, {"death_scream": "E_J10"}):
         try:
             C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots=bad), TEAMS)
@@ -1809,7 +1809,7 @@ def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():
         screams.add(ds)
     assert len(screams) > 1
     plain = C.compile(_cfg(), hv, TEAMS)
-    assert ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,")) and plain["voice"]["rolled"] == {}
+    assert ",V33,,,,,," in next(f for f in plain["head"] if f.startswith("$PSET,")) and plain["voice"]["rolled"] == {}
     assert plain["cue_pools"]["kill"] == [f"$PLAY,,4,6,{i},,,,*" for i in ("V3A", "V38", "V39", "V3K", "V3L")]
     assert plain["cues"]["kill"] == plain["cue_pools"]["kill"][0]
     # an explicit pick is never rolled over, and collapses the kill pool to that line

@@ -91,8 +91,9 @@ VOICE_ROLES = PSET_ROLES + ("kill", "spawn") + NODE_ROLES   # A15.2: `spawn` pin
 # A15.2: the respawn cry has no candidates -- the field ships EMPTY and the spawn line is the node's `spawn` pool.
 # A15.3: neither have the three pains -- they ship EMPTY too and the node plays `pain_short` / `pain_long` /
 # `pain_melee` by the hit's damage.
+# F685 (Tony 2026-11-22): the pain relief ships EMPTY too and the phone plays `healed` on a real heal.
 PSET_CANDIDATES = {"death_scream": "345", "respawn_cry": "", "melee_grunt": "",
-                   "short_pain": "", "long_pain": "", "pain_relief": "7", "kill": "A89KL"}
+                   "short_pain": "", "long_pain": "", "pain_relief": "", "kill": "A89KL"}
 # sounds a presentation event may name: "voice:<role>" resolves per player to that role's line (A15)
 SOUND_ROLES = ("kill", "spawn", "intro", "gas_death", "death_scream", "hurt_loop", "healed", "kill_confirm", "defeat_taunt",
                "pain", "pain_short", "pain_long", "pain_melee", "boast", "taunt", "name") + NODE_ROLES
@@ -145,9 +146,10 @@ _ROLE_SLOT = {r: s[0] for r, s in ROLE_SLOTS.items()} | {"kill": "A"}
 # Since A15.3 the death scream is the ONLY rolled field, and it is rolled per SPAWN (the node writes one of
 # `pset_pool` before every `$SPAWN`), not only per push. The respawn cry and the three pains are not rolled: those
 # fields ship empty (A15.2 / A15.3) and the node plays the line itself from `spawn` / `pain_*` pools.
-ROLL_POOLS = {"death_scream": "345", "pain_relief": "7"}
-# The `$PSET` fields that ship EMPTY because the node plays the line itself (A15.2 cry, A15.3 pains).
-OURS = ("respawn_cry", "melee_grunt", "short_pain", "long_pain")
+ROLL_POOLS = {"death_scream": "345"}
+# The `$PSET` fields that ship EMPTY because the node plays the line itself (A15.2 cry, A15.3 pains, F685 pain relief:
+# the bench of 2026-11-22 heard the gun play t15 natively on a positive `$LIFE`, and once after a death, F536).
+OURS = ("respawn_cry", "melee_grunt", "short_pain", "long_pain", "pain_relief")
 FAMILY_ROLL: dict[str, dict[str, str]] = {}
 
 
@@ -212,7 +214,9 @@ def pset_ids(voice: str | None, slots: dict | None = None) -> dict[str, str]:
     out = {role: fam + suf for role, suf in zip(PSET_ROLES, _VOICE_SLOTS)}
     for role in OURS:
         out[role] = ""
-    out.update({r: i for r, i in ov.items() if r in PSET_ROLES})
+    # F685 review: a `pain_relief` pick never goes back into t15 (the phone would say the line too); it is the
+    # phone's `healed` line instead (`role_ids`).
+    out.update({r: i for r, i in ov.items() if r in PSET_ROLES and r != "pain_relief"})
     return out
 
 
@@ -225,6 +229,8 @@ def role_ids(voice: str | None, role: str, slots: dict | None = None) -> list[st
     ov = check_slots(slots)
     if role in ov:
         return [ov[role]]
+    if role == "healed" and "pain_relief" in ov:   # F685 review: the old $PSET pick now picks the phone's heal line
+        return [ov["pain_relief"]]
     fam = family(voice)
     on = snd.on_gun_ids()
     if role in ROLE_FIXED:
