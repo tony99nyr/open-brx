@@ -8699,12 +8699,9 @@ class GunStage:
                 "heal": self._role_takes("healed"),
                 "heal_line": [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, "healed", slots)],
                 # the node-state lines (reload nag, the shield cues), read off the bundle like `heal`: a muted event
-                # lists nothing. `shield_full` is the exception: its event never plays a sound in a game (F349), so
-                # the try-out line comes from `role_ids`.
-                "node_lines": {r: ([{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, r, slots)]
-                                   if r == "shield_full" else
-                                   self._role_takes(next((ev for ev, d in _pres.EVENTS.items() if d.get("sound") == "voice:" + r), r)))
-                               for r in _voices.NODE_ROLES}}
+                # lists nothing. `shield_online` plays only in a try-out in a game (F349); the page says so.
+                "node_lines": {r: self._role_takes(ev) for r, ev in (("reload_nag", "reload_nag"), ("shield_down", "shield_down"),
+                               ("shield_charging", "shield_charging"), ("shield_full", "shield_online"), ("shield_loop", "shield_loop"))}}
 
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
