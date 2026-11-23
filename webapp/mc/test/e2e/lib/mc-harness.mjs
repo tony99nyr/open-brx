@@ -206,6 +206,20 @@ export async function startAMatch(base) {
   return get('/api/state');
 }
 
+/** True once the console has MC's first state: a screen is up (in `main`, or the spectate board, which has
+ *  no `main`) and neither "connecting" placeholder shows (App.tsx `frame-connecting`, Spectate.tsx
+ *  `spectate-waiting-connecting`). Wait for it before the first nav click. The first snapshot moves the
+ *  view to MC's phase (store.tsx `followPhase`), so a click made before it is lost; under load that sent
+ *  vqa2 and kit-continue to PLAY. The old waits looked for "CONNECTING TO MISSION CONTROL", words only
+ *  the spectate placeholder still shows, so on every other view they passed at once. A token prompt is
+ *  not a state (store.tsx still fetches one behind it), so it does not pass. */
+export const snapshotShown = pg => pg.evaluate(() => {
+  const m = document.querySelector('main');
+  const up = (!!m && m.children.length > 0) || !!document.querySelector('[data-spectate="board"]');
+  return up && !document.querySelector('[data-alert="frame-connecting"], [data-alert="spectate-waiting-connecting"]')
+    && !m?.querySelector(':scope > [data-alert="frame-token-required-app"]');   // the screen placeholder, not the header pill
+}).catch(() => false);
+
 /** A browser context whose console errors and page errors are collected into `errors`. */
 export async function newPage(browser, viewport, errors, tag = () => '') {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });

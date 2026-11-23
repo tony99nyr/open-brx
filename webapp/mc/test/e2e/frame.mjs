@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');                 // webapp/mc
@@ -65,7 +66,7 @@ async function open(browser, base, query, width) {
   pg.on('console', m => { if (m.type() === 'error') failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(`${base}/${query}`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header nav').count().then(n => n > 0), 10000, 'the command bar');
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 12000, 'the first snapshot');
   await until(() => pg.evaluate(() => !!window.__MC_MOCK__), 10000, 'the mock backend handle');
   return pg;
 }

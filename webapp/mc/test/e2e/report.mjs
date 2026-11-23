@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -129,7 +130,7 @@ const shot = async (pg, name) => {
 async function open(pg, url) {
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 10000, 'the command bar');
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 15000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 15000, 'the first snapshot');
 }
 const panel = pg => pg.locator('[data-testid="report-panel"]');
 async function openReportPanel(pg) {
