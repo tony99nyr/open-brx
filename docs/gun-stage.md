@@ -100,7 +100,7 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    replaces the old PAIN RELIEF picker: the `$PSET` painRelief field ships EMPTY, and the node plays the `healed` line
    on a health rise. The card lists the takes from the bundle's `cues.healed` (Male player: VA7 "Ugh, that's
    better."). A profile with no heal cue shows OFF and names the voice's line (`voices.role_ids(voice, "healed")`). A
-   `pain_relief` pick picks this line, never t15, and the card title says PICKED. The section also holds a
+   `pain_relief` pick picks this line, never t15, and the card title says PICKED. CLEAR THE PICK drops the pick. A **NODE LINES** card replaces five empty pickers: it lists the line the node plays on its own state (the reload nag, the shield breaking, charging and down loop, and the shield-full line, which plays only in a try-out). It reads the bundle, so a muted event shows as off, and a pin shows PICKED; by default the lines are the same for every voice. The section also holds a
    **SPAWN LINE** card (A15.2, Tony 2026-09-06: "what if we dont rely on the firmware to make the sound on spawn and we
    just control it" -- bench-verified on the bench gun): the `$PSET` battleRespawnCry field is written EMPTY, so the firmware
    says nothing at `$SPAWN`, and the stage (like the phone) appends one take of the spawn pool to the spawn write and

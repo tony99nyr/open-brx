@@ -866,16 +866,30 @@ def test_the_heal_line_card_reads_the_bundle_heal_cue_and_a_pain_relief_pick():
     assert v["pset"]["pain_relief"] == "" and v["slots"] == {"pain_relief": "V36"}
 
 
-def test_the_stage_storyboard_builds_every_frame():
-    """`tools/stage_storyboard.py`: every frame embeds the real page fed a state the HEAL LINE card can read."""
+def test_the_node_lines_card_reads_one_line_per_node_role():
+    """The page's NODE LINES card: `voice.node_lines` holds each node-state role's line, the same for every voice."""
+    st, _ = mk_stage(voice="heavy")
+    nl = st.state()["voice"]["node_lines"]
+    assert set(nl) == set(S._voices.NODE_ROLES)   # a new node role needs its event in the map
+    assert {r: [x["id"] for x in t] for r, t in nl.items()} == {"reload_nag": ["VX73"], "shield_down": ["N101"],
+                                                               "shield_charging": ["N102"], "shield_full": ["VA6Y"], "shield_loop": ["N74"]}
+    st.patch_presentation({"events": {"reload_nag": {"sound": "VAN"}, "shield_loop": {"sound": None}}})
+    nl = st.state()["voice"]["node_lines"]   # the card reads what the bundle plays: a re-sound and a mute show
+    assert [x["id"] for x in nl["reload_nag"]] == ["VAN"] and nl["shield_loop"] == []
+
+
+def test_the_stage_storyboard_smoke():
+    """Smoke test of `tools/stage_storyboard.py`: every frame builds, and only the BEFORE frames drop the card data.
+    The rendered cards are checked in a browser, not here."""
     import importlib.util, tempfile
     spec = importlib.util.spec_from_file_location("stage_storyboard", pathlib.Path(__file__).parents[1] / "tools" / "stage_storyboard.py")
     sb = importlib.util.module_from_spec(spec); spec.loader.exec_module(sb)
     with tempfile.TemporaryDirectory() as d:
         page = sb.build(pathlib.Path(d)).read_text()
-    for fid, _group, _cap, mk in sb.FRAMES:
+    for fid, _group, _cap, mk, *_ in sb.FRAMES:
         assert f'data-frame="{fid}"' in page
-        assert ("heal" in mk()["voice"]) == (fid != "H5"), fid   # H5 is the stale stage: the old picker shows
+        v = mk()["voice"]
+        assert ("heal" in v) == (fid != "H5") and ("node_lines" in v) == (fid not in ("H5", "N2")), fid   # H5 and N2: stale stages
 
 
 def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_clears_it():
