@@ -870,6 +870,7 @@ def test_the_node_lines_card_reads_one_line_per_node_role():
     """The page's NODE LINES card: `voice.node_lines` holds each node-state role's line, the same for every voice."""
     st, _ = mk_stage(voice="heavy")
     nl = st.state()["voice"]["node_lines"]
+    assert set(nl) == set(S._voices.NODE_ROLES)   # a new node role needs its event in the map
     assert {r: [x["id"] for x in t] for r, t in nl.items()} == {"reload_nag": ["VX73"], "shield_down": ["N101"],
                                                                "shield_charging": ["N102"], "shield_full": ["VA6Y"], "shield_loop": ["N74"]}
     st.patch_presentation({"events": {"reload_nag": {"sound": "VAN"}, "shield_loop": {"sound": None}}})
@@ -888,7 +889,7 @@ def test_the_stage_storyboard_smoke():
     for fid, _group, _cap, mk, *_ in sb.FRAMES:
         assert f'data-frame="{fid}"' in page
         v = mk()["voice"]
-        assert ("heal" in v) == (fid != "H5") and ("node_lines" in v) == (fid != "N2"), fid   # H5 and N2: stale stages
+        assert ("heal" in v) == (fid != "H5") and ("node_lines" in v) == (fid not in ("H5", "N2")), fid   # H5 and N2: stale stages
 
 
 def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_clears_it():

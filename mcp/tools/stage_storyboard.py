@@ -40,7 +40,7 @@ def _stale_nodes(s: dict) -> None:
 
 
 def _stale(s: dict) -> None:
-    del s["voice"]["heal"], s["voice"]["heal_line"]   # a stage server that predates the card
+    del s["voice"]["heal"], s["voice"]["heal_line"], s["voice"]["node_lines"]   # a stage server that predates both cards
 
 
 # (id, group, caption, state[, the element the frame scrolls to])
