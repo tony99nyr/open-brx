@@ -1094,6 +1094,950 @@
    }
   },
   {
+   "name": "F681 review: a life burst behind a stun's settle is planned from the hold and the stun clip",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$AMMO,0,0,0,1,*",
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun",
+     "settle_rows": true
+    },
+    {
+     "t": 10,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "stun:-",
+      "frames": [
+       "$AMMO,0,0,0,1,*"
+      ]
+     },
+     {
+      "t": 300,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 2300,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "stun:-",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 0,
+      "planned": 300,
+      "sent": 300,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 10,
+      "planned": 2300,
+      "sent": 2300,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F681 review: a queue-slot cue between the stun and the life burst moves the burst behind it",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$AMMO,0,0,0,1,*",
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun",
+     "settle_rows": true
+    },
+    {
+     "t": 10,
+     "write": [
+      "$PLAY,,4,6,A,,,,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 20,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "stun:-",
+      "frames": [
+       "$AMMO,0,0,0,1,*"
+      ]
+     },
+     {
+      "t": 300,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 2300,
+      "job": "cue:A",
+      "frames": [
+       "$PLAY,,4,6,A,,,,*"
+      ]
+     },
+     {
+      "t": 3300,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "stun:-",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 0,
+      "planned": 300,
+      "sent": 300,
+      "dropped": null
+     },
+     {
+      "job": "cue:A",
+      "queued_t": 10,
+      "planned": 2300,
+      "sent": 2300,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 20,
+      "planned": 3300,
+      "sent": 3300,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F681 review: a stun that waits for the gap sends its rows, then its clip after the hold, and the life burst behind it waits for both",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,Z,4,6,,,,,*"
+     ],
+     "why": "first"
+    },
+    {
+     "t": 50,
+     "write": [
+      "$AMMO,0,0,0,1,*",
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun",
+     "settle_rows": true
+    },
+    {
+     "t": 60,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "first:Z",
+      "frames": [
+       "$PLAY,Z,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 150,
+      "job": "stun:-",
+      "frames": [
+       "$AMMO,0,0,0,1,*"
+      ]
+     },
+     {
+      "t": 450,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 2450,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "first:Z",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "stun:-",
+      "queued_t": 50,
+      "planned": 150,
+      "sent": 150,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 50,
+      "planned": 450,
+      "sent": 450,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 60,
+      "planned": 2450,
+      "sent": 2450,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F463 review: a cue that a stun jumps is planned again, and a life burst behind it is planned as if that cue were sent",
+   "plan_differs": "the same sendAt gap: the cue planned again is the waiting job, played forward as sent, not stale",
+   "gun": [
+    {
+     "ms": 4500,
+     "id": "A"
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,,4,6,C,,,,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 200,
+     "write": [
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun"
+    },
+    {
+     "t": 400,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 200,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 6500,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "cue:C",
+      "queued_t": 0,
+      "planned": 4500,
+      "sent": null,
+      "dropped": {
+       "t": 6500,
+       "rule": "stale"
+      }
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 200,
+      "planned": null,
+      "sent": 200,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 400,
+      "planned": 7500,
+      "sent": 6500,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F681 review: a death that cancels the stun clip and the cue behind it leaves the hold but adds no clip",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$AMMO,0,0,0,1,*",
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun",
+     "settle_rows": true
+    },
+    {
+     "t": 5,
+     "write": [
+      "$PLAY,,4,6,A,,,,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 10,
+     "cancel": true
+    },
+    {
+     "t": 20,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "stun:-",
+      "frames": [
+       "$AMMO,0,0,0,1,*"
+      ]
+     },
+     {
+      "t": 300,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "stun:-",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 0,
+      "planned": 300,
+      "sent": null,
+      "dropped": {
+       "t": 10,
+       "rule": "cancel"
+      }
+     },
+     {
+      "job": "cue:A",
+      "queued_t": 5,
+      "planned": 2300,
+      "sent": null,
+      "dropped": {
+       "t": 10,
+       "rule": "cancel"
+      }
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 20,
+      "planned": 300,
+      "sent": 300,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F678: a hold that begins while a cue waits for the gap moves the cue to the end of the hold",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,A,4,6,,,,,*"
+     ],
+     "why": "first"
+    },
+    {
+     "t": 50,
+     "write": [
+      "$PLAY,C,4,6,,,,,*"
+     ],
+     "why": "gap"
+    },
+    {
+     "t": 70,
+     "hold": 370
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "first:A",
+      "frames": [
+       "$PLAY,A,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 370,
+      "job": "gap:C",
+      "frames": [
+       "$PLAY,C,4,6,,,,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "first:A",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "gap:C",
+      "queued_t": 50,
+      "planned": 150,
+      "sent": 370,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F678: a hold that ends before the planned send leaves the plan alone, whatever joined the gun meanwhile",
+   "gun": [
+    {
+     "ms": 1000,
+     "id": "A"
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,,4,6,C,,,,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 100,
+     "hit": {
+      "ms": 1000,
+      "id": "B"
+     }
+    },
+    {
+     "t": 200,
+     "hold": 500
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 1000,
+      "job": "cue:C",
+      "frames": [
+       "$PLAY,,4,6,C,,,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "cue:C",
+      "queued_t": 0,
+      "planned": 1000,
+      "sent": 1000,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "a life burst behind a write with two $PLAY groups waits for both",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,A,4,6,,,,,*"
+     ],
+     "why": "first"
+    },
+    {
+     "t": 10,
+     "write": [
+      "$PLAY,B,4,6,,,,,*",
+      "$PLAY,C,4,6,,,,,*"
+     ],
+     "why": "pair"
+    },
+    {
+     "t": 20,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "first:A",
+      "frames": [
+       "$PLAY,A,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 150,
+      "job": "pair:B",
+      "frames": [
+       "$PLAY,B,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 300,
+      "job": "pair:C",
+      "frames": [
+       "$PLAY,C,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 3000,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "first:A",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "pair:B",
+      "queued_t": 10,
+      "planned": 150,
+      "sent": 150,
+      "dropped": null
+     },
+     {
+      "job": "pair:C",
+      "queued_t": 10,
+      "planned": 300,
+      "sent": 300,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 20,
+      "planned": 3000,
+      "sent": 3000,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F690 review: a stun does not jump a cue whose write still carries gun rows in a later group",
+   "gun": [
+    {
+     "ms": 4500,
+     "id": "A"
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,,4,6,C,,,,*",
+      "$PLAY,,4,6,D,,,,*",
+      "$LIFE,0,0,1,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 200,
+     "write": [
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun"
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 4500,
+      "job": "cue:C",
+      "frames": [
+       "$PLAY,,4,6,C,,,,*"
+      ]
+     },
+     {
+      "t": 5500,
+      "job": "cue:D",
+      "frames": [
+       "$PLAY,,4,6,D,,,,*",
+       "$LIFE,0,0,1,*"
+      ]
+     },
+     {
+      "t": 5650,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "cue:C",
+      "queued_t": 0,
+      "planned": 4500,
+      "sent": 4500,
+      "dropped": null
+     },
+     {
+      "job": "cue:D",
+      "queued_t": 0,
+      "planned": 5500,
+      "sent": 5500,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 200,
+      "planned": 5650,
+      "sent": 5650,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F690 review: a stun does not jump a cue whose dropped filler left gun rows in a later group",
+   "gun": [
+    {
+     "ms": 4500,
+     "id": "A"
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,,4,6,C,,,,*",
+      "$PLAY,,4,6,VAG,,,,*",
+      "$LIFE,0,0,1,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 200,
+     "write": [
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun"
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 4500,
+      "job": "cue:C",
+      "frames": [
+       "$PLAY,,4,6,C,,,,*"
+      ]
+     },
+     {
+      "t": 4650,
+      "job": "cue:-",
+      "frames": [
+       "$LIFE,0,0,1,*"
+      ]
+     },
+     {
+      "t": 4650,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "cue:C",
+      "queued_t": 0,
+      "planned": 4500,
+      "sent": 4500,
+      "dropped": null
+     },
+     {
+      "job": "cue:-",
+      "queued_t": 0,
+      "planned": 4650,
+      "sent": 4650,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 200,
+      "planned": 4650,
+      "sent": 4650,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F690 review: a life burst behind a two-group write that jumped a waiting cue waits for both groups and the cue",
+   "gun": [
+    {
+     "ms": 1000,
+     "id": "A"
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,,4,6,B,,,,*"
+     ],
+     "why": "cue"
+    },
+    {
+     "t": 100,
+     "write": [
+      "$PLAY,C,4,6,,,,,*",
+      "$PLAY,D,4,6,,,,,*"
+     ],
+     "why": "pair"
+    },
+    {
+     "t": 200,
+     "write": [
+      "$PLAY,,4,6,L,,,,*",
+      "$SPAWN,,*"
+     ],
+     "why": "revive",
+     "life": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 100,
+      "job": "pair:C",
+      "frames": [
+       "$PLAY,C,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 250,
+      "job": "pair:D",
+      "frames": [
+       "$PLAY,D,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 3000,
+      "job": "cue:B",
+      "frames": [
+       "$PLAY,,4,6,B,,,,*"
+      ]
+     },
+     {
+      "t": 4000,
+      "job": "revive:L",
+      "frames": [
+       "$PLAY,,4,6,L,,,,*",
+       "$SPAWN,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "cue:B",
+      "queued_t": 0,
+      "planned": 1000,
+      "sent": 3000,
+      "dropped": null
+     },
+     {
+      "job": "pair:C",
+      "queued_t": 100,
+      "planned": null,
+      "sent": 100,
+      "dropped": null
+     },
+     {
+      "job": "pair:D",
+      "queued_t": 100,
+      "planned": 250,
+      "sent": 250,
+      "dropped": null
+     },
+     {
+      "job": "revive:L",
+      "queued_t": 200,
+      "planned": 4000,
+      "sent": 4000,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "F689 review: a stun whose first filler is dropped still holds its clip after the rows",
+   "events": [
+    {
+     "t": 0,
+     "write": [
+      "$PLAY,A,4,6,,,,,*"
+     ],
+     "why": "first"
+    },
+    {
+     "t": 50,
+     "write": [
+      "$AMMO,0,0,0,1,*",
+      "$PLAY,,4,6,VAG,,,,*",
+      "$PLAY,X,4,6,,,,,*"
+     ],
+     "why": "stun",
+     "settle_rows": true
+    }
+   ],
+   "expect": {
+    "sends": [
+     {
+      "t": 0,
+      "job": "first:A",
+      "frames": [
+       "$PLAY,A,4,6,,,,,*"
+      ]
+     },
+     {
+      "t": 150,
+      "job": "stun:-",
+      "frames": [
+       "$AMMO,0,0,0,1,*"
+      ]
+     },
+     {
+      "t": 450,
+      "job": "stun:X",
+      "frames": [
+       "$PLAY,X,4,6,,,,,*"
+      ]
+     }
+    ],
+    "jobs": [
+     {
+      "job": "first:A",
+      "queued_t": 0,
+      "planned": null,
+      "sent": 0,
+      "dropped": null
+     },
+     {
+      "job": "stun:-",
+      "queued_t": 50,
+      "planned": 150,
+      "sent": 150,
+      "dropped": null
+     },
+     {
+      "job": "stun:X",
+      "queued_t": 50,
+      "planned": 450,
+      "sent": 450,
+      "dropped": null
+     }
+    ]
+   }
+  },
+  {
    "name": "F498: a stop ahead of a life burst moves its plan as the send moves it",
    "gun": [
     {

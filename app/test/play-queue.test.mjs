@@ -266,3 +266,28 @@ test('F681 review: a settleRows write whose rows fail drops its $PLAY, and the w
   assert.equal(await done, false);
   assert.equal(q.holding(), false, 'the queue is free again');
 });
+
+test('F681 review: sendAt counts the hold of a settleRows write whose rows are still on the link', async () => {
+  let clock = 0, reply = null; const timers = [], sent = [];
+  const q = new PlayQueue({ now: () => clock, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), staleMs: PLAY_QUEUE_STALE_MS,
+    clipLen: () => 0,
+    send: (group, why, options, onSent) => {
+      sent.push({ t: clock, why });
+      const wire = q.track(group, why, onSent);
+      for (const f of group) if (f.startsWith('$PLAY,')) wire.play(f);
+      if (group.some(f => f.startsWith('$PLAY,'))) return true;
+      return new Promise(res => { reply = res; });   // the rows: the link answers later
+    } });
+  const to = t => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > t) break; const x = timers.shift(); clock = x.at; x.fn(); } clock = t; };
+  q.enqueue(['$AMMO,0,0,0,1,*', '$PLAY,X17,4,6,,,,,*'], 'stun', { options: { settleRows: true } });
+  q.enqueue([queued('A')], 'revive', { options: { lifeBurst: true } });
+  const life = q.queue.find(j => j.why === 'revive');
+  to(150);
+  assert.ok(reply, 'setup: the rows are on the link');
+  const plan = q.sendAt(life);
+  reply(true); await Promise.resolve(); await Promise.resolve();
+  to(5000);
+  const real = sent.find(s => s.why === 'revive').t;
+  assert.equal(sent.find(s => s.why === 'stun' && s.t > 0).t, 150 + PLAY_SETTLE_MS, 'setup: X17 goes PLAY_SETTLE_MS after the rows settle');
+  assert.equal(plan, real, `planned ${plan}, sent ${real}`);
+});

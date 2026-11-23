@@ -2472,7 +2472,7 @@ KNOWN_UNMIRRORED = {
     # no persistence and no MC transport, so nothing is restored and no offset ever changes.
     "_restoredClock", "_clockRebase", "pu.clockItems",
     # (ARCH-3, 2026-10-10: `_drainPlayWrites`, `_playSendAt` and `_dropWaitingPlays` left this set and the Engine for
-    # app/src/play-queue.js, which this scan does not read. The stage is to run app/test/fixtures/play-queue-cases.json.)
+    # app/src/play-queue.js, which this scan does not read. The stage runs app/test/fixtures/play-queue-cases.json: test_stage_play_queue_cases.py.)
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,
     # has no phone BLE connection to diagnose, and never models a batch resolving false after a radio-only link.
     "_sendGunProbe", "_gunLockTick", "_beginGunRecovery", "_gunRecoveryWrite", "_gunRecoveryTick",

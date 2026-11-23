@@ -2447,6 +2447,12 @@
                     "must_hear": {
                       "type": "boolean"
                     },
+                    "settle_rows": {
+                      "type": "boolean"
+                    },
+                    "hold": {
+                      "type": "integer"
+                    },
                     "hit": {
                       "type": "object",
                       "required": [
