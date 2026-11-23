@@ -8698,8 +8698,12 @@ class GunStage:
                 # `heal_line` is what `voice:healed` resolves to for this voice (a `pain_relief` pick included).
                 "heal": self._role_takes("healed"),
                 "heal_line": [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, "healed", slots)],
-                # the node-state lines (reload nag, the shield cues): one id each, the same for every voice
-                "node_lines": {r: [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, r, slots)]
+                # the node-state lines (reload nag, the shield cues), read off the bundle like `heal`: a muted event
+                # lists nothing. `shield_full` is the exception: its event never plays a sound in a game (F349), so
+                # the try-out line comes from `role_ids`.
+                "node_lines": {r: ([{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, r, slots)]
+                                   if r == "shield_full" else
+                                   self._role_takes(next((ev for ev, d in _pres.EVENTS.items() if d.get("sound") == "voice:" + r), r)))
                                for r in _voices.NODE_ROLES}}
 
     def ir_registers(self) -> dict:

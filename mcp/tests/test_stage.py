@@ -872,6 +872,9 @@ def test_the_node_lines_card_reads_one_line_per_node_role():
     nl = st.state()["voice"]["node_lines"]
     assert {r: [x["id"] for x in t] for r, t in nl.items()} == {"reload_nag": ["VX73"], "shield_down": ["N101"],
                                                                "shield_charging": ["N102"], "shield_full": ["VA6Y"], "shield_loop": ["N74"]}
+    st.patch_presentation({"events": {"reload_nag": {"sound": "VAN"}, "shield_loop": {"sound": None}}})
+    nl = st.state()["voice"]["node_lines"]   # the card reads what the bundle plays: a re-sound and a mute show
+    assert [x["id"] for x in nl["reload_nag"]] == ["VAN"] and nl["shield_loop"] == []
 
 
 def test_the_stage_storyboard_smoke():
