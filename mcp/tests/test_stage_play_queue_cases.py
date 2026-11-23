@@ -22,7 +22,7 @@ FIXTURE = json.loads((Path(__file__).resolve().parents[2] / "app/test/fixtures/p
 
 # Cases the stage does not run, and why. A case leaves this list when the stage learns its rule.
 SKIP = {
-    # The stage has no must-hear write path (`_deliver`: "job.mustHear has no stage write path here").
+    # The stage has no must-hear write path (`_take_play_turn`: "job.mustHear has no stage write path here").
     "F419: a must-hear line does not wait for the gun": "must-hear",
     "F419: a must-hear line drops the cues still on the phone, but never a life burst": "must-hear",
 }

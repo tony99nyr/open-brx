@@ -1,5 +1,5 @@
 """A18 (review 2026-10-10): the stage's write path is `write` (filter, team restore, fillers), `_send_job` (one group
-per `$PLAY`) and `_deliver` (the PLAY gap, the audio wait, the send), with the shared fields in a `_WriteJob` that
+per `$PLAY`) and `_deliver_group` (the PLAY gap, the audio wait, the send), with the shared fields in a `_WriteJob` that
 mirrors engine.js `job`. These pin what the old `_chunk`/`_queued_at` re-entry did and no golden trace reaches."""
 import asyncio
 import pathlib
@@ -78,4 +78,34 @@ def test_a_play_queue_wait_rechecks_the_trigger_binding():
         st._play_lock.release()
         await task
         assert tx(mgr)[-1] == "$BMAP,0,1,,,,,*", "a completed swap binds the slot at dispatch"
+    asyncio.run(run())
+
+
+def test_a_settle_rows_write_whose_rows_drop_sends_none_of_its_sounds():
+    """play-queue.js `_dropRest` (F681 review, F690 review): when a stun's disarm rows drop on the link, the stage sends
+    them again alone, and no `$PLAY` of that write follows, the later groups included."""
+    from brx_mcp.fake import FakeConnectionManager, FakeTagger
+    from brx_mcp.stage.stage import GunStage
+    from _stage import StageClock, settle
+
+    async def run():
+        clock = StageClock(1000.0)
+
+        async def sleep(s):
+            clock.t += max(0, s)
+        st = GunStage(FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)]), None, sleep=sleep, now=clock,
+                      voice_verdict_sink=lambda _r: None)
+        await st.connect(GUN)
+        await settle(st)
+        send, sends, dropped = st._send, [], []
+
+        async def drop_first_rows(frames, gap_ms, on_start=None):
+            if frames[0].startswith("$AMMO") and not dropped:
+                dropped.append(1)
+                raise RuntimeError("link drop")
+            sends.append(list(frames))
+            return await send(frames, gap_ms, on_start=on_start)
+        st._send = drop_first_rows   # type: ignore[method-assign]
+        await st.write(["$AMMO,0,0,0,1,*", "$PLAY,X,4,6,,,,,*", "$PLAY,Y,4,6,,,,,*"], "stun", settle_rows=True)
+        assert sends == [["$AMMO,0,0,0,1,*"]], sends
     asyncio.run(run())

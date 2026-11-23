@@ -932,7 +932,7 @@ def is_energy_class(weapon_class: str | None, weapon_id: str | None) -> bool:
 
 @_dc.dataclass(eq=False)
 class _PlayEntry:
-    """One `$PLAY` group on its way to the gun, from the call of `_deliver` until it settles: what `_plan_send` plays
+    """One `$PLAY` group on its way to the gun, from the call of its write (`_send_job`) until it settles: what `_plan_send` plays
     forward, as play-queue.js `sendAt` plays its `waiting` job and its `queue`. `state`: "queued" (waits for the play
     lock), "wait" (holds it, and sleeps until `send_at`), "rows" (a `settle_rows` write's rows are on the link), "hold"
     (its `$PLAY` waits out PLAY_SETTLE_S after them), "air" (its `$PLAY` is on the link)."""
@@ -945,6 +945,7 @@ class _PlayEntry:
     state: str = "queued"
     send_at: float = 0.0
     jumped: bool = False   # it holds the jump lock (F463 review): it goes ahead of the play lock's holder
+    yields: bool = False   # while it waits, a jumping write may pass it: it and the rest of its write are passable
 
 
 @_dc.dataclass(frozen=True)
@@ -2048,8 +2049,8 @@ class GunStage:
     async def _write_frames(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                             on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
                             should_send: Callable[[], bool] | None = None, settle_rows: bool = False) -> bool | None:
-        """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
-        the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
+        """The one public write path (engine.js `_write`): filter, restore the team, then send a
+        play write through the play queue as its groups (`_play_groups`, `_send_job`), and any other write at once.
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
         `life`: a spawn/revive burst (`_write_life`, engine.js `job.life`), never dropped as stale (F493).
         `should_send` (engine.js `shouldSend`): False at the send point drops the write unsent, and it returns None.
@@ -2085,18 +2086,18 @@ class GunStage:
             # play-queue.js `enqueue`: a write with a `$PLAY` goes through the play queue as one group per `$PLAY`
             return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send,
                                                   settle_rows), self._play_groups(frames, why))
-        frames = self._bind_rows(frames)
-        return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
+        frames = self._bind_rows(frames)   # a write with no `$PLAY` goes at once
+        return await self._deliver_group(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send),
+                                         _PlayEntry(frames, why, queued_at, life, False, self._play_generation), None)
 
-    async def _send_job(self, job: "_WriteJob", groups: list[list[str]] | None = None) -> bool | None:
-        """Deliver a prepared write. A write with no `$PLAY` (`groups` None) goes at once. A play write's `groups`
-        (`_play_groups`) all join the play queue at the call, as play-queue.js `enqueue` queues every job of the write
-        at once, and the write takes its turn on the play lock ONCE and holds it across its groups, so no other write
-        goes between them (F690). Each group keeps its own PLAY gap and gun wait. The groups keep the write's call
-        time, and only the first carries `on_start`; a `take` goes with the first group that changes the `$SIR` table."""
-        if groups is None:
-            return await self._deliver_group(job, _PlayEntry(job.frames, job.why, job.queued_at, job.life, False,
-                                                             self._play_generation), None)
+    async def _send_job(self, job: "_WriteJob", groups: list[list[str]]) -> bool | None:
+        """Deliver a play write. Its `groups` (`_play_groups`) all join the play queue at the call, as play-queue.js
+        `enqueue` queues every job of the write at once, and the write takes its turn on the play lock ONCE and holds it
+        across its groups, so no other write goes between them (F690). Each group keeps its own PLAY gap and gun wait. A
+        group lets a jumping write pass it only when every group of the write still to go is passable, as `_jumpIndex`
+        stops at the first job it may not pass. The groups keep the write's call time, and only the first carries
+        `on_start`; a `take` goes with the first group that changes the `$SIR` table. When a `settle_rows` write's rows
+        drop, its later groups never go (play-queue.js `_dropRest`)."""
         if not groups:
             return None   # its only sound was a filler it dropped
         take_pending = job.take
@@ -2105,23 +2106,27 @@ class GunStage:
             # `write` has already filtered and transformed the frames, so a group does not restore `$TID` again,
             # claim the SIR pool twice, or repeat the start callback.
             changes_sir = any(f.startswith(("$SIR,", "$CLEAR")) for f in group)
-            plays = [i for i, f in enumerate(group) if f.startswith("$PLAY,")]
             part = _dc.replace(job, frames=group, take=take_pending and changes_sir,
                                on_start=job.on_start if index == 0 else None, settle_rows=job.settle_rows and index == 0)
             take_pending = take_pending and not changes_sir
-            parts.append((part, _PlayEntry(group, job.why, job.queued_at, job.life,
-                                           part.settle_rows and bool(plays) and plays[0] > 0, self._play_generation)))
+            # play-queue.js `settleRows`: the rows before the first `$PLAY` settle first, also when a dropped filler left none
+            entry = _PlayEntry(group, job.why, job.queued_at, job.life, part.settle_rows and not group[0].startswith("$PLAY,"),
+                               self._play_generation, yields=all(self._passable(g, job.life) for g in groups[index:]))
+            parts.append((part, entry))
         entries = [e for _, e in parts]
         self._play_entries.extend(entries)
         held: asyncio.Lock | None = None
         try:
-            held, jumped = await self._take_play_turn(job.frames, groups, job.life)
+            held, jumped = await self._take_play_turn(job, groups)
+            for e in entries:
+                e.jumped = jumped
             delivered = None
             for part, entry in parts:
-                entry.jumped = jumped
                 if await self._deliver_group(part, entry, held) is False:   # bug 3 r2 M1: report an undelivered group
                     delivered = False
                 self._play_entries.remove(entry)   # settled: `_plan_send` no longer plays it forward
+                if entry.generation == -1:
+                    break   # the rows of a `settle_rows` write dropped: no clip after them (play-queue.js `_dropRest`)
             return delivered
         finally:
             for e in entries:
@@ -2184,16 +2189,16 @@ class GunStage:
         return (any(is_queue_slot_play(f) for f in group) and PLAYX not in group and not life
                 and all(f.startswith("$PLAY,") for f in group))
 
-    async def _take_play_turn(self, frames: list[str], groups: list[list[str]], life: bool) -> tuple[asyncio.Lock, bool]:
+    async def _take_play_turn(self, job: "_WriteJob", groups: list[list[str]]) -> tuple[asyncio.Lock, bool]:
         """A play write's turn on the play lock, for all its groups (F690). F463 review (play-queue.js `_jumpIndex`): an
         interrupt-slot write (a stun's disarm and its clip) never waits behind a sound-only queue-slot cue that waits for
         the gun (`_passable`), so it does not queue for the play lock that cue holds. It may not pass a write that waits
         for the lock and carries gun rows or a life burst. The whole write jumps or none of it does, judged on its frames
         before a filler drop, as play-queue.js judges them. Jumping writes queue on their own lock, so two of them keep
         the PLAY gap between them. Returns the lock it holds and whether it jumped."""
-        if not any(is_queue_slot_play(f) for f in frames):   # job.mustHear has no stage write path here
+        if not any(is_queue_slot_play(f) for f in job.frames):   # job.mustHear has no stage write path here
             return await self._acquire_play_or_jump()
-        blocks = not all(self._passable(g, life) for g in groups)
+        blocks = not all(self._passable(g, job.life) for g in groups)
         if blocks:
             self._note_play_waiters(0, blockers=1)
         try:
@@ -2221,7 +2226,7 @@ class GunStage:
             # F463 review: a queue-slot cue that waits (the PLAY gap or the gun's clip) lets an interrupt-slot write go
             # ahead of it (`_acquire_play_or_jump`, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
             # both waits are checked again after each sleep (play-queue.js plans the job again).
-            yields = self._passable(frames, life)   # a write that may go ahead of this one is counted while it waits
+            yields = entry.yields   # a write that may go ahead of this one is counted while it waits
             at: float | None = None
             while True:
                 # play-queue.js `drain`: THE pacing rule (`_play_step`), on the live state. A `settle_rows` write sends its
@@ -2293,16 +2298,19 @@ class GunStage:
             self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
         try:
-            if job.settle_rows and play_indexes and play_indexes[0] > 0:
+            if entry.settle:
                 # play-queue.js `settleRows` (F681): the rows go now, and the `$PLAY` behind them PLAY_SETTLE_S after (`hold`).
                 # The play lock stays held, so no other `$PLAY` and no queued gun rows can come between them. A link drop on
                 # the rows takes the drop path below, which resends the rows alone: no X17 (play-queue.js `_dropRest`).
-                frames, rest = frames[:play_indexes[0]], frames[play_indexes[0]:]
+                cut = play_indexes[0] if play_indexes else len(frames)
+                frames, rest = frames[:cut], frames[cut:]
                 entry.state = "rows"
                 await self._note_bind_sent(frames, self._send(frames, gap_ms, on_start=on_start))
                 frames, on_start = rest, None
                 self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
                 entry.state = "hold"
+                if not frames:
+                    return None   # a dropped filler left only the rows: the hold stands for the next group's `$PLAY`
                 hold_seen = None
                 while self._play_hold_until != hold_seen and self._play_hold_until > self.now():   # a hold that begins meanwhile moves it on (F678)
                     hold_seen = self._play_hold_until
@@ -3054,7 +3062,8 @@ class GunStage:
                     model.add_play(f, e.why, at_ms, self._audio_clip_ms)
 
         rank = {"air": 0, "rows": 0, "hold": 0, "wait": 1, "queued": 2}
-        for e in sorted(self._play_entries, key=lambda e: (rank[e.state], not e.jumped)):
+        # on the link first, then every group of a write that jumped (it goes ahead of a waiting cue), then the rest in order
+        for e in sorted(self._play_entries, key=lambda e: (0 if rank[e.state] == 0 else 2 - e.jumped, rank[e.state])):
             live = e.generation == self._play_generation
             if e.state == "air":
                 if any(f.startswith("$PLAY,") for f in e.frames):
@@ -3409,7 +3418,7 @@ class GunStage:
                              should_send=lambda: self._mag_query is q and self.alive and self.spawned and self.connected)
         finally:
             # engine.js 36f03987: a write that never started, refused or rejected, releases the owner now. On a real send
-            # exception `_deliver`'s drop has already cleared the owner and the swap (engine.js `onBleDropped`), so only
+            # exception `_deliver_group`'s drop has already cleared the owner and the swap (engine.js `onBleDropped`), so only
             # a raise before the send reaches this branch.
             if self._mag_query is q and q["at"] is None:
                 self._mag_query = None
