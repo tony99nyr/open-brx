@@ -135,11 +135,14 @@ def _check(case: dict) -> None:
     sends, plans = asyncio.run(run_case(case))
     want = [{"t": s["t"], "frames": s["frames"]} for s in case["expect"]["sends"]]
     assert sends == want, f"{case['name']}: the stage sent\n  {sends}\nthe phone sent\n  {want}"
+    settled = {e["why"] for e in case["events"] if e.get("settle_rows")}
     for job in case["expect"]["jobs"]:
-        seen = plans.get(job["job"])
-        if seen is None or job["planned"] is None or seen[0] != job["queued_t"]:
-            continue   # the stage saw it wait at another time (it splits a write as it sends it), or it went at once
-        assert seen[1] == job["planned"], f"{case['name']}: {job['job']} planned for {seen[1]}, the phone {job['planned']}"
+        if job["planned"] is None:
+            continue   # it went at once
+        if job["job"].split(":")[0] in settled and not job["job"].endswith(":-"):
+            continue   # a `settle_rows` write's clip: the stage holds its rows and its clip in one entry and plans the rows
+        assert plans.get(job["job"]) == (job["queued_t"], job["planned"]), \
+            f"{case['name']}: {job['job']} first planned (at, for) {plans.get(job['job'])}, the phone ({job['queued_t']}, {job['planned']})"
 
 
 def test_the_stage_runs_every_case_it_can():
