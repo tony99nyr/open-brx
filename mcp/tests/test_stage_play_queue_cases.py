@@ -22,15 +22,9 @@ FIXTURE = json.loads((Path(__file__).resolve().parents[2] / "app/test/fixtures/p
 
 # Cases the stage does not run, and why. A case leaves this list when the stage learns its rule.
 SKIP = {
-    # The stage has no must-hear write path (`_deliver`: "job.mustHear has no stage write path here").
+    # The stage has no must-hear write path (`_take_play_turn`: "job.mustHear has no stage write path here").
     "F419: a must-hear line does not wait for the gun": "must-hear",
     "F419: a must-hear line drops the cues still on the phone, but never a life burst": "must-hear",
-    # The phone sends what is left of a write whose filler it dropped through the play queue, so `$LIFE` keeps the
-    # PLAY gap; the stage's write with no `$PLAY` left goes at once (FOLLOWUPS F689).
-    "F347: a filler line inside the PLAY gap is dropped from its write": "F689",
-    # The stage delivers a write's `$PLAY` groups one after another, each taking the play lock again, so a life burst
-    # that waits for the lock goes between them; the phone queues every group of the write at once (FOLLOWUPS F690).
-    "a life burst behind a write with two $PLAY groups waits for both": "F690",
 }
 CASE_T0 = 1000.0   # the stage's clock at case time 0, in seconds
 
