@@ -42,6 +42,14 @@ async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: strin
   await act(async () => { button.click(); });
   expect(m.text()).not.toContain(detail);
   expect(button.getAttribute('aria-expanded')).toBe('false');
+  // a tap that unpins closes the detail even while the mouse still hovers the chip (`suppressed` beats `hovered`)
+  await act(async () => { pointer(hoverTarget, 'pointerover'); });
+  await act(async () => { button.click(); });
+  expect(m.text()).toContain(detail);
+  await act(async () => { button.click(); });
+  expect(m.text()).not.toContain(detail);
+  expect(button.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => { pointer(hoverTarget, 'pointerout'); });
 }
 
 describe('F599 console copy', () => {
