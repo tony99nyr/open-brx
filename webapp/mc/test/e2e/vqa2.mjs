@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { E2E_DIR, chromium, checker, ports, shot as shotIn, startMC, startNodes as startNodesIn, startVite } from './lib/mc-harness.mjs';
+import { E2E_DIR, chromium, checker, ports, shot as shotIn, snapshotShown, startMC, startNodes as startNodesIn, startVite } from './lib/mc-harness.mjs';
 
 const SHOTS = path.join(E2E_DIR, 'shots', 'vqa2');
 const ONLY = process.env.ONLY || '';
@@ -84,6 +84,8 @@ async function page(browser, viewport) {
   pg.on('console', m => { if (m.type() === 'error') jsErrors.push(`[${c.step}] [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(vite.base, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('nav.cb-nav button').count().then(n => n > 0), 10000, 'the console nav');
+  // the first snapshot follows MC's phase: a nav click before it lands on the phase's screen instead (armory-setup's flake)
+  await until(() => snapshotShown(pg), 15000, 'the first snapshot');
   return pg;
 }
 const go = async (pg, label) => { await pg.locator('nav.cb-nav button', { hasText: label }).first().click(); };

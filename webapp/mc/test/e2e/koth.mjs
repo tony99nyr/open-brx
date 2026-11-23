@@ -25,6 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');                 // webapp/mc
@@ -200,7 +201,7 @@ async function go(pg, view) {
   await pg.goto(`${pg.__base}/#${view}`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
   // the first snapshot has arrived when the screen is no longer the CONNECTING placeholder
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 12000, 'the first snapshot');
   return pg;
 }
 

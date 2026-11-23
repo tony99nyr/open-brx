@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC_DIR = path.resolve(HERE, '../..');
@@ -111,7 +112,7 @@ const shot = async (pg, name) => {
 };
 const boot = async (pg, url) => {
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 20000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 20000, 'the first snapshot');
 };
 
 /** Drive the `?mock` demo into a LIVE match. The in-browser backend has no server to poke from

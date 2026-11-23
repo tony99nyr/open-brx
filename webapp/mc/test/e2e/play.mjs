@@ -34,6 +34,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');
@@ -152,7 +153,7 @@ async function openReal(browser, base, query, width, height = 900, { before } = 
   pg.on('pageerror', e => failures.push(`${owner}: [pageerror] ${e.message}`));
   pg.on('console', m => { if (m.type() === 'error') failures.push(`${owner}: [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(`${base}/${query}`, { waitUntil: 'domcontentloaded' });
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 15000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 15000, 'the first snapshot');
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 10000, 'the PLAY screen');
   await pg.waitForTimeout(300);
   return pg;

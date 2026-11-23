@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');   // webapp/mc
@@ -78,7 +79,7 @@ async function newPage(browser, base, viewport = { width: 1440, height: 950 }) {
 async function go(pg, view) {
   await pg.goto(`${pg.__base}/?mock#${view}`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 12000, 'the first snapshot');
   return pg;
 }
 const closePage = async pg => { await pg.context().close(); };
@@ -167,7 +168,7 @@ step('tunnel-error-banner-persists-across-screens', async ({ browser, base }) =>
   const pg = await newPage(browser, base);
   await pg.goto(`${pg.__base}/?mock&tunnelfail=1#muster`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 12000, 'the first snapshot');
   const bannerSel = 'header [role="alert"]:has-text("TUNNEL DOWN")';
   expect(await pg.locator(bannerSel).count() === 0, 'no banner before the tunnel has ever been touched');
   await pg.locator('button', { hasText: 'TURN ON' }).click();

@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findPython } from './python-path.mjs';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -147,7 +148,7 @@ const onLobby = pg => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().t
 async function walkToKit(pg, url, fromArmory = true) {
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 10000, 'the command bar');
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 15000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 15000, 'the first snapshot');
   if (!fromArmory) { await pg.evaluate(() => { location.hash = '#build'; }); await pg.waitForTimeout(250); }
   else {
     // A `--demo --fake-net` server boots straight into LOBBY (every fake phone readies itself), so the

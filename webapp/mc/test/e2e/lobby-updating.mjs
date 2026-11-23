@@ -28,6 +28,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findPython } from './python-path.mjs';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+import { snapshotShown } from './lib/mc-harness.mjs';   // the first snapshot, not a dead text check
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -124,7 +125,7 @@ const tag = pg => pg.locator('header [data-updating="1"], main [data-updating="1
 const noCrash = async (pg, where) => expect(await pg.locator('text=CONSOLE ERROR').count() === 0, `no crash boundary (${where})`);
 async function open(pg, url, isThere, where) {
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
-  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 15000, 'the first snapshot');
+  await until(() => snapshotShown(pg), 15000, 'the first snapshot');
   await until(() => isThere(pg), 10000, where);
 }
 /** Rewrite every pushed snapshot on its way to the page (REST alone would be a lie: skill §3.3). */

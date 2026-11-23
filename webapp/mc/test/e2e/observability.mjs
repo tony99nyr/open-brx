@@ -77,7 +77,7 @@ async function checkChip(pg, testid, sev, headWords) {
 const open = async (url, width = 1440) => {
   const pg = await H.newPage(browser, { width, height: 900 }, errors, () => c.step);
   await pg.goto(url, { waitUntil: 'domcontentloaded' });
-  await c.until(async () => (await pg.locator('header nav').count()) > 0 && !/CONNECTING TO MISSION CONTROL/.test(await H.bodyText(pg)), 30000, 'the first snapshot');
+  await c.until(async () => (await pg.locator('header nav').count()) > 0 && await H.snapshotShown(pg), 30000, 'the first snapshot');
   return pg;
 };
 
