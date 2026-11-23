@@ -139,8 +139,10 @@ def _check(case: dict) -> None:
     for job in case["expect"]["jobs"]:
         if job["planned"] is None:
             continue   # it went at once
-        if job["job"].split(":")[0] in settled and not job["job"].endswith(":-"):
-            continue   # a `settle_rows` write's clip: the stage holds its rows and its clip in one entry and plans the rows
+        why, clip = job["job"].rsplit(":", 1)
+        if why in settled and clip != "-" and job["job"] not in plans:
+            settled.discard(why)   # only its first clip: that one shares its rows' entry, and the stage plans the rows (`why:-`)
+            continue
         assert plans.get(job["job"]) == (job["queued_t"], job["planned"]), \
             f"{case['name']}: {job['job']} first planned (at, for) {plans.get(job['job'])}, the phone ({job['queued_t']}, {job['planned']})"
 
