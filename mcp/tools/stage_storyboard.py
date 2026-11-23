@@ -35,37 +35,46 @@ def _no_heal_cue(s: dict) -> None:
     s["voice"]["heal"] = []   # what the stage sends for a bundle with no `cues.healed`
 
 
+def _stale_nodes(s: dict) -> None:
+    del s["voice"]["node_lines"]   # a stage server that predates the NODE LINES card
+
+
 def _stale(s: dict) -> None:
     del s["voice"]["heal"], s["voice"]["heal_line"]   # a stage server that predates the card
 
 
-# (id, group, caption, state)
+# (id, group, caption, state[, the element the frame scrolls to])
 FRAMES = [
     ("H1", "HEAL LINE", "Male player, the default game voice: the card lists VA7, the line the phone plays on a heal.",
      lambda: _state("male")),
     ("H2", "HEAL LINE", "Heavy as the game voice: the card follows the voice and lists V37.",
      lambda: _state("heavy")),
-    ("H3", "HEAL LINE", "A pain_relief pick of VA6 (Male): the card says PICKED and lists the picked line.",
+    ("H3", "HEAL LINE", "A pain_relief pick of VA6 (Male): the card says PICKED, lists the picked line and offers CLEAR THE PICK.",
      lambda: _state("male", {"pain_relief": "VA6"})),
     ("H4", "HEAL LINE", "A bundle with no heal cue (state edited: voice.heal is empty): the card says OFF and names the voice's line.",
      lambda: _state("male", edit=_no_heal_cue)),
     ("H5", "BEFORE", "A stage server that predates the card (no voice.heal): the old PAIN RELIEF picker, with no options.",
      lambda: _state("male", edit=_stale)),
+    ("N1", "NODE LINES", "Male player: one card lists the node-state lines (reload nag, the shield cues) in place of five empty pickers.",
+     lambda: _state("male"), "nodelines"),
+    ("N2", "BEFORE", "A stage server that predates the card (no voice.node_lines): five empty pickers that say $PSET undefined.",
+     lambda: _state("male", edit=_stale_nodes), "nodelines-before"),
 ]
 
 _STUB = """<script>(() => {
-  const S = %s;
+  const S = %s, TARGET = %s;
   const ok = b => Promise.resolve(new Response(JSON.stringify(b), {status: 200, headers: {'content-type': 'application/json'}}));
   window.fetch = (url) => ok(S);
   addEventListener('load', () => setTimeout(() => {
-    const el = document.getElementById('slotshint'); if (el) el.scrollIntoView({block: 'start'}); scrollBy(0, -100);
+    const el = document.getElementById(TARGET) || (TARGET === 'nodelines-before' && document.querySelector('select[data-slot="reload_nag"]'));
+    if (el) el.scrollIntoView({block: 'start'}); scrollBy(0, -140);
   }, 300));
 })();</script>"""
 
 
-def frame_doc(state: dict) -> str:
+def frame_doc(state: dict, target: str = "slotshint") -> str:
     page = PAGE.read_text()
-    stub = _STUB % json.dumps(state).replace("</", "<\\/")
+    stub = _STUB % (json.dumps(state).replace("</", "<\\/"), json.dumps(target))
     head, _, rest = page.partition("\n")   # keep `<!doctype html>` first, or the frame renders in quirks mode
     return head + "\n" + stub + rest
 
@@ -73,8 +82,8 @@ def frame_doc(state: dict) -> str:
 def build(out: pathlib.Path) -> pathlib.Path:
     out.mkdir(parents=True, exist_ok=True)
     cards = []
-    for fid, group, cap, mk in FRAMES:
-        doc = html.escape(frame_doc(mk()), quote=True)
+    for fid, group, cap, mk, *target in FRAMES:
+        doc = html.escape(frame_doc(mk(), *target), quote=True)
         cards.append(f'<section class="f" data-frame="{fid}"><h2>{fid} <span>{group}</span></h2><p>{html.escape(cap)}</p>'
                      f'<iframe title="{fid}" srcdoc="{doc}"></iframe></section>')
     idx = out / "index.html"

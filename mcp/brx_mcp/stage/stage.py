@@ -8697,7 +8697,10 @@ class GunStage:
                 # rise. `heal` is what the bundle will play (`cues.healed`, [] when the profile has no heal line);
                 # `heal_line` is what `voice:healed` resolves to for this voice (a `pain_relief` pick included).
                 "heal": self._role_takes("healed"),
-                "heal_line": [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, "healed", slots)]}
+                "heal_line": [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, "healed", slots)],
+                # the node-state lines (reload nag, the shield cues): one id each, the same for every voice
+                "node_lines": {r: [{"id": i, "words": _snd.describe(i)} for i in _voices.role_ids(voice, r, slots)]
+                               for r in _voices.NODE_ROLES}}
 
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
