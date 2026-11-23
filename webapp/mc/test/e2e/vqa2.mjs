@@ -339,13 +339,31 @@ try {
     const restarted = alerts.locator('[data-station-alert*="RESTARTED"]');
     expect(await until(() => restarted.isVisible(), 6000, 'RESTARTED'), 'the restart is on the strip');
     const battery = alerts.locator('[data-station-alert*="BATTERY LOW"]');
-    await battery.getByRole('button').click();
+    // Each tap opens or closes a detail and reflows the strip, and the LIVE board around it keeps moving. Under
+    // load a pointer click waited 5 s for a still strip and timed out ("element is not stable"). These taps check
+    // the detail text, not the hit area, so they send the click to the chip itself and wait for its result. A tap
+    // first checks that the chip's centre is the chip on screen, so an overlay over the strip still fails here.
+    const details = async loc => loc.getByTestId('chip-detail').count();
+    const tap = async (loc, name) => {
+      const b = loc.getByRole('button');
+      await b.scrollIntoViewIfNeeded();
+      const onTop = await b.evaluate(el => {
+        const r = el.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return !!t && el.contains(t);
+      }).catch(() => false);
+      expect(onTop, `nothing covers the ${name} chip`);
+      await b.dispatchEvent('click');
+    };
+    await tap(battery, 'BATTERY LOW');
+    await until(async () => (await details(battery)) > 0, 4000, 'the BATTERY LOW detail');
     expect(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/i.test(await battery.innerText()), 'BATTERY LOW reaches LIVE, with its next step (M5)');
-    await restarted.getByRole('button').click();
+    await tap(restarted, 'RESTARTED');
+    await until(async () => (await details(restarted)) > 0, 4000, 'the RESTARTED detail');
     expect(/RESTARTED(?: \d+ TIMES)?: CHECK THE STATION/i.test(await restarted.innerText()), 'RESTARTED has its next step (M5)');
-    await battery.getByRole('button').click();
-    await restarted.getByRole('button').click();
-    expect(await battery.getByTestId('chip-detail').count() === 0 && await restarted.getByTestId('chip-detail').count() === 0,
+    await tap(battery, 'BATTERY LOW');
+    await tap(restarted, 'RESTARTED');
+    expect(await until(async () => (await battery.count()) > 0 && (await restarted.count()) > 0
+      && (await details(battery)) === 0 && (await details(restarted)) === 0, 4000, 'the details to close'),
       'the station details are closed before measuring the board');
     expect(await pg.getByTestId('hill-panel').isVisible().catch(() => false) && await pg.getByTestId('powerup-strip').isVisible().catch(() => false),
       'control: the hill panel and the powerup strip are on the board too');
