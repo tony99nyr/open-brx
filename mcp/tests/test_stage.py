@@ -854,6 +854,30 @@ def test_the_voice_pick_drives_the_pset_tail_and_the_kill_cue():
             raise AssertionError(f"accepted {bad}")
 
 
+def test_the_heal_line_card_reads_the_bundle_heal_cue_and_a_pain_relief_pick():
+    """F685: the page's HEAL LINE card lists `voice.heal` (the bundle's `cues.healed`, what plays) beside
+    `voice.heal_line` (`role_ids(voice, "healed")`). A `pain_relief` pick changes both and never touches t15."""
+    st, _ = mk_stage(voice="heavy")
+    v = st.state()["voice"]
+    assert v["heal"] == v["heal_line"] == [{"id": "V37", "words": "patched up"}]
+    st.set_voice_slot("pain_relief", "V36")
+    v = st.state()["voice"]
+    assert [x["id"] for x in v["heal"]] == [x["id"] for x in v["heal_line"]] == ["V36"]
+    assert v["pset"]["pain_relief"] == "" and v["slots"] == {"pain_relief": "V36"}
+
+
+def test_the_stage_storyboard_builds_every_frame():
+    """`tools/stage_storyboard.py`: every frame embeds the real page fed a state the HEAL LINE card can read."""
+    import importlib.util, tempfile
+    spec = importlib.util.spec_from_file_location("stage_storyboard", pathlib.Path(__file__).parents[1] / "tools" / "stage_storyboard.py")
+    sb = importlib.util.module_from_spec(spec); spec.loader.exec_module(sb)
+    with tempfile.TemporaryDirectory() as d:
+        page = sb.build(pathlib.Path(d)).read_text()
+    for fid, _group, _cap, mk in sb.FRAMES:
+        assert f'data-frame="{fid}"' in page
+        assert ("heal" in mk()["voice"]) == (fid != "H5"), fid   # H5 is the stale stage: the old picker shows
+
+
 def test_a_voice_slot_pick_changes_the_pset_and_the_kill_cue_and_a_new_voice_clears_it():
     st, _ = mk_stage(voice="heavy")
     st.set_voice_slot("death_scream", "V34")

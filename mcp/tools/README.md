@@ -22,6 +22,12 @@ PATH, so no personal machine path is hardcoded.
 |---|---|
 | `bench_common.py` | Shared bench frames (AR/PSET/SIR/GSET) and the connect/disconnect ritual, imported by other bench tools. It has no `main` and is never run on its own. |
 
+## Storyboards (no gun, no server)
+
+| Tool | Purpose |
+|---|---|
+| `stage_storyboard.py` | Renders the gun stage's voice cards (`stage/page.html` section 8) for a UI review: one iframe per state, each fed a real `GunStage.state()` through a stubbed `fetch`. `python tools/stage_storyboard.py <out dir>` writes `<out dir>/index.html`. |
+
 ## Live-bench instruments (talk to real hardware)
 
 | Tool | Purpose |
