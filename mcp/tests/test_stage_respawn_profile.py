@@ -17,6 +17,9 @@ from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import PROBE_LIFE as PROBE, GunStage
 from _stage import _nosleep, GUN, LegacyCompiler, settle, StageClock, tx
 from brx_mcp.stage import stage as S
+from brx_mcp.mc.types import STUN_PLAY
+
+STUN_DISARM = "$AMMO,0,0,0,1,*"   # a stun's disarm row (F681)
 
 # gunmodel.js `spawnFireEdge`: the gun's spawn wait plus one t14 on the full-auto AR (slot 0, t14 100 ms)
 GUN_READY_S = S.GUN_SPAWN_WAIT_S + 0.1 + S.GUN_SPAWN_AIR_S   # + the `$SPAWN` frame's air time
@@ -503,6 +506,109 @@ def test_f497_weapon_arming_counts_the_planned_wait_of_a_queued_burst():
             clock.advance(0.1); st.poll(); await settle(st); seen.append(st.state()["model"]["weapon_arming_s"])
         nums = [v for v in seen if v is not None]
         assert all(b <= a + 1e-9 for a, b in zip(nums, nums[1:])), f"weapon_arming_s never rises: {seen}"
+    asyncio.run(run())
+
+
+async def _stun_on_the_link(st):
+    """A stun's `settle_rows` write whose disarm rows stay on the link until the returned event is set."""
+    landed = asyncio.Event()
+    send = st._send
+
+    async def slow(frames, gap_ms, on_start=None):
+        if frames and frames[0] == STUN_DISARM:
+            await landed.wait()
+        return await send(frames, gap_ms, on_start=on_start)
+    st._send = slow   # type: ignore[method-assign]
+    stun = asyncio.create_task(st.write([STUN_DISARM, STUN_PLAY], "stun", settle_rows=True))
+    await settle(st)
+    assert any(e.state == "rows" for e in st._play_entries), "setup: the stun's rows are on the link"
+    return stun, landed
+
+
+def test_f681_review_a_revive_behind_a_stun_is_planned_again_on_every_read():
+    """play-queue.js `sendAt` (F681 review): a revive that waits for the play lock while a stun's rows are on the link
+    is planned from the hold after them and the stun clip's PLAY gap, and planned again on every read: the hold starts
+    when the rows settle, so the planned send moves with the clock while they are still on the link."""
+    async def run():
+        st, _mgr, clock, _gate = _mk_gated()
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._gun_audio.clear()
+        stun, landed = await _stun_on_the_link(st)
+        task = asyncio.create_task(st.revive())
+        await settle(st)
+        first = clock() + st._life_burst_send_in(clock())
+        # the revive's cue is on the queue slot, so it waits for the stun clip to end (F419), which starts after the hold
+        want = clock() + S.PLAY_SETTLE_S + st._audio_clip_ms(STUN_PLAY) / 1000
+        assert abs(first - want) < 1e-6, f"behind the hold and the stun clip: {first - clock()}"
+        arming = st.state()["model"]["weapon_arming_s"]
+        clock.advance(0.2)
+        again = clock() + st._life_burst_send_in(clock())
+        assert abs(again - (first + 0.2)) < 1e-6, f"planned again as the rows stay on the link: {first} then {again}"
+        assert st.state()["model"]["weapon_arming_s"] == arming, "the readout holds while the burst cannot move"
+        landed.set(); await stun; await task; await settle(st)
+    asyncio.run(run())
+
+
+def test_f681_review_a_death_that_cancels_the_stun_clip_leaves_its_hold_but_no_clip():
+    """play-queue.js `cancelAll` + `sendAt` (F681 review): a death while a stun's rows are on the link cancels the stun
+    clip. The revive after it still waits out the hold after the rows, but no stun clip and no PLAY gap behind one."""
+    async def run():
+        st, _mgr, clock, _gate = _mk_gated()
+        await _live(st)
+        st._gun_audio.clear()
+        stun, landed = await _stun_on_the_link(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._gun_audio.clear()   # the scream is not the subject here
+        task = asyncio.create_task(st.revive())
+        await settle(st)
+        at = clock() + st._life_burst_send_in(clock())
+        assert abs(at - (clock() + S.PLAY_SETTLE_S)) < 1e-6, f"the hold, and nothing for a stun clip that never plays: {at - clock()}"
+        landed.set(); await stun; await task; await settle(st)
+        assert STUN_PLAY not in tx(st.mgr), "the cancelled stun clip never went"
+    asyncio.run(run())
+
+
+def test_f681_review_a_stuns_rows_that_drop_go_again_alone_and_still_hold_the_next_play():
+    """play-queue.js `finish` + `_dropRest` (F681 review): a link drop on a stun's disarm rows sends the rows again after
+    the reconnect, alone. The stun clip never goes, it counts as no `$PLAY`, and the hold after the rows still stands,
+    so the next `$PLAY` cannot land inside PLAY_SETTLE_S of the zeros. While the reconnect runs, a queued revive is
+    planned from that hold, with no stun clip."""
+    async def run():
+        st, _mgr, clock, _gate = _mk_gated()
+        await _live(st)
+        await _die(st)
+        clock.advance(0.1)
+        st._gun_audio.clear()
+        send, reconnect = st._send, st._reconnect
+        dropped = [False]
+        relinked = asyncio.Event()
+
+        async def flaky(frames, gap_ms, on_start=None):
+            if frames and frames[0] == STUN_DISARM and not dropped[0]:
+                dropped[0] = True
+                raise RuntimeError("Not connected")
+            return await send(frames, gap_ms, on_start=on_start)
+
+        async def slow_reconnect():
+            await relinked.wait()
+            return await reconnect()
+        st._send, st._reconnect = flaky, slow_reconnect   # type: ignore[method-assign]
+        sends = st._play_sends
+        stun = asyncio.create_task(st.write([STUN_DISARM, STUN_PLAY], "stun", settle_rows=True))
+        task = asyncio.create_task(st.revive())
+        await settle(st)
+        at = clock() + st._life_burst_send_in(clock())
+        assert abs(at - (clock() + S.PLAY_SETTLE_S)) < 1e-6, f"the hold, and no clip for a stun clip that never plays: {at - clock()}"
+        relinked.set()
+        await stun
+        assert st._play_hold_until >= clock() + S.PLAY_SETTLE_S - 1e-9, "the hold after the resent rows stands"
+        assert st._play_sends == sends, "the rows alone are not a `$PLAY`"
+        await task; await settle(st)
+        assert STUN_PLAY not in tx(st.mgr), "the stun clip never went"
+        assert tx(st.mgr).count(STUN_DISARM) >= 1, "the rows went again"
     asyncio.run(run())
 
 
