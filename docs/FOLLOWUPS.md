@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F690 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F691 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -50,6 +50,8 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 A keyboard is enough. Highest value first.
 
 - **F688 🟢 THE GUN STAGE STILL SHOWS A PAIN RELIEF PICKER WITH NO OPTIONS.** brx-desk-1122, 2026-11-22 (F685 review). Since F685 the `$PSET` t15 ships empty and a `pain_relief` pick picks the phone's heal line, but `mcp/brx_mcp/stage/page.html` (lines 653 and 681-685) still renders an empty select whose hint says the firmware plays it on `healed`. Fix: a HEAL LINE card from `cues.healed`, like the SPAWN LINE card. A UI change: it needs a `/ui-storyboard` and Tony's signoff. Handed to the perch session "Stage heal line card". `desk`. [log 2026-11-22](experiment-log/2026-11.md).
+
+- **F690 🟢 THE STAGE LETS A LIFE BURST GO BETWEEN THE TWO `$PLAY` GROUPS OF ONE WRITE.** stage-life-send, 2026-11-22 (cross-review). `_send_job` delivers a write's `$PLAY` groups one after another, and each takes the play lock again, so a life burst already waiting for the lock goes between them. The phone queues every group of the write at once: for I(A), then [I(B), I(C)], then a revive, the phone sends B 150, C 300, revive 3000; the stage sends the revive at 2000 and C after it. The case is in the case file and in `test_stage_play_queue_cases.py` `SKIP`. Next: hold the lock across a write's groups, or queue them all at the call. `desk`.
 
 - **F689 🟢 THE STAGE SENDS WHAT IS LEFT OF A WRITE WHOSE FILLER IT DROPPED AT ONCE.** stage-life-send, 2026-11-22. The stage now runs the phone's play-queue case file (`test_stage_play_queue_cases.py`). One case differs: the phone sends the rest of a write whose filler `$PLAY` it dropped (a `$LIFE` row) through the play queue, so it keeps the PLAY gap (150 ms); the stage's write has no `$PLAY` left and goes at once (50 ms). Next: decide which is right, then make the other match and take the case off the test's `SKIP`. `desk`.
 

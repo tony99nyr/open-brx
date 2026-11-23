@@ -4,7 +4,7 @@ what the phone sends, when the phone sends it. Every plan the stage makes for a 
 `sendAt` mirror) must be the phone's plan for that job (F498, F681 review).
 
 The case file's header says how a case runs. The stage side: a write is `GunStage.write` (`life`, `settle_rows`), a hit
-is a clip added to the stage's gun audio model, a cancel is `_cancel_pending_play_writes` (the stage's death path). The
+is a clip added to the stage's gun audio model, a hold moves `_play_hold_until` (a stun-expiry stop), a cancel is `_cancel_pending_play_writes` (the stage's death path). The
 stage's sleeps resolve on the case clock, due timers first, then the events at that time, as the phone's runner does.
 """
 from __future__ import annotations
@@ -28,8 +28,11 @@ SKIP = {
     # The phone sends what is left of a write whose filler it dropped through the play queue, so `$LIFE` keeps the
     # PLAY gap; the stage's write with no `$PLAY` left goes at once (FOLLOWUPS F689).
     "F347: a filler line inside the PLAY gap is dropped from its write": "F689",
+    # The stage delivers a write's `$PLAY` groups one after another, each taking the play lock again, so a life burst
+    # that waits for the lock goes between them; the phone queues every group of the write at once (FOLLOWUPS F690).
+    "a life burst behind a write with two $PLAY groups waits for both": "F690",
 }
-T0 = 1000.0   # the stage's clock at case time 0, in seconds
+CASE_T0 = 1000.0   # the stage's clock at case time 0, in seconds
 
 
 class _Timers:
@@ -63,7 +66,7 @@ class _Timers:
 
 
 def _ms(clock: StageClock) -> int:
-    return round((clock() - T0) * 1000)
+    return round((clock() - CASE_T0) * 1000)
 
 
 def _name(why: str, frames: list[str]) -> str:
@@ -73,7 +76,7 @@ def _name(why: str, frames: list[str]) -> str:
 
 async def run_case(case: dict) -> tuple[list[dict], dict[str, tuple[int, int]]]:
     """The stage's sends ({t, frames}) and its plans ({job: (first seen at, planned)}) for one case."""
-    clock = StageClock(T0)
+    clock = StageClock(CASE_T0)
     timers = _Timers(clock)
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     st = GunStage(mgr, None, sleep=timers.sleep, now=clock, voice_verdict_sink=lambda _r: None)
@@ -99,25 +102,26 @@ async def run_case(case: dict) -> tuple[list[dict], dict[str, tuple[int, int]]]:
         for _ in range(60):   # not `settle`: it awaits the stage's tasks, and a write that sleeps on the case clock waits for us
             await asyncio.sleep(0)
         for e in list(st._play_entries):
-            name = _name(e.why, e.frames)
+            # a `settle_rows` entry that has not sent its rows plans them: the phone's rows job, `why:-`
+            name = f"{e.why}:-" if e.settle else _name(e.why, e.frames)
             if e.state in ("queued", "wait") and name not in plans:
                 at = st._plan_send(e, clock())
                 if at is not None:
-                    plans[name] = (_ms(clock), round((at - T0) * 1000))
+                    plans[name] = (_ms(clock), round((at - CASE_T0) * 1000))
 
     timers.on = True
     events = list(case["events"])
     while True:
-        t_next, e_next = timers.next_ms() - round(T0 * 1000), events[0]["t"] if events else float("inf")
+        t_next, e_next = timers.next_ms() - round(CASE_T0 * 1000), events[0]["t"] if events else float("inf")
         if t_next == float("inf") and e_next == float("inf"):
             break
         if t_next <= e_next:
-            clock.t = T0 + t_next / 1000
+            clock.t = CASE_T0 + t_next / 1000
             timers.fire()
             await step()
             continue
         e = events.pop(0)
-        clock.t = T0 + e["t"] / 1000
+        clock.t = CASE_T0 + e["t"] / 1000
         if "write" in e:
             st._spawn_task(st.write(list(e["write"]), e["why"], life=bool(e.get("life")),
                                     settle_rows=bool(e.get("settle_rows"))))
@@ -125,6 +129,8 @@ async def run_case(case: dict) -> tuple[list[dict], dict[str, tuple[int, int]]]:
             st._gun_audio.add(e["hit"]["ms"], f"hit sound {e['hit']['id']}", st._now_ms(), e["hit"]["id"])
         elif e.get("cancel"):
             st._cancel_pending_play_writes()
+        elif "hold" in e:
+            st._play_hold_until = max(st._play_hold_until, CASE_T0 + e["hold"] / 1000)
         else:
             raise AssertionError(f"{case['name']}: unknown event {e}")
         await step()
@@ -155,10 +161,10 @@ def test_the_stage_runs_every_case_it_can():
 
 
 def test_f681_review_the_stage_plans_a_life_burst_as_the_phone_does():
-    """The F681 review cases: a life burst behind a stun's settle, behind a cue that waits for the stun clip, and after
+    """The F681 review cases: a life burst behind a stun's settle (and its gap), behind a cue that waits for the stun clip, and after
     a death that cancels the clip. Each plan is checked, and so is each send."""
     cases = [c for c in FIXTURE["cases"] if c["name"].startswith("F681 review")]
-    assert len(cases) == 3, [c["name"] for c in cases]
+    assert len(cases) == 4, [c["name"] for c in cases]
     for case in cases:
         _, plans = asyncio.run(run_case(case))
         life = next(j for j in case["expect"]["jobs"] if j["job"].startswith("revive:"))

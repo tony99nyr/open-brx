@@ -943,7 +943,7 @@ class _PlayEntry:
     settle: bool   # play-queue.js `settleRows`: the rows before the `$PLAY` go first, and the `$PLAY` waits for them
     generation: int   # `_cancel_pending_play_writes` moves the stage's on: an older entry sends nothing more
     state: str = "queued"
-    send_at: float | None = None
+    send_at: float = 0.0
     jumped: bool = False   # it holds the jump lock (F463 review): it goes ahead of the play lock's holder
 
 
@@ -2169,17 +2169,17 @@ class GunStage:
         """One group with at most one `$PLAY`: the PLAY gap, the gun-audio wait and the stale drop, then the send. A group
         with a `$PLAY` is on `_play_entries` until it settles, so `_plan_send` can play it forward."""
         play_indexes = [i for i, frame in enumerate(job.frames) if frame.startswith("$PLAY,")]
-        if not play_indexes:
-            return await self._deliver_group(job, None)
-        entry = _PlayEntry(job.frames, job.why, job.queued_at, job.life, job.settle_rows and play_indexes[0] > 0,
+        entry = _PlayEntry(job.frames, job.why, job.queued_at, job.life, job.settle_rows and bool(play_indexes) and play_indexes[0] > 0,
                            self._play_generation)
+        if not play_indexes:
+            return await self._deliver_group(job, entry)
         self._play_entries.append(entry)
         try:
             return await self._deliver_group(job, entry)
         finally:
             self._play_entries.remove(entry)
 
-    async def _deliver_group(self, job: "_WriteJob", entry: "_PlayEntry | None") -> bool | None:
+    async def _deliver_group(self, job: "_WriteJob", entry: "_PlayEntry") -> bool | None:
         frames, why, gap_ms, take, on_start, queued_at, model, life = (
             job.frames, job.why, job.gap_ms, job.take, job.on_start, job.queued_at, job.model, job.life)   # the old locals
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
@@ -2207,8 +2207,7 @@ class GunStage:
             try:
                 if may_jump:
                     held, jumped = await self._acquire_play_or_jump()
-                    if entry is not None:
-                        entry.jumped = jumped
+                    entry.jumped = jumped
                 else:
                     held = self._play_lock
                     await held.acquire()
@@ -2225,12 +2224,13 @@ class GunStage:
             # ahead of it (`_acquire_play_or_jump`, play-queue.js `_jumpIndex`), and that write moves the gap and the gun's tail, so
             # both waits are checked again after each sleep (play-queue.js plans the job again).
             yields = passable   # a write that may go ahead of this one is counted while it waits
-            assert entry is not None
+            at: float | None = None
             while True:
                 # play-queue.js `drain`: THE pacing rule (`_play_step`), on the live state. A `settle_rows` write sends its
                 # rows first, so its own `$PLAY` meets the hold after them (`_play_step` rows=True).
                 t = self.now()
-                at = self._play_step(frames, t, self._last_play(), self._gun_audio, self._play_hold_until, rows=entry.settle)
+                if at is None:
+                    at = self._play_step(frames, t, self._last_play(), self._gun_audio, self._play_hold_until, rows=entry.settle)
                 wait_s = at - t
                 if wait_s <= 0:
                     break
@@ -2258,9 +2258,16 @@ class GunStage:
                 if self._play_jump_lock.locked() and held is not self._play_jump_lock:
                     async with self._play_jump_lock:   # a write that went ahead is still on the link: wait for it
                         pass
+                    at = None
                     continue
-                if self._play_sends == seen:
-                    break   # nothing was sent while it slept: the waits it planned are served
+                if self._play_sends != seen:
+                    at = None   # a write went ahead of it: plan again (play-queue.js `_replanWaiting`)
+                    continue
+                hold = self._play_hold_until
+                if not entry.settle and hold > at and hold > self.now():
+                    at = hold   # play-queue.js `send` (F678): a hold that began after the plan moves it to the hold, and only that
+                    continue
+                break   # the waits it planned are served
             # F478 r1 (play-queue.js `PlayQueue.drain`, F419 review): a queue-slot cue that waited longer than
             # PLAY_QUEUE_STALE_MS since its call is dropped, never sent late. F493 r1: a spawn/revive burst (`life`) is
             # exempt, as engine.js's `job.life`: dropped, the gun never gets its `$SPAWN`.
@@ -2270,7 +2277,7 @@ class GunStage:
                 release_play()
                 return
             self._last_play_at = now
-            entry.state, entry.send_at = "air", None
+            entry.state = "air"
             frames = self._bind_rows(frames)   # engine.js `_write`: the play queue re-enters after its wait.
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
@@ -2298,13 +2305,15 @@ class GunStage:
                 # The play lock stays held, so no other `$PLAY` and no queued gun rows can come between them. A link drop on
                 # the rows takes the drop path below, which resends the rows alone: no X17 (play-queue.js `_dropRest`).
                 frames, rest = frames[:play_indexes[0]], frames[play_indexes[0]:]
-                assert entry is not None
                 entry.state = "rows"
                 await self._note_bind_sent(frames, self._send(frames, gap_ms, on_start=on_start))
                 frames, on_start = rest, None
                 self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
                 entry.state = "hold"
-                await self.sleep(max(0.0, self._play_hold_until - self.now()))
+                hold_seen = None
+                while self._play_hold_until != hold_seen and self._play_hold_until > self.now():   # a hold that begins meanwhile moves it on (F678)
+                    hold_seen = self._play_hold_until
+                    await self.sleep(hold_seen - self.now())
                 entry.state = "air"
                 if play_generation != self._play_generation or not self.connected or (job.should_send is not None and not job.should_send()):
                     release_play()
@@ -2330,6 +2339,9 @@ class GunStage:
             self.connected = False
             self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None; self._equip_sent = None
             self._mag_query = None; self.switching = None; self._bind_due = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
+            rows_only = entry.state == "rows"   # a `settle_rows` write's rows dropped: they go again alone, with no `$PLAY`
+            if rows_only:
+                entry.generation = -1   # its `$PLAY` never goes (play-queue.js `_dropRest`), so `_plan_send` adds no clip for it
             try:
                 await self._reconnect()
                 if job.should_send is not None and not job.should_send():
@@ -2342,11 +2354,14 @@ class GunStage:
                 await self._note_bind_sent(frames, result)
                 if why != "reconcile: weapon systems live":
                     await self._relink_trigger()   # Repair after retry, so an old hold cannot replace the live binding.
-                if play_indexes:
+                if play_indexes and not rows_only:
                     self._last_play_sent_at = self.now()
                     self._last_play_at = self._last_play_sent_at
                     self._play_sends += 1
             finally:
+                if rows_only:   # play-queue.js `finish`: the hold after the rows stands whether they went or failed (F681)
+                    self._play_hold_until = max(self._play_hold_until, self.now() + PLAY_SETTLE_S)
+                    entry.state = "hold"
                 release_play()
 
     def _drop_queued_fillers(self, frames: list[str], why: str) -> list[str]:
@@ -2357,7 +2372,7 @@ class GunStage:
         idx = [i for i, f in enumerate(frames) if f.startswith("$PLAY,")]
         if not idx:
             return frames
-        last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
+        last = self._last_play()
         busy = self._play_lock.locked() or self._play_jump_lock.locked() or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000))
         bounds = [0, *idx[1:], len(frames)]
         drop: set[int] = set()
@@ -2716,7 +2731,7 @@ class GunStage:
     def _audio_busy_now(self, now_ms: int) -> bool:
         """engine.js `_audioBusyNow` (F665): a sound playing, waiting on the gun or held on the phone, or the play gap not yet
         run out. The not-ready sound plays at the press or not at all, so it never waits behind any of these."""
-        last = self._last_play_sent_at if self._last_play_sent_at is not None else self._last_play_at
+        last = self._last_play()
         return (self._melee_cue_pending or self._ann.audio_busy(now_ms) or len(self._ann.queue) > 0 or self._play_lock.locked()
                 or self._gun_audio.outstanding(now_ms) > 0
                 or (last is not None and round((self.now() - last) * 1000) < round(PLAY_GAP_S * 1000)))
@@ -3058,16 +3073,18 @@ class GunStage:
             elif e.state in ("wait", "queued"):
                 if not live:
                     continue   # it wakes, or takes the lock, into a generation that is over, and sends nothing
-                at = e.send_at if e.state == "wait" and e.send_at is not None else self._play_step(
-                    e.frames, t, last, model, hold, rows=e.settle)
-                t = at
-                if e.settle:   # its rows go at `at`; its `$PLAY` waits for the hold after them
-                    hold = max(hold, at + PLAY_SETTLE_S)
+                if e.state == "wait":
+                    t = e.send_at
+                elif e.settle:
+                    t = self._play_step(e.frames, t, last, model, hold, rows=True)
+                if e.settle:   # its rows go at `t`; its `$PLAY` waits for the hold after them
+                    hold = max(hold, t + PLAY_SETTLE_S)
             if e is target:
                 return self._play_step(e.frames, t, last, model, hold)
             if not live:
                 continue
-            at = self._play_step(e.frames, t, last, model, hold)
+            # a "wait" entry goes at its `send_at`, played as sent; a `settle_rows` one's `send_at` is its rows', not its `$PLAY`
+            at = e.send_at if e.state == "wait" and not e.settle else self._play_step(e.frames, t, last, model, hold)
             t = at
             if (e.state == "queued" and any(is_queue_slot_play(f) for f in e.frames) and PLAYX not in e.frames
                     and not e.life and round((at - e.queued_at) * 1000) > PLAY_QUEUE_STALE_MS):

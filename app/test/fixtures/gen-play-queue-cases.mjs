@@ -11,7 +11,7 @@
 // - The clock starts at 0. `gun` clips enter the model at 0 (`add`), in order. A clip's length is `clip_ms[id]`.
 // - The events run in time order. At one time, the queue's due timers fire first (in the order they were set), then
 //   the events (in file order). `write`: `enqueue(frames, why)` with `mustHear`, `options.lifeBurst` (`life`) and
-//   `options.settleRows` (`settle_rows`). `hit`: a hit
+//   `options.settleRows` (`settle_rows`). `hold`: `hold(until)` (a stun-expiry stop, F678). `hit`: a hit
 //   sound enters the model (`add`). `cancel`: `cancelAll()`.
 // - The link sends at once and every write succeeds. It hands a group with a `$PLAY` to `track` frame by frame; a group
 //   with none applies its stops at once (`stop`), as the engine's `_write` does.
@@ -78,8 +78,24 @@ export const INPUTS = [
   { name: 'F681 review: a queue-slot cue between the stun and the life burst moves the burst behind it',
     events: [{ t: 0, write: [DISARM, I('X')], why: 'stun', settle_rows: true }, { t: 10, write: [Q('A')], why: 'cue' },
       { t: 20, write: [Q('L'), '$SPAWN,,*'], why: 'revive', life: true }] },
+  { name: 'F681 review: a stun that waits for the gap sends its rows, then its clip after the hold, and the life burst behind it waits for both',
+    events: [{ t: 0, write: [I('Z')], why: 'first' }, { t: 50, write: [DISARM, I('X')], why: 'stun', settle_rows: true },
+      { t: 60, write: [Q('L'), '$SPAWN,,*'], why: 'revive', life: true }] },
+  { name: 'F463 review: a cue that a stun jumps is planned again, and a life burst behind it is planned as if that cue were sent',
+    plan_differs: 'the same sendAt gap: the cue planned again is the waiting job, played forward as sent, not stale',
+    gun: [{ ms: 4500, id: 'A' }],
+    events: [{ t: 0, write: [Q('C')], why: 'cue' }, { t: 200, write: [I('X')], why: 'stun' },
+      { t: 400, write: [Q('L'), '$SPAWN,,*'], why: 'revive', life: true }] },
   { name: 'F681 review: a death that cancels the stun clip and the cue behind it leaves the hold but adds no clip',
     events: [{ t: 0, write: [DISARM, I('X')], why: 'stun', settle_rows: true }, { t: 5, write: [Q('A')], why: 'cue' }, { t: 10, cancel: true },
+      { t: 20, write: [Q('L'), '$SPAWN,,*'], why: 'revive', life: true }] },
+  { name: 'F678: a hold that begins while a cue waits for the gap moves the cue to the end of the hold',
+    events: [{ t: 0, write: [I('A')], why: 'first' }, { t: 50, write: [I('C')], why: 'gap' }, { t: 70, hold: 370 }] },
+  { name: 'F678: a hold that ends before the planned send leaves the plan alone, whatever joined the gun meanwhile',
+    gun: [{ ms: 1000, id: 'A' }],
+    events: [{ t: 0, write: [Q('C')], why: 'cue' }, { t: 100, hit: { ms: 1000, id: 'B' } }, { t: 200, hold: 500 }] },
+  { name: 'a life burst behind a write with two $PLAY groups waits for both',
+    events: [{ t: 0, write: [I('A')], why: 'first' }, { t: 10, write: [I('B'), I('C')], why: 'pair' },
       { t: 20, write: [Q('L'), '$SPAWN,,*'], why: 'revive', life: true }] },
   { name: 'F498: a stop ahead of a life burst moves its plan as the send moves it',
     gun: [{ ms: 1000, id: 'A' }, { ms: 1000, id: 'B' }],
@@ -145,6 +161,7 @@ export function runCase(c, clipMs = CLIPS) {
     }
     else if (e.hit) q.add(e.hit.ms, `hit sound ${e.hit.id}`, clock, e.hit.id);
     else if (e.cancel) q.cancelAll();
+    else if (e.hold != null) q.hold(e.hold);
     else throw new Error(`${c.name}: unknown event at t=${e.t}`);
     settle(!!e.cancel);
   }
