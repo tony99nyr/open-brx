@@ -1796,7 +1796,8 @@ export class Engine {
    *  revive are NOT repeatable: see `_writeLife`. BrxLink's `write()` resolves false when a chunk was lost and
    *  its own re-sends did not land. `still()` is asked before the one retry, and a shot or a hit since the first
    *  attempt also refuses it (pl4: the counts are then out of date, a repeat would refill). A second failure is
-   *  logged loudly and left to the operator's RESYNC GUN, as `_armLife` leaves its own to the next trigger. */
+   *  logged loudly and left to the operator's RESYNC GUN, as `_armLife` leaves its own to the next trigger.
+   *  @param {string | null} [twice] the line for a second failure, in place of the RESYNC GUN one */
   _writeMust(frames, why, still, actExempt = false, twice = null) {
     const act = this._actSeq;   // pl4: a shot or a hit after this point makes a repeat unsafe (it re-sends counts the gun has moved past)
     const r = this._write(frames, why);
