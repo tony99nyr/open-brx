@@ -74,6 +74,11 @@ test('F416: a spawn write that failed but DID land is never sent twice (pl4/F11:
   assert.ok(h.probes() >= 1, 'the node asked');
   assert.equal(h.spawns(), 1, 'the gun read its pools, so no second spawn');
   assert.equal(h.eng.state().alive, true);
+  // Emulator 2026-11-24 (brx-desk-emu): a burst torn after `$SPAWN` reads as landed, but its `$BMAP,0,0` never arrived and
+  // the head's `$BMAP,0,98` still holds the trigger (the stock gun fires nothing). The failed write is no sent bind.
+  const burstAt = h.writes.find(w => w.f.startsWith('$SPAWN')).t;
+  assert.ok(h.writes.some(w => w.f === '$BMAP,0,0,,,,,*' && w.t > burstAt), 'the bind repair wrote the lost bind again');
+  assert.ok(h.logs.some(l => /trigger binding repair \(unknown -> 0\)/.test(l)), 'the repair names the lost bind');
 });
 
 test('F416: a hit since the lost write means the 0 pool is a real death, not an unspawned gun', async () => {
