@@ -682,3 +682,22 @@ test('F683: one early ALT inside the weapon delay writes its swap sound ONCE to 
   assert.equal(h.since(n).filter(f => f === sound).length, 1, 'the gun gets one swap sound');
   assert.equal(calls.length, 2, 'CONTROL: a wrapper on _write sees it twice, on the way in and on the way out of the queue');
 });
+
+// Wrap-up 2026-11-24 (F416 torn revive protection): a station revive our own write code cut after `$SPAWN` may have lost its
+// -100 row too. No re-send (the code-fault rule), but the protection row is written again inside the window.
+test('part 4: a station revive cut by a code fault writes its protection row again, then t8 0 at the cap', async () => {
+  const h = liveArmed({ respawn: 'scanner' });
+  const w0 = h.eng.writer;
+  h.eng.writer = (fr, why, o) => {
+    if (!isRevive(fr)) return w0(fr, why, o);
+    w0(fr, why, o);   // recorded as sent; the outcome says our own code cut it
+    o.onOutcome({ ok: false, kind: 'code', error: 'cut', faults: [] });
+    return Promise.resolve(false);
+  };
+  const n = stationRevive(h);
+  await new Promise(r => setImmediate(r));
+  const t = tmps(h.since(n));
+  assert.deepEqual(t, [ON, ON], `the burst's row, then the repair: ${JSON.stringify(t)}`);
+  h.adv(2100);
+  assert.deepEqual(tmps(h.since(n)).pop(), golden.spawn_protect_off, 'the cap still ends it');
+});
