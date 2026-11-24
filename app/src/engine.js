@@ -1874,6 +1874,7 @@ export class Engine {
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
       // an answer that may not come (F11: an unhittable player). On a gun that never spawned it is a harmless config write.
+      this._protectAgain(frames, why);
       this._spawnLanded(c);
     }).catch(e => this.log(`write ${why} failed: ${e && e.message || e}`, 'le'));
     return r;
@@ -2234,6 +2235,19 @@ export class Engine {
     if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
     if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight
     return this._spawnRetry(c, 'the gun reads a 0 pool') !== false;   // a spent budget books the 0 pool now
+  }
+  /** brx-desk-emu review (2026-11-24): a lost burst torn after `$SPAWN` reads as landed, so F416 sends nothing again, and
+   *  its `$TMP` t8 = -100 row may never have reached the gun. While this life's protection is still owed ('tmp' bundle,
+   *  `_armPending` not yet ended), write the burst's protection rows again (the t8 `$TMP` and the shield light). They
+   *  are safe to repeat: they set t8 and paint the headset, nothing else. They go before the cap's `spawn_protect_off`
+   *  (writes go in call order), so `_armLife` still ends the protection on time. */
+  _protectAgain(frames, why) {
+    const p = this._armPending;
+    if (!p || p.off === false || this._protectMode() !== 'tmp' || !this.bleUp || this.rc.ownsRearm) return;
+    if (this.now() - p.at >= (p.until != null ? p.until : SPAWN_PROTECT_MAX_MS)) return;
+    const rp = this._respawnProfile();
+    const rows = frames.filter(f => typeof f === 'string' && ((f.startsWith('$TMP,') && (f.split(',')[8] || '') !== '') || (p.shield && rp && f === rp.shield_on)));
+    if (rows.length) this._write(rows, `${why} lost: spawn protection again`);
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
