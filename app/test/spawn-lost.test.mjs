@@ -74,19 +74,10 @@ test('F416: a spawn write that failed but DID land is never sent twice (pl4/F11:
   assert.ok(h.probes() >= 1, 'the node asked');
   assert.equal(h.spawns(), 1, 'the gun read its pools, so no second spawn');
   assert.equal(h.eng.state().alive, true);
-});
-
-// Emulator 2026-11-24 (brx-desk-emu, F416): a burst torn after `$SPAWN` leaves the gun spawned at the slot-0 magazine, so the
-// check reads "landed", but the burst's `$BMAP,0,0` never arrived and the head's `$BMAP,0,98` still holds the trigger (the
-// stock gun fires nothing then). The failed write must not count as a sent bind: the bind repair writes it again.
-test('F416: a failed burst that DID spawn the gun still gets its trigger bind written again', async () => {
-  let n = 0;
-  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ === 0 && (h.gun.spawned = true, true) }).live();
-  await h.adv(4000 + 3000);
-  assert.equal(h.spawns(), 1, 'the gun read its spawn magazine, so no second spawn');
+  // Emulator 2026-11-24 (brx-desk-emu): a burst torn after `$SPAWN` reads as landed, but its `$BMAP,0,0` never arrived and
+  // the head's `$BMAP,0,98` still holds the trigger (the stock gun fires nothing). The failed write is no sent bind.
   const burstAt = h.writes.find(w => w.f.startsWith('$SPAWN')).t;
-  const rebind = h.writes.filter(w => w.f === '$BMAP,0,0,,,,,*' && w.t > burstAt);
-  assert.ok(rebind.length >= 1, `the bind went again after the failed burst: ${JSON.stringify(h.logs.filter(l => /bind/.test(l)))}`);
+  assert.ok(h.writes.some(w => w.f === '$BMAP,0,0,,,,,*' && w.t > burstAt), 'the bind repair wrote the lost bind again');
   assert.ok(h.logs.some(l => /trigger binding repair \(unknown -> 0\)/.test(l)), 'the repair names the lost bind');
 });
 

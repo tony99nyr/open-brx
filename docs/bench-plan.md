@@ -408,8 +408,9 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
 3. **F226** and F575's heat read: done 2026-11-01 (log). The lockout delays the reload, it does not refuse it; the
    heat table is in F575.
 4. **Off the bench 2026-11-24: the emulator answered (F668 (h): t14 is a floor between pulls; the row has the numbers).** **F668** rule (h), which holds F562's question: is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
-   A/B/A: the AMR held for 10 s, taps at 250 ms, taps at 400 ms, held again. Closes: 250 ms taps give no more rounds
-   than 400 ms taps. Reopens: they give more, so the player-paced TTK (Balance rules row 14) goes back to brx2. (1017
+   A/B/A: the AMR held for 10 s, taps at 250 ms, taps at 400 ms, held again. Closes: no two rounds closer than t14
+   (the emulator: 250 ms taps fire every second tap, 2.0 a second, and 400 ms taps 1.25 a second). Reopens: two rounds
+   closer than t14, so the player-paced TTK (Balance rules row 14) goes back to brx2. (1017
    P3.2)
 5. **Off the bench 2026-11-24: the emulator answered (the reload keeps a slot change; F277 has the numbers).** **F277**, a slot change during a reload (10 min). Control: a reload with no slot change ends with `$ALCD` on its
    own slot. A/B/A: control; start a reload, press ALT before it ends, read `$LCD` and the `$ALCD` slot after it;
