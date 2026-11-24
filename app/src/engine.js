@@ -907,7 +907,7 @@ export class Engine {
     this._spawnEchoLife = null;      // C.4b: the life whose spawn echo was already read
     this._spawnEchoHeals = 0;        // C.4b reviews: echo heals this start (two at most)
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
-    this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
+    this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield, offTried} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
     this._lifeBurst = null;          // F493: {life, at, sent} while a spawn/revive burst waits in the play queue (`_writeLife`)
     this._activeCard = null;         // ARCH-2 gate r1: {life, slot, at, until} for the ACTIVE bubble after a swap, never read off `moment`
@@ -1874,6 +1874,7 @@ export class Engine {
       this.delay(SPAWN_CHECK_MS, () => this._spawnAsk(c));
       // The repair runs NOW, as it always did, whatever the check finds: ending spawn protection must never wait on
       // an answer that may not come (F11: an unhittable player). On a gun that never spawned it is a harmless config write.
+      this._protectAgain(frames, why);
       this._spawnLanded(c);
     }).catch(e => this.log(`write ${why} failed: ${e && e.message || e}`, 'le'));
     return r;
@@ -2234,6 +2235,21 @@ export class Engine {
     if (!(c.heardAt > c.writeAt)) return true;                                  // no answer to the check yet: no evidence either way
     if (c.resentAt && now - c.resentAt < SPAWN_RESEND_WAIT_MS) return true;     // the re-send is in flight
     return this._spawnRetry(c, 'the gun reads a 0 pool') !== false;   // a spent budget books the 0 pool now
+  }
+  /** brx-desk-emu review (2026-11-24): a lost burst torn after `$SPAWN` reads as landed, so F416 sends nothing again, and
+   *  its `$TMP` t8 = -100 row may never have reached the gun. While this life's protection is still owed ('tmp' bundle,
+   *  `_armPending` not yet ended, inside its window), write the burst's -100 row and the station shield light again.
+   *  Both are safe to repeat. Writes go in call order, so they go before the cap's `spawn_protect_off`. The one retry
+   *  (`_writeMust`) is refused once `_armLife` has taken the entry, and an `_armLife` retry entry (`offTried`) gets no
+   *  repair at all, so a late -100 never follows an OFF attempt. */
+  _protectAgain(frames, why) {
+    const p = this._armPending;
+    if (!p || p.off === false || p.offTried || this._protectMode() !== 'tmp' || !this.bleUp || (this.rc && this.rc.ownsRearm)) return;
+    const owed = () => this._armPending === p && this.now() - p.at < (p.until ?? SPAWN_PROTECT_MAX_MS);
+    if (!owed()) return;
+    const rp = this._respawnProfile();
+    const rows = frames.filter(f => typeof f === 'string' && (/^\$TMP,(?:[^,]*,){7}-100,/.test(f) || (p.shield && rp && f === rp.shield_on)));
+    if (rows.length) this._writeMust(rows, `${why} lost: spawn protection again`, () => owed() && this.bleUp && !this._spawnCheckOver(), true);
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
@@ -3915,7 +3931,7 @@ export class Engine {
       if (take.length && gen === this._sirGen) this._sirLive = false;
       if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
       this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
-      this._armPending = { ...p, at: this.now(), until: p.shotEnds ? p.until : 1000 };   // keep the original flip (an infection flip's retry must not read as "not live"); a profile life retries 1 s on
+      this._armPending = { ...p, at: this.now(), until: p.shotEnds ? p.until : 1000, offTried: true };   // `offTried`: `_protectAgain` never writes -100 after an OFF attempt   // keep the original flip (an infection flip's retry must not read as "not live"); a profile life retries 1 s on
       // 2026-09-19: this retry may be ending real t8 protection (`off.length`), so hold the trigger past
       // it -- it must never go live while t8 is still -100. Push the due out to at least the retry plus
       // TRIGGER_AFTER_PROTECT_MS, never pull it earlier (the delay may already be later than that).

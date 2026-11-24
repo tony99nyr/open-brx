@@ -443,3 +443,62 @@ test('F416 x swap timer: a burst held through ALT defers the weapon check to the
   assert.equal(h.spawns(), 1, 'no second $SPAWN over the swap');
   assert.ok(h.logs.some(l => /F416: the gun's weapon state matches .*landed, no re-send/.test(l)), 'the check closes as landed once the swap is over');
 });
+
+// brx-desk-emu review (Low), 2026-11-24: a station revive burst torn after `$SPAWN` reads as landed (slot 0 at the spawn
+// magazine), so the check sends nothing again. Its `$TMP` t8 = -100 row never reached the gun: the lost-write repair writes
+// the protection row again while the window is still owed, and the cap still ends it.
+test('F416 x station revive: a burst torn after $SPAWN gets its spawn protection row again, then the cap ends it', async () => {
+  let n = 0;   // the T-0 spawn lands; the station revive is torn after its `$SPAWN` (the gun spawned, the write failed)
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && n++ === 1 }).live();
+  await h.adv(4000 + 1000);
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  await h.adv(200);
+  assert.equal(h.eng.state().alive, false, 'setup: the hit killed the player');
+  const ON = golden.respawn_profile.revive_station.find(f => f.startsWith('$TMP,'));
+  const at = h.now();
+  h.eng._revive(false, 1);   // a station revive (`kind` 'station': the profile's revive_station burst)
+  for (let i = 0; i < 100 && !h.writes.some(w => w.t >= at && w.f.startsWith('$SPAWN')); i++) await h.adv(50);   // F493: behind the death scream
+  const burst = h.writes.filter(w => w.t >= at);
+  assert.equal(burst.filter(w => w.f.startsWith('$SPAWN')).length, 1, 'setup: one revive burst');
+  assert.ok(burst.some(w => w.f === ON), 'setup: the burst carried the protection row');
+  await h.adv(golden.respawn_profile.station_protect_ms + 1500);
+  assert.ok(h.logs.some(l => /weapon state matches .*landed, no re-send/.test(l)), 'setup: the torn burst reads as landed');
+  assert.equal(h.spawns(), 2, 'setup: no re-send');
+  // The torn burst's own rows did not reach the gun; what reached it after is every write that resolved.
+  const failedAt = burst.find(w => w.f.startsWith('$SPAWN')).t;
+  const tmp = h.writes.filter(w => w.t >= failedAt && w.f.startsWith('$TMP')).map(w => w.f);
+  const again = tmp.indexOf(ON, tmp.indexOf(ON) + 1);
+  assert.ok(again > 0, `the protection row went out again after the torn burst: ${JSON.stringify(tmp)}`);
+  assert.equal(tmp[tmp.length - 1], golden.spawn_protect_off, `the last $TMP is OFF (never an immortal player): ${JSON.stringify(tmp)}`);
+  assert.ok(tmp.indexOf(golden.spawn_protect_off) > again, 'the OFF row follows the repaired protection row');
+  assert.equal(h.eng.state().alive, true);
+});
+
+test('F416 x station revive: a lost protection repair is retried once, still before the cap ends it', async () => {
+  let n = 0, r = 0;   // the T-0 spawn lands; the station revive is torn after `$SPAWN`; the first repair is lost too
+  const ON = golden.respawn_profile.revive_station.find(f => f.startsWith('$TMP,'));
+  const h = harness({ fail: fr => (fr.some(f => f.startsWith('$SPAWN')) && n++ === 1) || (!fr.some(f => f.startsWith('$SPAWN')) && fr.includes(ON) && r++ === 0) }).live();
+  await h.adv(4000 + 1000);
+  h.eng.feedFrame('$HIR,4,0,19,2,45,0,3,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  await h.adv(200);
+  const at = h.now();
+  h.eng._revive(false, 1);
+  await h.adv(golden.respawn_profile.station_protect_ms + 4000);
+  const tmp = h.writes.filter(w => w.t >= at && w.f.startsWith('$TMP')).map(w => w.f);
+  assert.deepEqual(tmp, [ON, ON, ON, golden.spawn_protect_off], `burst, lost repair, retry, then OFF: ${JSON.stringify(tmp)}`);
+  assert.ok(h.logs.some(l => /spawn protection again failed -- retrying once/.test(l)), 'the retry names the lost repair');
+});
+
+test('F416 x station revive: no protection repair rides on an _armLife retry entry (an OFF was already attempted)', async () => {
+  const h = harness().live();
+  await h.adv(4000 + 1000);
+  const ON = golden.respawn_profile.revive_station.find(f => f.startsWith('$TMP,'));
+  // Codex round 2: a revive burst that settles failed after the cap's OFF write failed too finds `_armLife`'s fresh retry entry.
+  h.eng._armPending = { at: h.now(), flip: false, until: 1000, shotEnds: false, off: true, shield: false, offTried: true };
+  const n = h.writes.length;
+  h.eng._protectAgain(golden.respawn_profile.revive_station, 'revive');
+  assert.ok(!h.writes.slice(n).some(w => w.f === ON), 'no -100 after an OFF attempt');
+  h.eng._armPending = { ...h.eng._armPending, offTried: false };
+  h.eng._protectAgain(golden.respawn_profile.revive_station, 'revive');
+  assert.ok(h.writes.slice(n).some(w => w.f === ON), 'control: the same entry without an OFF attempt is repaired');
+});
