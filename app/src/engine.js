@@ -1797,7 +1797,7 @@ export class Engine {
    *  its own re-sends did not land. `still()` is asked before the one retry, and a shot or a hit since the first
    *  attempt also refuses it (pl4: the counts are then out of date, a repeat would refill). A second failure is
    *  logged loudly and left to the operator's RESYNC GUN, as `_armLife` leaves its own to the next trigger. */
-  _writeMust(frames, why, still, actExempt = false) {
+  _writeMust(frames, why, still, actExempt = false, twice = null) {
     const act = this._actSeq;   // pl4: a shot or a hit after this point makes a repeat unsafe (it re-sends counts the gun has moved past)
     const r = this._write(frames, why);
     Promise.resolve(r).then(ok => {
@@ -1807,7 +1807,7 @@ export class Engine {
       if (!still() || (this._actSeq !== act && !actExempt)) { this.log(`write ${why} failed -- the game moved on, not retried`, 'li'); return; }
       this.log(`write ${why} failed -- retrying once`, 'le');
       return Promise.resolve(this._write(frames, `${why} (retry)`)).then(again => {
-        if (again === false) this.log(`*** write ${why} failed twice -- the gun may be out of step (RESYNC GUN) ***`, 'le');
+        if (again === false) this.log(twice || `*** write ${why} failed twice -- the gun may be out of step (RESYNC GUN) ***`, 'le');
       });
     }).catch(e => this.log(`write ${why} retry failed: ${e && e.message || e}`, 'le'));
     return r;
@@ -1895,6 +1895,7 @@ export class Engine {
     if (this._spawnCheck && this._spawnCheck.life === life) this._spawnCheck = null;   // review: an earlier loss's check must not re-send it
     this.log(`*** BUG: write ${why} failed on a code error (${error || 'unknown'}). No re-send: it would hit the same bug. `
       + 'The player stays up; no death is booked without a hit. HOST: RESYNC GUN or FORCE RESPAWN ***', 'le');
+    this._protectAgain(frames, why);   // wrap-up 2026-11-24: the burst may have stopped after `$SPAWN`, before its -100 row
     this._spawnLanded({ life, frames, why });   // the repair still ends spawn protection and restores the hit table (F11)
     this._changed();
   }
@@ -2249,7 +2250,8 @@ export class Engine {
     if (!owed()) return;
     const rp = this._respawnProfile();
     const rows = frames.filter(f => typeof f === 'string' && (/^\$TMP,(?:[^,]*,){7}-100,/.test(f) || (p.shield && rp && f === rp.shield_on)));
-    if (rows.length) this._writeMust(rows, `${why} lost: spawn protection again`, () => owed() && this.bleUp && !this._spawnCheckOver(), true);
+    if (rows.length) this._writeMust(rows, `${why} lost: spawn protection again`, () => owed() && this.bleUp && !this._spawnCheckOver(), true,
+      `*** ${why}: the spawn protection repair failed twice -- this life may have no spawn protection (the cap still ends it) ***`);
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
