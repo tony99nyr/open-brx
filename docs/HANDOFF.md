@@ -83,6 +83,12 @@ closed, F640 (2)(3) on bench P19. Batch B: F674 closed, F671 and F675 on bench P
 phone station gets `clear_station`, a phone hill reads `end_age_ms`, MC holds clears in play, the list is bounded.
 **Next:** bench step 108; F679 (the late END and MC's max tally) for brx1 to route. **Blocked:** none.
 
+## Lane: brx-desk-emu, bench steps answered at the desk (2026-11-24)
+**State (2026-11-24):** every open bench step sorted EMU, STAGE or HW (`~/lanes-2026-11-24/emu-triage.md`, outside the
+repo). The frozen emulator answered NEXT steps 4, 5, 6, 9, 11 and 20; F533 and F416 closed; SR13 and F668 shorter.
+About 70 bench minutes less. The emulator does not match the gun on heat (F575). Log 2026-11-24.
+**Next:** F128 and F691 are desk rows (brx4, brx2). **Blocked:** none.
+
 ## Start here
 
 1. **Next sitting:** the NEXT sheet in [`bench-plan.md`](bench-plan.md); record evidence and promote or close each row

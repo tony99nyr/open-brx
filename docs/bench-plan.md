@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-11-22. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-11-24. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 The next sitting is NEXT GAME PREP ([below](#next-game-prep-one-sitting-in-this-order-2026-11-02)), from its *Start here* list, before the next game; it includes the rest of the swap and reload sheet. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
@@ -17,7 +17,9 @@ Build everything from current main: the F645 and F650 fixes are merged, so one A
 About 3 h 48 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 23 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then steps 108 (F681 and F678), 109 (F687), 110 (F684) and 111 (F685), once their fixes from brx-desk-1122 are on main, and F322's two-gun check in item 5. Step 20 stays open for F533 and F416: run it only with a way to make a spawn write fail in flight (9 starts on 2026-11-22 logged no write error).
+**Next sitting, start here (2026-11-22).** Build the APK from main (P3) and reflash the Sticks (P1), then go on with item 4 below: P22 (F682), step 25 (F277), 30 (F340), 31 (F293) with 32 (F563) beside them, P4 parts 3 and 4 (F659) and P9 (F648). Then steps 108 (F681 and F678), 109 (F687), 110 (F684) and 111 (F685), once their fixes from brx-desk-1122 are on main, and F322's two-gun check in item 5.
+
+**Off the bench on 2026-11-24 (brx-desk-emu, the frozen firmware emulator and the stage; log 2026-11-24).** Steps 4 (F668 (h)), 5 (F277), 6 (F592 part 2), 9 (F128), the optional 11 (F308 part 4) and 20 (F533 and F416, both closed) are answered at the desk, and SR13 and F668 are shorter: about 70 min less. The emulator does not match the gun on heat (F575), so steps 102 to 106 stay. The sort of every open step by what a simulation can answer is in `~/lanes-2026-11-24/emu-triage.md` (outside the repo).
 
 Done on 2026-11-22 (phones on a local 0.4.46, main `192d7b326`; results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-22): steps 16, 17, 18, 20 (F541's tap half), 26, 27, 28 and 29, P19, step 108 (F678 REFUTED), SR5 part 3 and the SR23 tap cases. The IR rig emitter now runs main's `ir_emit.ino`.
 
@@ -30,22 +32,23 @@ The triage of 2026-11-16 read every MVP BENCH row against main. It closed seven 
 and F379, F538, F567, F397 and F562 as duplicates (the archive has the evidence). NEXT steps 1, 19, 23, 47 and 72 now test
 nothing open. The list below holds every open MVP BENCH row, in rig order, so the rig changes as few times as possible.
 A "step" is a NEXT step and a "P" or "SR" is a step of this file; each one cites the row or sheet that holds its
-procedure. The minutes come from those steps. The total is about 27 h, so it takes several sittings.
+procedure. The minutes come from those steps. The total is about 25 h 50 min, so it takes several sittings.
 
 1. **Build and flash (about 70 min).** P3, the APK from main on every phone (the 0.4.44 phones lack `acb16124b`'s
    phone hill END change). P1 (step 63), every Stick from main. The IR rig emitter was reflashed on 2026-11-22 (F449 closed).
-2. **One gun on the laptop MCP (about 205 min).** Step 4 (F668 rule (h)), 5 (F277), 6 (F592 part 2), 7 (B26),
-   8 (S10), 9 (F128), 12 to 15 (F272, F269, F270, F274: the screamers sheet, 130 min). F637 on one gun (10 min, its
-   row). F668's other A/B/A cases, (f) first (about 30 min, its row). Optional: steps 10 (F282) and 11 (F308 part 4).
+2. **One gun on the laptop MCP (about 160 min).** Steps 7 (B26), 8 (S10), 12 to 15 (F272, F269, F270, F274: the
+   screamers sheet, 130 min). F637 on one gun (10 min, its row: power on with the headset off, then on). F668 (f) only,
+   the emulator's cross-check (10 min, its row). Optional: step 10 (F282). Off the bench on 2026-11-24 (the emulator):
+   steps 4, 5, 6, 9 and 11.
 3. **One gun and both rig boards.** Done 2026-11-22: steps 16 (F449), 17 (F322) and 18 (F264). F322's open half
    (does the victim's second protocol-10 word hit a neighbour) needs two guns: run it in item 5.
-4. **One gun, its phone, MC and the rig emitter (about 110 min).** Done 2026-11-22: SR5 part 3 and the SR23 tap cases
+4. **One gun, its phone, MC and the rig emitter (about 85 min).** Done 2026-11-22: SR5 part 3 and the SR23 tap cases
    (F650), P19 (F640), step 20's F541 tap half, 26 (F511), 27 (F50), 28 (F545), 29 (F3) and 108 (F678, REFUTED).
-   Open: SR13 (F650), step 20 for F533 and F416 (a spawn write that fails in flight), 25 (F277), 30 (F340),
+   Open: SR13 (F650, 3 min), 25 (F277), 30 (F340),
    31 (F293), 108 to 110 (F681, F678, F687, F684), with step 32 (F563) beside them. P22 (F682, the KIT voice pick,
    5 min). P4 parts 3 and 4 (F659) and P9 (F648).
 5. **Two guns on the laptop MCP and the rig receiver (about 110 min).** Steps 33 (F618), 34 (F515), 35 (S57) and
-   107 (F641). F322's two-gun check (5 min, its row). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. Step 101 (F638) is closed: the SMG stays hidden (F661).
+   107 (F641). F322's two-gun check (5 min, its row). Steps 102 to 106 (F575, 60 min) use the same rig; F575 is a decision row. The emulator cannot replace them: it does not match the gun on heat (F575, 2026-11-24). Step 101 (F638) is closed: the SMG stays hidden (F661).
 6. **Two guns, both phones, MC and a phone station (about 135 min).** Steps 36 (F395, F21), 38 (F438), 40 (F298,
    S57), 41 (F461), 42 (F459), 43 (F460), 44 (F436), 45 (F447), 46 (F442, F396), 48 (F463), 49 (F536), 50 (F296)
    and 51 (F592 part 1). F444 waits for its enemy-captured card (desk) before its bench.
@@ -77,7 +80,7 @@ With the rig about 1 m from a headset, one word sometimes lands twice on two sen
 | P5 | before a game on the Mac | 10 | The Mac 5-step check, with the phone that could not ping on 2026-11-01 (F643). Skip it when MC runs on the PC. | [`mac-dev-runbook.md`](mac-dev-runbook.md) §1b, *5-step check* |
 | P6 | before a game | 5 | Hill off: an FFA with hills turned off, with a Stick hill powered in the field. | FOLLOWUPS F658 (its hill-off bench line) |
 | P7 | before a Domination game | 20 | F666: three Stick hills, a Domination game, two players. Check the target reads 1000 before START (a KOTH game before it can carry its hold target over, F666 item 6). Capture each hill once; an owned hill keeps scoring while contested; the console shows the score. The phone HUD shows one hill only for now (F666 item 2). | FOLLOWUPS F666 (open item 5), [`domination-design.md`](domination-design.md) §2 |
-| P8 | before a game (P0) | 13 | Swap and reload: SR16, SR6, SR7 and SR8 passed on 2026-11-14/15; SR5 part 3 and the SR23 tap cases passed on 2026-11-22; SR13 and SR22 are still open. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
+| P8 | before a game (P0) | 8 | Swap and reload: SR16, SR6, SR7 and SR8 passed on 2026-11-14/15; SR5 part 3 and the SR23 tap cases passed on 2026-11-22; SR13 and SR22 are still open. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
 | P9 | before a game with phone hills | 20 | F648: arm a phone hill, toggle its Bluetooth off and on mid-match. Pass: it logs "the advert is down" and comes back with the point intact. Needs the APK from P3. Then a short KOTH match on that phone hill (10 min). | FOLLOWUPS F648 |
 | P15 | before a Domination game | 70 | A88, the hill tally relay, HT1-HT5, after P1, P3 and P7. HT4 and HT5 need brx4's MC half of A88 on main (`config.hill_tally`). | [HT1-HT5](#next-the-hill-tally-relay-a88) |
 | P10 | can wait | 5 | The near-miss flash colour (F68): Tony asked whether a recoil miss flashes the headset green. State the headset's team. Fire one magnitude-0 word from the IR rig at the worn headset, then one magnitude-100 word as the control. Tony reports each colour; the gun should buzz and play `H06` on the miss, with no `$HIR`. Then watch the headset return to its team colour within about 5 s (F68's eyes check). | post-mvp F68 |
@@ -145,7 +148,7 @@ log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rul
 | SR16 | 5 | **(B) PASS 2026-11-15 (0.4.43).** The gun's own Shotgun reload is hold-to-chain, so (A) loads one shell a tap; a tap under about 180 ms loads none (F672). the first lever loads an empty Shotgun after an AR shot (Tony 2026-11-07, option a) | Kit: Assault Rifle + Shotgun. Tony: "the shotgun needs to reload shell by shell". The gun's lever goes to the slot that fired last, so the phone loads the Shotgun in hand itself, one `$AMMO` a shell every reload_s (log: `the phone reloads slot 1 itself a shell every 400 ms`). A/B/A, three times each: (A) control: fire the Shotgun empty, then lever: the gun's own chain loads it shell by shell, and the log has no `itself` line. (B) fire the Shotgun empty, ALT to the rifle, fire one rifle round, ALT back to the Shotgun, one lever. (A) again. Pass: in (B) the one lever loads the Shotgun shell by shell to full, the HUD shows RELOADING and the count on the gun equals the HUD after every shell, the next Shotgun shot fires, and there is no desync line. Also in (B): a trigger pull mid-chain stops the loading with the shells already in kept. Record any shell the gun loads twice, or a rifle refill during (B) (the gun's own lever on the rifle is expected and correct). |
 | SR9 | 5 | **PASS 2026-11-08.** a `$GSET` re-send on a live gun (F645) | Two guns, MC, an FFA head. Mid-life, RESYNC GUN on gun A. Pass: gun A keeps its pools, both weapons and the trigger, and gun B's next hit on A lands (`$HIR` and `$HP`). Control: the same hit before the resync. |
 | SR10 | 10 | **PASS 2026-11-08.** an FFA after try-outs (F645) | Four try-outs on gun A, READY, an FFA match. Pass: at T-3 the phone log shows `friendly-fire setting again (F645)`, and every gun takes hits from every other. Control: an FFA with no try-outs. |
-| SR13 | 8 | recoil resets on release (F663, F662) | Needs the Assault Rifle with `recoil.reset_on_release: true` (F662's numbers, or a bench catalogue). Hold to heavy (the `$ALCD` accuracy falls in two steps), then release. Pass: the phone log shows one `accuracy crisp` write at the release, and the gun's `$ALCD` reads 100 about 160 ms after the last round (predicted median; record each reading, 10 holds). Then bursts long enough to degrade (8 rounds) with a 300 ms pause: every burst starts at 100. Control: the same holds with the flag off, where 100 returns only after about 600 ms of quiet. |
+| SR13 | 3 | recoil resets on release (F663, F662). **2026-11-24: the gun half PASS on the emulator (the crisp `$TMP` reads 100 at once) and the phone half on the stage (F663 tests); only the time over BLE is left: three holds, not ten.** | Needs the Assault Rifle with `recoil.reset_on_release: true` (F662's numbers, or a bench catalogue). Hold to heavy (the `$ALCD` accuracy falls in two steps), then release. Pass: the phone log shows one `accuracy crisp` write at the release, and the gun's `$ALCD` reads 100 about 160 ms after the last round (predicted median; record each reading, 3 holds). Then bursts long enough to degrade (8 rounds) with a 300 ms pause: every burst starts at 100. Control: the same holds with the flag off, where 100 returns only after about 600 ms of quiet. |
 | SR14 | 5 | **Done 2026-11-08: keep X49 (F647).** the crit sound, by ear (F647) | Tony chose an ear check at this bench. At `$VOL,65`, play `$PLAY,,4,6,X49,,,,*` and `$PLAY,,4,6,H21,,,,*` on one gun, three times each in a random order, without naming them. Tony says which one the player heard on 2026-11-01. Then two guns: gun B fires a Burst Rifle at gun A until the phone log shows a crit hit, and Tony listens at gun A. Control: a normal hit, with no crit bit. Pass: Tony names the clip, then picks one: keep `X49`, choose another crit clip, or empty hitCrit (a crit then sounds like a normal hit). Record the pick on F647. |
 | SR17 | 6 | **PASS 2026-11-14/15 ((e) on 0.4.43).** In (b) a held USP-S pull holds the AR bind until the release (Tony: no change). the phone owns the swap: ALT in every trigger state (Tony 2026-11-08, ammo.js `altPressed`) | Kit: Assault Rifle + USP-S. Each case three times, then pull once and read the round's slot on the gun's screen: (a) ALT with the trigger released; (b) ALT with the trigger held; (c) ALT mid-burst on the AR; (d) ALT 100 ms after a dry pull on an empty USP-S; (e) two ALTs about 200 ms apart (lands back where it started). Pass every case: the HUD changes weapon at the press and shows SWITCHING for the target's swap time (AR 850 ms, USP-S 500 ms), the swap sound plays, the next round comes from the weapon the HUD shows, and no `gun fired slot` line is logged. The gun itself never swaps (ALT is on 98, silent). Expected, not a fail (Tony 2026-11-08): in (b) and (c) the trigger still held when the swap ends fires at once, one USP-S round or an AR burst, and the shot count includes those rounds. |
 | SR18 | 5 | **PASS 2026-11-14.** the cure and RESYNC bind the slot in hand, never slot 0 (the SR18 cure bug, `_bindRows`) | Kit: Assault Rifle + USP-S. ALT to the USP-S and fire once. Then from the MC console press RESYNC for this player, and pull: pass is a USP-S round and `$BMAP,0,1` in the write log. Then ALT and RESYNC again inside the swap (within 500 ms): pass is `$BMAP,0,98` from the RESYNC, then `$BMAP,0,0` at the swap's end and an AR round. Control: RESYNC on the AR binds `$BMAP,0,0`. |
@@ -369,8 +372,8 @@ result that closes the row, and the result that reopens it. A step marked "read 
 and says why. The procedure stays in the sheet each step cites. Short names: 0422, 0424, 0426 and 1017 are
 [`bench-rebench-0422.md`](bench-rebench-0422.md), [`bench-rebench-0424.md`](bench-rebench-0424.md),
 [`bench-0426.md`](bench-0426.md) and [`bench-field-1017.md`](bench-field-1017.md); runbook is
-[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 25
-h 10 min (steps 1 to 95, 101 to 106), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
+[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 24
+h 25 min (steps 1 to 95, 101 to 106; steps 4, 5, 6, 9 and 20 left the bench on 2026-11-24), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
 min) are not in it.
 
 **Build gate: run on the newest APK, and check the fix each step tests.** The newest APK is 0.4.30, built locally
@@ -393,7 +396,7 @@ while a gun powers on (F545), except in step 28. Guns, as the source sheets pin 
 (0426, 1017, 0422 Sitting A), Tactix-E20D is 0426's second gun and outdoor target, and Tactix-FE30 is player 1 in 0422
 Sitting C. Tactix-XXXX marks a gun no sheet pins.
 
-### Group A: one gun alone on the laptop MCP (1 gun, no phone, about 225 min)
+### Group A: one gun alone on the laptop MCP (1 gun, no phone, about 200 min)
 
 Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm from the 0422 Sitting A recipe.
 
@@ -404,16 +407,16 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    in compile.py. Reopens: a 600 echo after `$AMMO` alone means `$AMMO` clamps to t17. (0426 P2.2, 1017 P1.0)
 3. **F226** and F575's heat read: done 2026-11-01 (log). The lockout delays the reload, it does not refuse it; the
    heat table is in F575.
-4. **F668** rule (h), which holds F562's question: is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
+4. **Off the bench 2026-11-24: the emulator answered (F668 (h): t14 is a floor between pulls; the row has the numbers).** **F668** rule (h), which holds F562's question: is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
    A/B/A: the AMR held for 10 s, taps at 250 ms, taps at 400 ms, held again. Closes: 250 ms taps give no more rounds
    than 400 ms taps. Reopens: they give more, so the player-paced TTK (Balance rules row 14) goes back to brx2. (1017
    P3.2)
-5. **F277**, a slot change during a reload (10 min). Control: a reload with no slot change ends with `$ALCD` on its
+5. **Off the bench 2026-11-24: the emulator answered (the reload keeps a slot change; F277 has the numbers).** **F277**, a slot change during a reload (10 min). Control: a reload with no slot change ends with `$ALCD` on its
    own slot. A/B/A: control; start a reload, press ALT before it ends, read `$LCD` and the `$ALCD` slot after it;
    control. The 2026-10-17 bench found the gun ignores ALT during a reload, so log whether the ALT took at all.
    Result: says whether the reload undoes a slot change; the row stays open for step 25 and the detector. (FOLLOWUPS
    F277, code read 2026-10-26)
-6. **F592** part 2, `$AMMO,0,...` with a heavy held on slot 2 (5 min). Control: with the heavy equipped after the
+6. **Off the bench 2026-11-24: the emulator answered (`$AMMO,0` does not move the trigger off slot 2; part 2 closed).** **F592** part 2, `$AMMO,0,...` with a heavy held on slot 2 (5 min). Control: with the heavy equipped after the
    life's first pull (F436), one pull fires slot 2. A/B/A: control; send the recipe's `$AMMO,0,...` row and pull;
    re-equip and pull. Closes part 2: the `$ALCD` slot after the write says whether `$AMMO,0` moves the trigger.
    (FOLLOWUPS F592)
@@ -424,7 +427,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    `$GLED,3,3,9,0,1,,*` paints two dim green segments and a dark third. A/B/A: the paint; each of the four frames of
    0422 A.20 sent one at a time; the paint re-read after each. Closes: it holds 60 s and survives all four. Reopens: a
    frame paints over it. Power-cycle after (F35). (0422 A.20)
-9. **F128**, the Shotgun tap and hold (5 min). The 1017 P1.2 match-3 loadout (the AMR in slot 0, the Shotgun in slot
+9. **Off the bench 2026-11-24: the emulator answered (a held fn 97 ALT drives the chain like the lever; F128 is a desk row now).** **F128**, the Shotgun tap and hold (5 min). The 1017 P1.2 match-3 loadout (the AMR in slot 0, the Shotgun in slot
    1). Control: the AMR, part-empty, refills with one lever pull. A/B/A: AMR; Shotgun emptied with
    `$AMMO,1,0,<reserve>,1,*`, then the lever under 200 ms, 1 s and 3 s, three times each; AMR. Read: shells per pull
    from `$ALCD` (expect 0, about 2 and 6, at about 420 ms a shell), for the HOLD state; the `easy_reload` hold
@@ -432,7 +435,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
 10. **F282**, optional research, the muzzle flash tokens (10 min, a dark room). Control: the compiled AR shows its
    normal flash. A/B/A: t25 alone, compiled, t26 alone, compiled; then one try of an empty t27. Result: which token
    removes the flash and what an empty t27 plays; not an MVP gate. (0422 A.21)
-11. **F308** part 4, optional: the Burst Rifle's t23 with a fixed-rhythm trigger puller (10 min). Control: the
+11. **Off the bench 2026-11-24: the emulator answered (615 ms from the last round; part 4 closed, F691 for the model).** **F308** part 4, optional: the Burst Rifle's t23 with a fixed-rhythm trigger puller (10 min). Control: the
    Shotgun's interval reads about 720 ms against 700 configured (the gun's 20 ms overhead). A/B/A: Shotgun, Burst
    Rifle, Shotgun. Closes: the gap between bursts reads about 540 ms plus that overhead (hand pulls bound it at 540 to
    615 ms). (FOLLOWUPS F308)
@@ -462,13 +465,13 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    Open: does that word hit a neighbour (two guns, NEXT GAME PREP item 5).
 18. **F264**: done 2026-11-22, the code read CONFIRMED (log). F264 stays open for step 39.
 
-### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 185 min)
+### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 165 min)
 
 Tactix-9498 with the green Pixel 5. The rig emitter is the shooter wherever a step needs a hit or a kill (0422 Sitting
 A).
 
 19. F548: closed 2026-11-16 as superseded. Nothing to run.
-20. **F533** and **F416**, a lost spawn write at go-live. **→ 2026-11-22:** 4 relinks and 3 far-phone runs done;
+20. **Closed 2026-11-24 at the desk (the emulator tore and dropped the burst; the stage holds the phone's check; both rows closed). Nothing to run.** **F533** and **F416**, a lost spawn write at go-live. **→ 2026-11-22:** 4 relinks and 3 far-phone runs done;
    no start logged `write err`, so neither row is tested yet. F541's tap half PASS (F541 closed; the 17 s
    gap is F684). Next: a start where the spawn write fails in flight. Closes F533: each start that logs
    `write err` fires at go-live or heals once, and no life starts at 0/0. F416: a lost write logs the re-send
