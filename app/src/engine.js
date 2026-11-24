@@ -2251,7 +2251,7 @@ export class Engine {
     const rp = this._respawnProfile();
     const rows = frames.filter(f => typeof f === 'string' && (/^\$TMP,(?:[^,]*,){7}-100,/.test(f) || (p.shield && rp && f === rp.shield_on)));
     if (rows.length) this._writeMust(rows, `${why} lost: spawn protection again`, () => owed() && this.bleUp && !this._spawnCheckOver(), true,
-      `*** ${why}: the spawn protection repair failed twice -- this life may have no spawn protection (the cap still ends it) ***`);
+      `*** ${why}: the spawn protection repair failed twice -- this life may have no spawn protection ***`);
   }
   /** The repair after a lost spawn/revive write (pl4): the take that ends spawn protection, and the hit table. It runs at
    *  once on the loss and again after a re-send lands (F416), so a protection a burst applied is always ended. */
