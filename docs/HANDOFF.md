@@ -15,7 +15,7 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 
 ## Lane: brx1, orchestration
-**State (2026-11-22):** the 2026-11-22 bench is recorded (log 2026-11-22, `bench-plan.md` *Next sitting, start here*).
+**State (2026-11-24):** the 2026-11-22 bench is recorded (log 2026-11-22, `bench-plan.md` *Next sitting, start here*).
 Phones ran a local 0.4.46 (main `192d7b326`, not published); the rig emitter now runs main's `ir_emit.ino`. Closed:
 F449, F541, F50, F3, F511. PASS: P19 (F640 (2)(3)), SR5 part 3, the SR23 tap cases. CONFIRMED: F322 for protocol 10
 (the victim sends a second word), F264's code read. F678's fix is REFUTED on hardware (the X17 stop swallows
@@ -23,9 +23,11 @@ F449, F541, F50, F3, F511. PASS: P19 (F640 (2)(3)), SR5 part 3, the SR23 tap cas
 F683 to F687 (F682 was taken by the voice pick).
 brx-desk-1122 built F681, F678, F687 and F684 (landed `4cefe5c34`, bench steps 108 to 110), closed F683 (a recorder
 artefact), and built F685 option (a): t15 ships empty and the phone plays the heal line (step 111).
-**Next:** the next sitting: APK and Stick reflash, item 4's open steps, steps 108 to 110,
+brx-desk-emu (2026-11-24, `aa4e1739a`) ran the gun-logic steps on the emulator: F533 and F416 closed, NEXT steps 4,
+5, 6, 9, 11 and 20 are off the bench. F128 and F691 are new desk work, not yet given to a lane.
+**Next:** the next sitting: APK and Stick reflash, item 4's open steps, steps 108 to 111, P22,
 F322's two-gun check.
-**Blocked:** F533 and F416 need a spawn write that fails in flight; B21 on the MacBook; publishing waits for Tony.
+**Blocked:** B21 on the MacBook; publishing waits for Tony.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State (2026-11-02):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
